@@ -14,12 +14,12 @@
 **Acceptance:** Clean build with zero errors, automated test runner configured, baseline documentation committed.
 
 Tasks:
-- **[TASK-01] Inspect Environment and Project Scaffolding**
+- **[TASK-01] Inspect Environment and Project Scaffolding** (Completed)
   - Requirements: REQ-01
   - Dependencies: None (Root)
   - Complexity: low
   - Acceptance: Repository builds cleanly; Lint/typecheck pass with 0 errors
-- **[TASK-02] Automated Test Harness Setup**
+- **[TASK-02] Automated Test Harness Setup** (Completed)
   - Requirements: REQ-01
   - Dependencies: TASK-01
   - Complexity: low
@@ -31,7 +31,7 @@ Tasks:
 **Acceptance:** Database migrations run cleanly, CRUD operations verified with integration tests.
 
 Tasks:
-- **[TASK-03] Domain Schemas and Storage Implementation**
+- **[TASK-03] Domain Schemas and Storage Implementation** (Completed)
   - Requirements: REQ-01
   - Dependencies: TASK-02
   - Complexity: medium
@@ -43,7 +43,7 @@ Tasks:
 **Acceptance:** All must-have requirements functional, user interactions tested end-to-end.
 
 Tasks:
-- **[TASK-04] Core Feature Engine Implementation**
+- **[TASK-04] Core Feature Engine Implementation** (Completed)
   - Requirements: REQ-03
   - Dependencies: TASK-03
   - Complexity: high
