@@ -1069,8 +1069,11 @@ export default function WorkbenchPage() {
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                     value={fuelForm.liters || ''}
                     onChange={e => {
-                      const liters = Number(e.target.value);
-                      setFuelForm({ ...fuelForm, liters, totalCost: Number((liters * fuelForm.pricePerLiter).toFixed(2)) });
+                      const val = e.target.value;
+                      const liters = val === '' ? 0 : Number(val);
+                      const price = fuelForm.pricePerLiter;
+                      const totalCost = price > 0 && liters > 0 ? Number((liters * price).toFixed(2)) : fuelForm.totalCost;
+                      setFuelForm({ ...fuelForm, liters, totalCost });
                     }}
                   />
                 </div>
@@ -1085,15 +1088,20 @@ export default function WorkbenchPage() {
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                     value={fuelForm.pricePerLiter || ''}
                     onChange={e => {
-                      const price = Number(e.target.value);
-                      setFuelForm({ ...fuelForm, pricePerLiter: price, totalCost: Number((fuelForm.liters * price).toFixed(2)) });
+                      const val = e.target.value;
+                      const price = val === '' ? 0 : Number(val);
+                      let newTotal = fuelForm.totalCost;
+                      if (price > 0 && fuelForm.liters > 0) {
+                        newTotal = Number((fuelForm.liters * price).toFixed(2));
+                      }
+                      setFuelForm({ ...fuelForm, pricePerLiter: price, totalCost: newTotal });
                     }}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">إجمالي التكلفة (جنيه)</label>
+                <label className="block text-xs text-slate-300 mb-1">إجمالي التكلفة / المبلغ المدفوع (جنيه)</label>
                 <input
                   required
                   type="number"
@@ -1102,7 +1110,13 @@ export default function WorkbenchPage() {
                   placeholder="مثال: 902.99"
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                   value={fuelForm.totalCost || ''}
-                  onChange={e => setFuelForm({ ...fuelForm, totalCost: Number(e.target.value) })}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const totalCost = val === '' ? 0 : Number(val);
+                    const price = fuelForm.pricePerLiter;
+                    const liters = price > 0 && totalCost > 0 ? Number((totalCost / price).toFixed(3)) : fuelForm.liters;
+                    setFuelForm({ ...fuelForm, totalCost, liters });
+                  }}
                 />
               </div>
 
