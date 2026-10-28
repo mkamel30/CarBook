@@ -1,0 +1,146 @@
+{
+  "packageVersion": "1.0.0",
+  "projectId": "56d5cda7-151b-466d-bf5a-21365d1663e2",
+  "projectName": "Car Maintenance Followup",
+  "revision": 1,
+  "audience": "coding_agent",
+  "targetTool": "antigravity",
+  "targetProfileVersion": "1.0.0",
+  "targetSupportLevel": "generic_handoff",
+  "generatedAt": "2026-10-28T12:01:50.318Z",
+  "status": "draft",
+  "locales": {
+    "interface": "ar",
+    "document": "en",
+    "product": [
+      "en"
+    ],
+    "hasArabicCopies": true
+  },
+  "provenance": {
+    "sourceType": "live_wizard_answers",
+    "classification": "Live User Project Export",
+    "answersOriginDescription": "Compiled directly from active user wizard answers",
+    "derivedOperationalConstraintsCount": 3
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "hash": "e9ac2b21eb90cb775a7e7f96a1daecddfc0fc522259aa3c8f14c1ef98341a90d",
+      "size": 3303
+    },
+    {
+      "path": "AGENTS.md",
+      "hash": "df057316a5d9547d3a3b265765bf2c6ae93f352b88fbbabc577d485094eff021",
+      "size": 2303
+    },
+    {
+      "path": "docs/PRD.md",
+      "hash": "c69b016a51a66550fe6b142fc271e16954e6f7a56ce1e2a1ef5d74e65be693ca",
+      "size": 3790
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "hash": "5852988c43c9c9fabdfa3ea9c05ac516c5a3beb720bdf269a6bb20fd74ed1941",
+      "size": 1591
+    },
+    {
+      "path": "docs/TASKS.md",
+      "hash": "504f8dea57a171aeee5abbf2e3094747fd0139ba11f6855be536b85929facd20",
+      "size": 2923
+    },
+    {
+      "path": "docs/DESIGN.md",
+      "hash": "1fb191f783a8bd8023d15d8ac78cf5df9a4d9a0785b02a8d8d320aaa5b9ee168",
+      "size": 670
+    },
+    {
+      "path": "docs/TEST_PLAN.md",
+      "hash": "a95cff61accf82c74d6e83ef0768dd866330f8ef222f2bc584cd300934c46195",
+      "size": 999
+    },
+    {
+      "path": "docs/SECURITY.md",
+      "hash": "3fa6a25053588af798293cd97cdf393cfc62e09a577c9268a63f95263b4b307b",
+      "size": 828
+    },
+    {
+      "path": "docs/DEPLOYMENT.md",
+      "hash": "d4e7390de2dd7a00480810aba976d0f6b19fd35bd1475520378d829f04ed11b1",
+      "size": 576
+    },
+    {
+      "path": "docs/DECISIONS.md",
+      "hash": "5fb72f69f0956d3779db492d76cc230ca6bc45914cd8a298366e85f60459a23c",
+      "size": 1046
+    },
+    {
+      "path": "prompts/START.md",
+      "hash": "da801addfad263fb1f96e9380dd3bfa989828c26b2859735b0891130d7bb1cae",
+      "size": 2308
+    },
+    {
+      "path": "prompts/PLAN.md",
+      "hash": "769346f6ece6713ea14d4848982480048453b3c59a97a2b4c21f1a262acefb6c",
+      "size": 862
+    },
+    {
+      "path": "prompts/IMPLEMENT.md",
+      "hash": "80487b3d9f2a3e51475e4c1f28606d1e27ac2ab325f6824664d5ce5bdf724b1d",
+      "size": 857
+    },
+    {
+      "path": "prompts/REVIEW.md",
+      "hash": "0b7f5592e1889fc551af951f526f6869624305c5b5a7ac8e87810fc4f713fdbb",
+      "size": 702
+    },
+    {
+      "path": "prompts/RESUME.md",
+      "hash": "3fb8983862c44132eb39ead04537d4655d1aacc1e3373876d12737cd9d0d100d",
+      "size": 914
+    },
+    {
+      "path": "docs/PRD.ar.md",
+      "hash": "3b82f546b8b3094b6acaacf946f2388c13b6ad192be71a56da2feab5a1c738aa",
+      "size": 2829
+    },
+    {
+      "path": "docs/SKILLS.md",
+      "hash": "aab928253a63c2fa37214ffb5e7dead6d99d75d680383320a81aa8438dce8f8e",
+      "size": 295
+    },
+    {
+      "path": "skills-lock.json",
+      "hash": "d281be2250cb058383263e4c78b422dcd8fb15c3c734aa7e2f04ed75b37404bd",
+      "size": 325
+    }
+  ],
+  "templateVersions": {
+    "readme": "1.0.0",
+    "agents_instructions": "1.0.0",
+    "prd": "1.0.0",
+    "architecture": "1.0.0",
+    "tasks": "1.0.0",
+    "design": "1.0.0",
+    "test_plan": "1.0.0",
+    "security": "1.0.0",
+    "deployment": "1.0.0",
+    "decisions": "1.0.0",
+    "prompt_start": "1.0.0",
+    "prompt_plan": "1.0.0",
+    "prompt_implement": "1.0.0",
+    "prompt_review": "1.0.0",
+    "prompt_resume": "1.0.0",
+    "prd_ar": "1.0.0"
+  },
+  "approvedSkills": [],
+  "validation": {
+    "isValid": true,
+    "issuesCount": 0,
+    "issues": []
+  },
+  "knownLimitations": [
+    "Native auto-execution deferred; instructions hand off cleanly via prompts/START.md.",
+    "Custom sidecar or MCP auto-configuration requires separate manual verification."
+  ]
+}
