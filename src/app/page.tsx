@@ -45,6 +45,7 @@ export default function WorkbenchPage() {
   // Fuel Form State
   const [showFuelModal, setShowFuelModal] = useState(false);
   const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
+  const [selectedFuelType, setSelectedFuelType] = useState<string>('');
   const [fuelForm, setFuelForm] = useState({
     fillDate: new Date().toISOString().split('T')[0],
     odometer: 0,
@@ -78,7 +79,19 @@ export default function WorkbenchPage() {
   const [reportData, setReportData] = useState<any | null>(null);
 
   // Settings State
-  const [settings, setSettings] = useState({ provider: 'gemini', apiKey: '', hasApiKey: false, maskedApiKey: '' });
+  const [settings, setSettings] = useState({
+    provider: 'gemini',
+    apiKey: '',
+    hasApiKey: false,
+    maskedApiKey: '',
+    fuelTypes: [
+      { id: 'gasoline_92', name: 'بنزين 92', price: 15.25 },
+      { id: 'gasoline_95', name: 'بنزين 95', price: 17.00 },
+      { id: 'gasoline_80', name: 'بنزين 80', price: 13.75 },
+      { id: 'diesel', name: 'سولار', price: 13.50 },
+      { id: 'cng', name: 'غاز طبيعي', price: 7.00 },
+    ],
+  });
   const [settingsMsg, setSettingsMsg] = useState('');
 
   // Fetch Vehicles
@@ -100,6 +113,7 @@ export default function WorkbenchPage() {
 
   useEffect(() => {
     loadVehicles();
+    loadSettings();
   }, []);
 
   // Fetch Vehicle Specific Data
@@ -139,6 +153,7 @@ export default function WorkbenchPage() {
         provider: data.data.provider,
         hasApiKey: data.data.hasApiKey,
         maskedApiKey: data.data.maskedApiKey || '',
+        fuelTypes: data.data.fuelTypes || prev.fuelTypes,
       }));
     }
   };
@@ -219,20 +234,25 @@ export default function WorkbenchPage() {
   // Open Fuel Modal (Add or Edit)
   const openAddFuelModal = () => {
     setEditingFuelId(null);
+    const defaultFuel = settings.fuelTypes?.[0];
+    setSelectedFuelType(defaultFuel ? defaultFuel.id : '');
+    const price = defaultFuel ? defaultFuel.price : 15;
     setFuelForm({
       fillDate: new Date().toISOString().split('T')[0],
       odometer: selectedVehicle?.currentOdometer || 0,
       liters: 40,
-      pricePerLiter: 15,
-      totalCost: 600,
+      pricePerLiter: price,
+      totalCost: Number((40 * price).toFixed(2)),
       isFullTank: true,
-      notes: '',
+      notes: defaultFuel ? defaultFuel.name : '',
     });
     setShowFuelModal(true);
   };
 
   const openEditFuelModal = (log: any) => {
     setEditingFuelId(log.id);
+    const matchedType = settings.fuelTypes?.find(f => f.price === log.pricePerLiter || f.name === log.notes);
+    setSelectedFuelType(matchedType ? matchedType.id : 'custom');
     setFuelForm({
       fillDate: log.fillDate,
       odometer: log.odometer,
@@ -328,6 +348,7 @@ export default function WorkbenchPage() {
       body: JSON.stringify({
         provider: settings.provider,
         apiKey: settings.apiKey || undefined,
+        fuelTypes: settings.fuelTypes,
       }),
     });
     const data = await res.json();
@@ -919,7 +940,78 @@ export default function WorkbenchPage() {
 
           {/* Settings Tab */}
           {activeTab === 'settings' && (
-            <div className="max-w-xl mx-auto space-y-6">
+            <div className="max-w-2xl mx-auto space-y-6">
+              {/* Fuel Types & Pricing Settings */}
+              <div className="bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                  <Fuel className="w-5 h-5 text-amber-500" />
+                  <h2 className="text-sm font-bold text-slate-100">أنواع وأسعار الوقود / البنزين</h2>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  قم بضبط أسعار أنواع الوقود الحالية ليتم استخدامها واقتراحها تلقائياً عند تسجيل التفويلات الجديدة. يمكنك تعديل سعر اللتر لكل نوع أو إضافة وحذف الأنواع.
+                </p>
+
+                <div className="space-y-3">
+                  {settings.fuelTypes?.map((ft, idx) => (
+                    <div key={ft.id || idx} className="flex items-center gap-3 bg-slate-900/60 p-2.5 rounded border border-slate-800">
+                      <input
+                        type="text"
+                        placeholder="اسم الوقود (مثال: بنزين 95)"
+                        className="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-amber-500"
+                        value={ft.name}
+                        onChange={e => {
+                          const updated = [...settings.fuelTypes];
+                          updated[idx].name = e.target.value;
+                          setSettings({ ...settings, fuelTypes: updated });
+                        }}
+                      />
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          placeholder="السعر"
+                          className="w-24 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono outline-none focus:border-amber-500 text-center"
+                          value={ft.price}
+                          onChange={e => {
+                            const updated = [...settings.fuelTypes];
+                            updated[idx].price = Number(e.target.value);
+                            setSettings({ ...settings, fuelTypes: updated });
+                          }}
+                        />
+                        <span className="text-xs text-slate-400">جنيه/لتر</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = settings.fuelTypes.filter((_, i) => i !== idx);
+                          setSettings({ ...settings, fuelTypes: updated });
+                        }}
+                        className="text-rose-400 hover:text-rose-300 p-1 hover:bg-slate-800 rounded"
+                        title="حذف هذا النوع"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newId = `fuel_${Date.now()}`;
+                      setSettings({
+                        ...settings,
+                        fuelTypes: [...settings.fuelTypes, { id: newId, name: 'نوع وقود جديد', price: 15.00 }],
+                      });
+                    }}
+                    className="text-xs text-amber-500 hover:text-amber-400 font-medium flex items-center gap-1 py-1"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" /> إضافة نوع وقود جديد
+                  </button>
+                </div>
+              </div>
+
+              {/* AI Provider Settings */}
               <div className="bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-4">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
                   <Settings className="w-5 h-5 text-amber-500" />
@@ -1141,6 +1233,43 @@ export default function WorkbenchPage() {
             </div>
 
             <form onSubmit={handleSaveFuel} className="space-y-3">
+              {/* Quick Fuel Type Selector */}
+              {settings.fuelTypes && settings.fuelTypes.length > 0 && (
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1.5">نوع الوقود وسعره (المسجل في الإعدادات)</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {settings.fuelTypes.map((ft) => {
+                      const isSelected = selectedFuelType === ft.id;
+                      return (
+                        <button
+                          key={ft.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedFuelType(ft.id);
+                            const price = ft.price;
+                            const totalCost = fuelForm.liters > 0 ? Number((fuelForm.liters * price).toFixed(2)) : fuelForm.totalCost;
+                            setFuelForm({
+                              ...fuelForm,
+                              pricePerLiter: price,
+                              totalCost,
+                              notes: fuelForm.notes ? fuelForm.notes : ft.name,
+                            });
+                          }}
+                          className={`p-2 rounded text-xs border text-center transition flex flex-col items-center justify-center ${
+                            isSelected
+                              ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                              : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
+                          }`}
+                        >
+                          <span>{ft.name}</span>
+                          <span className="text-[11px] opacity-80 font-mono">{ft.price} ج/لتر</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-slate-300 mb-1">التاريخ</label>
