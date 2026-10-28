@@ -234,9 +234,24 @@ export default function WorkbenchPage() {
   // Open Fuel Modal (Add or Edit)
   const openAddFuelModal = () => {
     setEditingFuelId(null);
-    const defaultFuel = settings.fuelTypes?.[0];
-    setSelectedFuelType(defaultFuel ? defaultFuel.id : '');
-    const price = defaultFuel ? defaultFuel.price : 15;
+    // Remember the fuel type and price from the most recent fuel log if available
+    const lastLog = fuelLogs.length > 0 ? fuelLogs[0] : null;
+    let selectedFuel = settings.fuelTypes?.[0];
+
+    if (lastLog) {
+      const match = settings.fuelTypes?.find(
+        f => f.name === lastLog.notes || Math.abs(f.price - lastLog.pricePerLiter) < 0.01
+      );
+      if (match) {
+        selectedFuel = match;
+      }
+    }
+
+    const fuelTypeId = selectedFuel ? selectedFuel.id : (lastLog ? 'custom' : '');
+    const price = lastLog ? lastLog.pricePerLiter : (selectedFuel ? selectedFuel.price : 15);
+    const fuelName = lastLog?.notes || selectedFuel?.name || '';
+
+    setSelectedFuelType(fuelTypeId);
     setFuelForm({
       fillDate: new Date().toISOString().split('T')[0],
       odometer: selectedVehicle?.currentOdometer || 0,
@@ -244,7 +259,7 @@ export default function WorkbenchPage() {
       pricePerLiter: price,
       totalCost: Number((40 * price).toFixed(2)),
       isFullTank: true,
-      notes: defaultFuel ? defaultFuel.name : '',
+      notes: fuelName,
     });
     setShowFuelModal(true);
   };
@@ -1233,40 +1248,39 @@ export default function WorkbenchPage() {
             </div>
 
             <form onSubmit={handleSaveFuel} className="space-y-3">
-              {/* Quick Fuel Type Selector */}
+              {/* Fuel Type Dropdown Selector */}
               {settings.fuelTypes && settings.fuelTypes.length > 0 && (
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1.5">نوع الوقود وسعره (المسجل في الإعدادات)</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {settings.fuelTypes.map((ft) => {
-                      const isSelected = selectedFuelType === ft.id;
-                      return (
-                        <button
-                          key={ft.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedFuelType(ft.id);
-                            const price = ft.price;
-                            const totalCost = fuelForm.liters > 0 ? Number((fuelForm.liters * price).toFixed(2)) : fuelForm.totalCost;
-                            setFuelForm({
-                              ...fuelForm,
-                              pricePerLiter: price,
-                              totalCost,
-                              notes: fuelForm.notes ? fuelForm.notes : ft.name,
-                            });
-                          }}
-                          className={`p-2 rounded text-xs border text-center transition flex flex-col items-center justify-center ${
-                            isSelected
-                              ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
-                              : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
-                          }`}
-                        >
-                          <span>{ft.name}</span>
-                          <span className="text-[11px] opacity-80 font-mono">{ft.price} ج/لتر</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <label className="block text-xs text-slate-300 mb-1.5">نوع الوقود (مسجل في الإعدادات)</label>
+                  <select
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                    value={selectedFuelType}
+                    onChange={e => {
+                      const typeId = e.target.value;
+                      setSelectedFuelType(typeId);
+                      const matched = settings.fuelTypes?.find(ft => ft.id === typeId);
+                      if (matched) {
+                        const price = matched.price;
+                        const totalCost = fuelForm.liters > 0 ? Number((fuelForm.liters * price).toFixed(2)) : fuelForm.totalCost;
+                        setFuelForm({
+                          ...fuelForm,
+                          pricePerLiter: price,
+                          totalCost,
+                          notes: matched.name,
+                        });
+                      }
+                    }}
+                  >
+                    <option value="custom" disabled={Boolean(selectedFuelType && selectedFuelType !== 'custom')}>
+                      اختر نوع الوقود...
+                    </option>
+                    {settings.fuelTypes.map(ft => (
+                      <option key={ft.id} value={ft.id}>
+                        {ft.name} — ({ft.price} جنيه/لتر)
+                      </option>
+                    ))}
+                    <option value="custom">سعر مخصص / نوع آخر</option>
+                  </select>
                 </div>
               )}
 
