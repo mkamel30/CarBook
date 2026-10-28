@@ -20,6 +20,27 @@ export interface AILookupConfig {
   apiKey?: string;
   provider: 'gemini' | 'openrouter';
   customEndpoint?: string;
+  model?: string;
+}
+
+const OPENROUTER_MODELS = [
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
+  'nvidia/nemotron-3.5-lightning:free',
+  'google/gemma-4-31b-it:free',
+  'openrouter/free',
+];
+
+function extractJson(text: string): string {
+  // Strip code fences if present
+  let cleaned = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+
+  // Find opening '{' and matching closing '}'
+  const startIdx = cleaned.indexOf('{');
+  const endIdx = cleaned.lastIndexOf('}');
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    return cleaned.substring(startIdx, endIdx + 1);
+  }
+  return cleaned;
 }
 
 /**
@@ -34,23 +55,45 @@ export async function lookupVehicleScheduleProposal(
   config: AILookupConfig,
   fetchFn = fetch
 ): Promise<AILookupResponse> {
-  const prompt = `You are a vehicle maintenance expert. For a vehicle with Make: "${make}", Model: "${model}", Year: ${year}, provide:
-1. Recommended engine oil specification/viscosity (e.g. 5W-30 Full Synthetic API SP).
-2. Standard recommended periodic maintenance schedule items with intervals in kilometers and optional months.
+  const prompt = `You are a vehicle maintenance expert. For a ${year} ${make} ${model}, provide:
+1. Recommended engine oil type/viscosity (e.g. 5W-30 Full Synthetic).
+2. Standard recommended periodic maintenance schedule items with intervals in kilometers.
 
-Respond ONLY with a valid JSON object matching this schema:
+IMPORTANT: Return ONLY a raw JSON object with no explanations, no text before or after, and no backticks.
+Schema:
 {
-  "recommendedOil": "string",
+  "recommendedOil": "5W-30 Synthetic",
   "maintenanceItems": [
     {
-      "itemCode": "string",
-      "titleAr": "string (in Arabic)",
-      "titleEn": "string (in English)",
-      "intervalKm": number,
-      "intervalMonths": number or null
+      "itemCode": "engine_oil",
+      "titleAr": "تغيير زيت المحرك والفلتر",
+      "titleEn": "Engine Oil & Filter",
+      "intervalKm": 10000,
+      "intervalMonths": 6
+    },
+    {
+      "itemCode": "air_filter",
+      "titleAr": "تغيير فلتر الهواء",
+      "titleEn": "Air Filter",
+      "intervalKm": 20000,
+      "intervalMonths": 12
+    },
+    {
+      "itemCode": "brake_pads",
+      "titleAr": "فحص وتغيير تيل الفرامل",
+      "titleEn": "Brake Pads",
+      "intervalKm": 30000,
+      "intervalMonths": 18
+    },
+    {
+      "itemCode": "spark_plugs",
+      "titleAr": "تغيير شمعات الاحتراق",
+      "titleEn": "Spark Plugs",
+      "intervalKm": 40000,
+      "intervalMonths": 24
     }
   ],
-  "confidenceNotes": "string (optional remarks)"
+  "confidenceNotes": "Standard manufacturer maintenance intervals"
 }`;
 
   let attempts = 0;
@@ -58,7 +101,9 @@ Respond ONLY with a valid JSON object matching this schema:
   let lastError: any = null;
 
   while (attempts < maxAttempts) {
+    const currentModel = config.model || OPENROUTER_MODELS[attempts % OPENROUTER_MODELS.length];
     attempts++;
+
     try {
       if (!config.apiKey) {
         throw new Error('API key is not configured');
@@ -79,9 +124,8 @@ Respond ONLY with a valid JSON object matching this schema:
 
       const body = config.provider === 'openrouter'
         ? JSON.stringify({
-            model: 'google/gemini-2.0-flash-exp:free',
+            model: currentModel,
             messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' }
           })
         : JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
@@ -91,6 +135,8 @@ Respond ONLY with a valid JSON object matching this schema:
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (config.provider === 'openrouter') {
         headers['Authorization'] = `Bearer ${config.apiKey}`;
+        headers['HTTP-Referer'] = 'http://localhost:3070';
+        headers['X-Title'] = 'Car Maintenance Followup';
       }
 
       const res = await fetchFn(endpoint, {
@@ -100,7 +146,8 @@ Respond ONLY with a valid JSON object matching this schema:
       });
 
       if (!res.ok) {
-        throw new Error(`AI Provider responded with HTTP ${res.status}`);
+        const errorText = await res.text();
+        throw new Error(`AI Provider HTTP ${res.status}: ${errorText}`);
       }
 
       const rawJson = await res.json();
@@ -111,15 +158,15 @@ Respond ONLY with a valid JSON object matching this schema:
         textContent = rawJson.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
       }
 
-      const parsedData = JSON.parse(textContent);
+      const jsonString = extractJson(textContent);
+      const parsedData = JSON.parse(jsonString);
       return aiLookupResponseSchema.parse(parsedData);
     } catch (err: any) {
       lastError = err;
       if (attempts >= maxAttempts) {
         break;
       }
-      // Exponential backoff
-      await new Promise(r => setTimeout(r, 200 * Math.pow(2, attempts - 1)));
+      await new Promise(r => setTimeout(r, 500 * attempts));
     }
   }
 
