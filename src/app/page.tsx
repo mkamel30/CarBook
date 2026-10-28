@@ -255,9 +255,9 @@ export default function WorkbenchPage() {
     setFuelForm({
       fillDate: new Date().toISOString().split('T')[0],
       odometer: selectedVehicle?.currentOdometer || 0,
-      liters: 40,
+      liters: 0,
       pricePerLiter: price,
-      totalCost: Number((40 * price).toFixed(2)),
+      totalCost: 0,
       isFullTank: true,
       notes: fuelName,
     });
