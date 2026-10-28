@@ -1063,10 +1063,11 @@ export default function WorkbenchPage() {
                   <input
                     required
                     type="number"
-                    step="0.01"
+                    step="any"
                     min="0"
+                    placeholder="مثال: 40.584"
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
-                    value={fuelForm.liters}
+                    value={fuelForm.liters || ''}
                     onChange={e => {
                       const liters = Number(e.target.value);
                       setFuelForm({ ...fuelForm, liters, totalCost: Number((liters * fuelForm.pricePerLiter).toFixed(2)) });
@@ -1078,10 +1079,11 @@ export default function WorkbenchPage() {
                   <input
                     required
                     type="number"
-                    step="0.01"
+                    step="any"
                     min="0"
+                    placeholder="مثال: 22.25"
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
-                    value={fuelForm.pricePerLiter}
+                    value={fuelForm.pricePerLiter || ''}
                     onChange={e => {
                       const price = Number(e.target.value);
                       setFuelForm({ ...fuelForm, pricePerLiter: price, totalCost: Number((fuelForm.liters * price).toFixed(2)) });
@@ -1095,10 +1097,11 @@ export default function WorkbenchPage() {
                 <input
                   required
                   type="number"
-                  step="0.01"
+                  step="any"
                   min="0"
+                  placeholder="مثال: 902.99"
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
-                  value={fuelForm.totalCost}
+                  value={fuelForm.totalCost || ''}
                   onChange={e => setFuelForm({ ...fuelForm, totalCost: Number(e.target.value) })}
                 />
               </div>
@@ -1215,9 +1218,11 @@ export default function WorkbenchPage() {
                   <label className="block text-xs text-slate-300 mb-1">قطع الغيار</label>
                   <input
                     type="number"
+                    step="any"
                     min="0"
+                    placeholder="0"
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
-                    value={maintenanceForm.partsCost}
+                    value={maintenanceForm.partsCost || ''}
                     onChange={e => {
                       const parts = Number(e.target.value);
                       setMaintenanceForm({ ...maintenanceForm, partsCost: parts, totalCost: parts + maintenanceForm.laborCost });
@@ -1228,9 +1233,11 @@ export default function WorkbenchPage() {
                   <label className="block text-xs text-slate-300 mb-1">المصنعية</label>
                   <input
                     type="number"
+                    step="any"
                     min="0"
+                    placeholder="0"
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
-                    value={maintenanceForm.laborCost}
+                    value={maintenanceForm.laborCost || ''}
                     onChange={e => {
                       const labor = Number(e.target.value);
                       setMaintenanceForm({ ...maintenanceForm, laborCost: labor, totalCost: maintenanceForm.partsCost + labor });
@@ -1242,9 +1249,11 @@ export default function WorkbenchPage() {
                   <input
                     required
                     type="number"
+                    step="any"
                     min="0"
+                    placeholder="0"
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-bold"
-                    value={maintenanceForm.totalCost}
+                    value={maintenanceForm.totalCost || ''}
                     onChange={e => setMaintenanceForm({ ...maintenanceForm, totalCost: Number(e.target.value) })}
                   />
                 </div>
