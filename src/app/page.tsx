@@ -14,7 +14,9 @@ import {
   Printer,
   ChevronRight,
   TrendingDown,
-  Gauge
+  Gauge,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 
 export default function WorkbenchPage() {
@@ -42,6 +44,7 @@ export default function WorkbenchPage() {
 
   // Fuel Form State
   const [showFuelModal, setShowFuelModal] = useState(false);
+  const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
   const [fuelForm, setFuelForm] = useState({
     fillDate: new Date().toISOString().split('T')[0],
     odometer: 0,
@@ -213,25 +216,75 @@ export default function WorkbenchPage() {
     }
   };
 
-  // Handle Fuel Submit
+  // Open Fuel Modal (Add or Edit)
+  const openAddFuelModal = () => {
+    setEditingFuelId(null);
+    setFuelForm({
+      fillDate: new Date().toISOString().split('T')[0],
+      odometer: selectedVehicle?.currentOdometer || 0,
+      liters: 40,
+      pricePerLiter: 15,
+      totalCost: 600,
+      isFullTank: true,
+      notes: '',
+    });
+    setShowFuelModal(true);
+  };
+
+  const openEditFuelModal = (log: any) => {
+    setEditingFuelId(log.id);
+    setFuelForm({
+      fillDate: log.fillDate,
+      odometer: log.odometer,
+      liters: log.liters,
+      pricePerLiter: log.pricePerLiter,
+      totalCost: log.totalCost,
+      isFullTank: log.isFullTank,
+      notes: log.notes || '',
+    });
+    setShowFuelModal(true);
+  };
+
+  const handleDeleteFuel = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذه التفويلة؟')) return;
+    const res = await fetch(`/api/fuel?id=${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      if (selectedVehicle) {
+        loadVehicleDetails(selectedVehicle.id);
+        loadVehicles();
+      }
+    } else {
+      alert(data.error);
+    }
+  };
+
+  // Handle Fuel Submit (Create or Update)
   const handleSaveFuel = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVehicle) return;
-    const res = await fetch('/api/fuel', {
-      method: 'POST',
+
+    const url = '/api/fuel';
+    const method = editingFuelId ? 'PUT' : 'POST';
+    const payload = {
+      ...(editingFuelId ? { id: editingFuelId } : {}),
+      ...fuelForm,
+      vehicleId: selectedVehicle.id,
+      odometer: Number(fuelForm.odometer),
+      liters: Number(fuelForm.liters),
+      pricePerLiter: Number(fuelForm.pricePerLiter),
+      totalCost: Number(fuelForm.totalCost),
+    };
+
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...fuelForm,
-        vehicleId: selectedVehicle.id,
-        odometer: Number(fuelForm.odometer),
-        liters: Number(fuelForm.liters),
-        pricePerLiter: Number(fuelForm.pricePerLiter),
-        totalCost: Number(fuelForm.totalCost),
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (data.success) {
       setShowFuelModal(false);
+      setEditingFuelId(null);
       loadVehicleDetails(selectedVehicle.id);
       loadVehicles();
     } else {
@@ -421,7 +474,7 @@ export default function WorkbenchPage() {
           {selectedVehicle && (
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowFuelModal(true)}
+                onClick={openAddFuelModal}
                 className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-3 py-1.5 rounded text-xs flex items-center gap-1.5 transition"
               >
                 <Fuel className="w-3.5 h-3.5" /> تسجيل تفويلة
@@ -593,7 +646,7 @@ export default function WorkbenchPage() {
                   <div className="flex justify-between items-center">
                     <h2 className="text-sm font-semibold text-slate-200">سجل استهلاك وتفويلات البنزين</h2>
                     <button
-                      onClick={() => setShowFuelModal(true)}
+                      onClick={openAddFuelModal}
                       className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5"
                     >
                       <PlusCircle className="w-3.5 h-3.5" /> إضافة تفويلة جديدة
@@ -614,6 +667,7 @@ export default function WorkbenchPage() {
                           <th className="p-3">تكلفة الكيلومتر</th>
                           <th className="p-3">نوع التفويلة</th>
                           <th className="p-3">ملاحظات</th>
+                          <th className="p-3 text-center">إجراءات</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800 text-slate-300">
@@ -655,6 +709,24 @@ export default function WorkbenchPage() {
                               </span>
                             </td>
                             <td className="p-3 text-slate-400">{log.notes || '—'}</td>
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => openEditFuelModal(log)}
+                                  className="text-amber-400 hover:text-amber-300 p-1 rounded hover:bg-slate-800 transition"
+                                  title="تعديل التفويلة"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteFuel(log.id)}
+                                  className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-slate-800 transition"
+                                  title="حذف التفويلة"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1060,7 +1132,8 @@ export default function WorkbenchPage() {
           <div className="bg-slate-950 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
-                <Fuel className="w-4 h-4 text-amber-500" /> تسجيل تفويلة بنزين
+                <Fuel className="w-4 h-4 text-amber-500" />
+                {editingFuelId ? 'تعديل تفويلة بنزين' : 'تسجيل تفويلة بنزين'}
               </h3>
               <button onClick={() => setShowFuelModal(false)} className="text-slate-400 hover:text-slate-200 text-xs">
                 إلغاء
@@ -1188,7 +1261,7 @@ export default function WorkbenchPage() {
                   type="submit"
                   className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition"
                 >
-                  تسجيل التفويلة
+                  {editingFuelId ? 'تحديث التفويلة' : 'تسجيل التفويلة'}
                 </button>
               </div>
             </form>

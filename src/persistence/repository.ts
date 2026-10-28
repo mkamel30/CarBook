@@ -168,6 +168,96 @@ export class StorageRepository {
     }));
   }
 
+  async updateFuelLog(id: string, data: Partial<Omit<FuelLog, 'id' | 'createdAt'>>): Promise<FuelLog> {
+    const { client, db } = await this.getHandles();
+    const existingRecords = await db.select().from(schema.fuelLogsTable).where(eq(schema.fuelLogsTable.id, id));
+    if (existingRecords.length === 0) {
+      throw new Error(`Fuel log ${id} not found`);
+    }
+    const existing = existingRecords[0];
+    const merged = {
+      id: existing.id,
+      vehicleId: existing.vehicleId,
+      fillDate: data.fillDate ?? existing.fillDate,
+      odometer: data.odometer ?? existing.odometer,
+      liters: data.liters ?? existing.liters,
+      pricePerLiter: data.pricePerLiter ?? existing.pricePerLiter,
+      totalCost: data.totalCost ?? existing.totalCost,
+      isFullTank: data.isFullTank ?? Boolean(existing.isFullTank),
+      notes: data.notes !== undefined ? data.notes : existing.notes,
+      createdAt: existing.createdAt,
+    };
+
+    const validated = fuelLogSchema.parse(merged);
+    const now = new Date().toISOString();
+
+    await client.batch([
+      {
+        sql: `UPDATE fuel_logs
+              SET fill_date = ?, odometer = ?, liters = ?, price_per_liter = ?, total_cost = ?, is_full_tank = ?, notes = ?
+              WHERE id = ?`,
+        args: [
+          validated.fillDate,
+          validated.odometer,
+          validated.liters,
+          validated.pricePerLiter,
+          validated.totalCost,
+          validated.isFullTank ? 1 : 0,
+          validated.notes || null,
+          id,
+        ],
+      },
+      {
+        // Re-evaluate vehicle max odometer across fuel, maintenance, and initial odometer
+        sql: `UPDATE vehicles
+              SET current_odometer = (
+                SELECT MAX(odo) FROM (
+                  SELECT initial_odometer AS odo FROM vehicles WHERE id = ?
+                  UNION ALL
+                  SELECT odometer AS odo FROM fuel_logs WHERE vehicle_id = ?
+                  UNION ALL
+                  SELECT odometer AS odo FROM maintenance_logs WHERE vehicle_id = ?
+                )
+              ),
+              updated_at = ?
+              WHERE id = ?`,
+        args: [validated.vehicleId, validated.vehicleId, validated.vehicleId, now, validated.vehicleId],
+      },
+    ], 'write');
+
+    return validated;
+  }
+
+  async deleteFuelLog(id: string): Promise<void> {
+    const { client, db } = await this.getHandles();
+    const existing = await db.select().from(schema.fuelLogsTable).where(eq(schema.fuelLogsTable.id, id));
+    if (existing.length === 0) return;
+    const vehicleId = existing[0].vehicleId;
+    const now = new Date().toISOString();
+
+    await client.batch([
+      {
+        sql: `DELETE FROM fuel_logs WHERE id = ?`,
+        args: [id],
+      },
+      {
+        sql: `UPDATE vehicles
+              SET current_odometer = (
+                SELECT MAX(odo) FROM (
+                  SELECT initial_odometer AS odo FROM vehicles WHERE id = ?
+                  UNION ALL
+                  SELECT odometer AS odo FROM fuel_logs WHERE vehicle_id = ?
+                  UNION ALL
+                  SELECT odometer AS odo FROM maintenance_logs WHERE vehicle_id = ?
+                )
+              ),
+              updated_at = ?
+              WHERE id = ?`,
+        args: [vehicleId, vehicleId, vehicleId, now, vehicleId],
+      },
+    ], 'write');
+  }
+
   // Maintenance Logs with Transactional Atomic Odometer Sync
   async addMaintenanceLog(data: Omit<MaintenanceLog, 'id' | 'createdAt'>): Promise<MaintenanceLog> {
     const { client } = await this.getHandles();
