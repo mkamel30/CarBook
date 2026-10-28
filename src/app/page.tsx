@@ -546,7 +546,14 @@ export default function WorkbenchPage() {
                           <div key={idx} className="bg-slate-900 p-2.5 rounded text-xs flex justify-between items-center">
                             <div>
                               <div className="font-medium text-slate-200">{f.fillDate} — {f.odometer.toLocaleString()} كم</div>
-                              <div className="text-slate-400 text-[11px]">{f.liters} لتر ({f.pricePerLiter} ج/لتر)</div>
+                              <div className="text-slate-400 text-[11px]">
+                                {f.liters} لتر ({f.pricePerLiter} ج/لتر)
+                                {f.litersPer100Km && (
+                                  <span className="text-emerald-400 mr-2">
+                                    • {f.litersPer100Km} لتر/100كم ({f.costPerKm} ج/كم)
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <div className="font-bold text-amber-400">{f.totalCost} ج</div>
                           </div>
@@ -598,10 +605,13 @@ export default function WorkbenchPage() {
                       <thead className="bg-slate-900 border-b border-slate-800 text-slate-400">
                         <tr>
                           <th className="p-3">التاريخ</th>
-                          <th className="p-3">قراءة العداد Odometer</th>
+                          <th className="p-3">العداد Odometer</th>
+                          <th className="p-3">المسافة المقطوعة</th>
                           <th className="p-3">كمية الوقود</th>
                           <th className="p-3">سعر اللتر</th>
                           <th className="p-3">التكلفة الإجمالية</th>
+                          <th className="p-3">معدل الاستهلاك</th>
+                          <th className="p-3">تكلفة الكيلومتر</th>
                           <th className="p-3">نوع التفويلة</th>
                           <th className="p-3">ملاحظات</th>
                         </tr>
@@ -611,9 +621,34 @@ export default function WorkbenchPage() {
                           <tr key={idx} className="hover:bg-slate-900/50">
                             <td className="p-3">{log.fillDate}</td>
                             <td className="p-3 font-semibold text-amber-400">{log.odometer.toLocaleString()} كم</td>
+                            <td className="p-3 text-slate-300">
+                              {log.distanceTraveledKm ? (
+                                <span className="font-mono">+{log.distanceTraveledKm.toLocaleString()} كم</span>
+                              ) : (
+                                <span className="text-slate-500">—</span>
+                              )}
+                            </td>
                             <td className="p-3">{log.liters} لتر</td>
                             <td className="p-3">{log.pricePerLiter} ج</td>
                             <td className="p-3 font-bold">{log.totalCost} ج</td>
+                            <td className="p-3">
+                              {log.litersPer100Km ? (
+                                <span className="bg-emerald-950/70 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded font-mono font-bold">
+                                  {log.litersPer100Km} L/100km
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 text-[11px]">— (أول تفويلة)</span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              {log.costPerKm ? (
+                                <span className="bg-amber-950/60 text-amber-300 border border-amber-800/50 px-2 py-0.5 rounded font-mono font-bold">
+                                  {log.costPerKm} ج/كم
+                                </span>
+                              ) : (
+                                <span className="text-slate-500">—</span>
+                              )}
+                            </td>
                             <td className="p-3">
                               <span className={`px-2 py-0.5 rounded text-[10px] ${log.isFullTank ? 'bg-emerald-950 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
                                 {log.isFullTank ? 'تفويلة كاملة' : 'جزئية'}
