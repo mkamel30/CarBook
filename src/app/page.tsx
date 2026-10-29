@@ -58,6 +58,8 @@ export default function WorkbenchPage() {
 
   // Maintenance Form State
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [editingMaintenanceId, setEditingMaintenanceId] = useState<string | null>(null);
+  const [partsList, setPartsList] = useState<{ id: string; name: string; condition: 'new' | 'used_import'; cost: number }[]>([]);
   const [maintenanceForm, setMaintenanceForm] = useState({
     serviceDate: new Date().toISOString().split('T')[0],
     odometer: 0,
@@ -327,26 +329,98 @@ export default function WorkbenchPage() {
     }
   };
 
+  // Open Maintenance Modal (Add or Edit)
+  const openAddMaintenanceModal = () => {
+    setEditingMaintenanceId(null);
+    setPartsList([]);
+    setMaintenanceForm({
+      serviceDate: new Date().toISOString().split('T')[0],
+      odometer: selectedVehicle?.currentOdometer || 0,
+      serviceType: 'oil_change',
+      title: '',
+      partsCost: 0,
+      laborCost: 0,
+      totalCost: 0,
+      workshop: '',
+      notes: '',
+      nextDueOdometer: 0,
+      nextDueDate: '',
+    });
+    setShowMaintenanceModal(true);
+  };
+
+  const openEditMaintenanceModal = (log: any) => {
+    setEditingMaintenanceId(log.id);
+    const existingParts = log.partsList || [];
+    setPartsList(existingParts.map((p: any, idx: number) => ({
+      id: p.id || `p_${Date.now()}_${idx}`,
+      name: p.name,
+      condition: p.condition || 'new',
+      cost: Number(p.cost) || 0,
+    })));
+    setMaintenanceForm({
+      serviceDate: log.serviceDate,
+      odometer: log.odometer,
+      serviceType: log.serviceType,
+      title: log.title,
+      partsCost: log.partsCost || 0,
+      laborCost: log.laborCost || 0,
+      totalCost: log.totalCost || 0,
+      workshop: log.workshop || '',
+      notes: log.notes || '',
+      nextDueOdometer: log.nextDueOdometer || 0,
+      nextDueDate: log.nextDueDate || '',
+    });
+    setShowMaintenanceModal(true);
+  };
+
+  const handleDeleteMaintenance = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا السجل؟')) return;
+    const res = await fetch(`/api/maintenance?id=${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      if (selectedVehicle) {
+        loadVehicleDetails(selectedVehicle.id);
+        loadVehicles();
+      }
+    } else {
+      alert(data.error);
+    }
+  };
+
   // Handle Maintenance Submit
   const handleSaveMaintenance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVehicle) return;
-    const res = await fetch('/api/maintenance', {
-      method: 'POST',
+
+    const url = '/api/maintenance';
+    const method = editingMaintenanceId ? 'PUT' : 'POST';
+    const totalPartsCost = partsList.reduce((sum, p) => sum + (Number(p.cost) || 0), 0);
+    const labor = Number(maintenanceForm.laborCost) || 0;
+    const finalTotal = totalPartsCost + labor;
+
+    const payload = {
+      ...(editingMaintenanceId ? { id: editingMaintenanceId } : {}),
+      ...maintenanceForm,
+      vehicleId: selectedVehicle.id,
+      odometer: Number(maintenanceForm.odometer),
+      partsList: partsList.length > 0 ? partsList : null,
+      partsCost: totalPartsCost,
+      laborCost: labor,
+      totalCost: finalTotal,
+      nextDueOdometer: maintenanceForm.nextDueOdometer ? Number(maintenanceForm.nextDueOdometer) : undefined,
+    };
+
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...maintenanceForm,
-        vehicleId: selectedVehicle.id,
-        odometer: Number(maintenanceForm.odometer),
-        partsCost: Number(maintenanceForm.partsCost),
-        laborCost: Number(maintenanceForm.laborCost),
-        totalCost: Number(maintenanceForm.totalCost),
-        nextDueOdometer: maintenanceForm.nextDueOdometer ? Number(maintenanceForm.nextDueOdometer) : undefined,
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (data.success) {
       setShowMaintenanceModal(false);
+      setEditingMaintenanceId(null);
+      setPartsList([]);
       loadVehicleDetails(selectedVehicle.id);
       loadVehicles();
     } else {
@@ -516,7 +590,7 @@ export default function WorkbenchPage() {
                 <Fuel className="w-3.5 h-3.5" /> تسجيل تفويلة
               </button>
               <button
-                onClick={() => setShowMaintenanceModal(true)}
+                onClick={openAddMaintenanceModal}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-3 py-1.5 rounded text-xs flex items-center gap-1.5 border border-slate-700 transition"
               >
                 <Wrench className="w-3.5 h-3.5" /> تسجيل صيانة / زيت
@@ -777,7 +851,7 @@ export default function WorkbenchPage() {
                   <div className="flex justify-between items-center">
                     <h2 className="text-sm font-semibold text-slate-200">سجل الصيانات الدورية وقطع الغيار</h2>
                     <button
-                      onClick={() => setShowMaintenanceModal(true)}
+                      onClick={openAddMaintenanceModal}
                       className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5"
                     >
                       <PlusCircle className="w-3.5 h-3.5" /> إضافة صيانة جديدة
@@ -797,6 +871,7 @@ export default function WorkbenchPage() {
                           <th className="p-3">الإجمالي</th>
                           <th className="p-3">الورشة / المركز</th>
                           <th className="p-3">الصيانة القادمة</th>
+                          <th className="p-3 text-center">إجراءات</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800 text-slate-300">
@@ -804,7 +879,18 @@ export default function WorkbenchPage() {
                           <tr key={idx} className="hover:bg-slate-900/50">
                             <td className="p-3">{log.serviceDate}</td>
                             <td className="p-3 font-semibold text-amber-400">{log.odometer.toLocaleString()} كم</td>
-                            <td className="p-3 font-medium text-slate-100">{log.title}</td>
+                            <td className="p-3 font-medium text-slate-100">
+                              <div>{log.title}</div>
+                              {log.partsList && log.partsList.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {log.partsList.map((p: any, pIdx: number) => (
+                                    <span key={pIdx} className="text-[10px] bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 text-slate-300">
+                                      {p.name} ({p.condition === 'new' ? 'جديد' : 'استيراد'} - {p.cost} ج)
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
                             <td className="p-3">
                               <span className="bg-slate-800 px-2 py-0.5 rounded text-[10px]">
                                 {log.serviceType}
@@ -816,6 +902,24 @@ export default function WorkbenchPage() {
                             <td className="p-3 text-slate-400">{log.workshop || '—'}</td>
                             <td className="p-3 text-slate-400">
                               {log.nextDueOdometer ? `${log.nextDueOdometer.toLocaleString()} كم` : '—'}
+                            </td>
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => openEditMaintenanceModal(log)}
+                                  className="text-amber-400 hover:text-amber-300 p-1 rounded hover:bg-slate-800 transition"
+                                  title="تعديل الصيانة"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteMaintenance(log.id)}
+                                  className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-slate-800 transition"
+                                  title="حذف الصيانة"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1418,7 +1522,8 @@ export default function WorkbenchPage() {
           <div className="bg-slate-950 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-amber-500" /> تسجيل صيانة / تغيير زيت
+                <Wrench className="w-4 h-4 text-amber-500" />
+                {editingMaintenanceId ? 'تعديل صيانة / تغيير زيت' : 'تسجيل صيانة / تغيير زيت'}
               </h3>
               <button onClick={() => setShowMaintenanceModal(false)} className="text-slate-400 hover:text-slate-200 text-xs">
                 إلغاء
@@ -1478,46 +1583,170 @@ export default function WorkbenchPage() {
                 </select>
               </div>
 
+              {/* Parts Items List */}
+              <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-semibold text-slate-200">قطع الغيار المستخدمة</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPartsList([
+                        ...partsList,
+                        { id: `p_${Date.now()}`, name: '', condition: 'new', cost: 0 },
+                      ]);
+                    }}
+                    className="text-xs text-amber-500 hover:text-amber-400 font-medium flex items-center gap-1"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" /> إضافة قطعة غيار
+                  </button>
+                </div>
+
+                {partsList.length === 0 ? (
+                  <div className="text-[11px] text-slate-400 text-center py-2 border border-dashed border-slate-800 rounded">
+                    لم تتم إضافة قطع غيار بعد. اضغط "إضافة قطعة غيار" لتفصيل القطع (جديدة أو استيراد).
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {partsList.map((part, idx) => (
+                      <div key={part.id || idx} className="grid grid-cols-12 gap-2 items-center bg-slate-950 p-2 rounded border border-slate-800">
+                        {/* Part Name */}
+                        <div className="col-span-5">
+                          <input
+                            required
+                            type="text"
+                            placeholder="اسم القطعة (مثال: فلتر زيت، تيل فرامل)"
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-slate-200 outline-none focus:border-amber-500"
+                            value={part.name}
+                            onChange={e => {
+                              const updated = [...partsList];
+                              updated[idx].name = e.target.value;
+                              setPartsList(updated);
+                            }}
+                          />
+                        </div>
+
+                        {/* Condition (New vs Used Import) */}
+                        <div className="col-span-3">
+                          <select
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-slate-200 outline-none focus:border-amber-500"
+                            value={part.condition}
+                            onChange={e => {
+                              const updated = [...partsList];
+                              updated[idx].condition = e.target.value as 'new' | 'used_import';
+                              setPartsList(updated);
+                            }}
+                          >
+                            <option value="new">جديدة</option>
+                            <option value="used_import">استيراد</option>
+                          </select>
+                        </div>
+
+                        {/* Part Cost */}
+                        <div className="col-span-3">
+                          <div className="flex items-center gap-1">
+                            <input
+                              required
+                              type="number"
+                              step="any"
+                              min="0"
+                              placeholder="السعر"
+                              className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-slate-200 font-mono outline-none focus:border-amber-500 text-center"
+                              value={part.cost || ''}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const cost = val === '' ? 0 : Number(val);
+                                const updated = [...partsList];
+                                updated[idx].cost = cost;
+                                setPartsList(updated);
+
+                                const totalParts = updated.reduce((s, p) => s + (Number(p.cost) || 0), 0);
+                                setMaintenanceForm(prev => ({
+                                  ...prev,
+                                  partsCost: totalParts,
+                                  totalCost: totalParts + Number(prev.laborCost),
+                                }));
+                              }}
+                            />
+                            <span className="text-[11px] text-slate-400">ج</span>
+                          </div>
+                        </div>
+
+                        {/* Delete Button */}
+                        <div className="col-span-1 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = partsList.filter((_, i) => i !== idx);
+                              setPartsList(updated);
+                              const totalParts = updated.reduce((s, p) => s + (Number(p.cost) || 0), 0);
+                              setMaintenanceForm(prev => ({
+                                ...prev,
+                                partsCost: totalParts,
+                                totalCost: totalParts + Number(prev.laborCost),
+                              }));
+                            }}
+                            className="text-rose-400 hover:text-rose-300 p-1 hover:bg-slate-800 rounded"
+                            title="حذف القطعة"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Cost Summary Grid */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">قطع الغيار</label>
+                  <label className="block text-xs text-slate-300 mb-1">
+                    إجمالي قطع الغيار {partsList.length > 0 && <span className="text-amber-400 font-mono">({partsList.length})</span>}
+                  </label>
                   <input
                     type="number"
                     step="any"
                     min="0"
                     placeholder="0"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                    readOnly={partsList.length > 0}
+                    className={`w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono ${
+                      partsList.length > 0 ? 'bg-slate-900/40 text-amber-300 font-bold cursor-not-allowed' : ''
+                    }`}
                     value={maintenanceForm.partsCost || ''}
                     onChange={e => {
-                      const parts = Number(e.target.value);
+                      const parts = Number(e.target.value) || 0;
                       setMaintenanceForm({ ...maintenanceForm, partsCost: parts, totalCost: parts + maintenanceForm.laborCost });
                     }}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">المصنعية</label>
+                  <label className="block text-xs text-slate-300 mb-1">المصنعية (جنيه)</label>
                   <input
                     type="number"
                     step="any"
                     min="0"
                     placeholder="0"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                     value={maintenanceForm.laborCost || ''}
                     onChange={e => {
-                      const labor = Number(e.target.value);
-                      setMaintenanceForm({ ...maintenanceForm, laborCost: labor, totalCost: maintenanceForm.partsCost + labor });
+                      const val = e.target.value;
+                      const labor = val === '' ? 0 : Number(val);
+                      const parts = partsList.length > 0
+                        ? partsList.reduce((s, p) => s + (Number(p.cost) || 0), 0)
+                        : maintenanceForm.partsCost;
+                      setMaintenanceForm({ ...maintenanceForm, laborCost: labor, totalCost: parts + labor });
                     }}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">الإجمالي</label>
+                  <label className="block text-xs text-slate-300 mb-1 font-bold">الإجمالي الكلي (جنيه)</label>
                   <input
                     required
                     type="number"
                     step="any"
                     min="0"
                     placeholder="0"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-bold"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-amber-400 outline-none focus:border-amber-500 font-bold font-mono"
                     value={maintenanceForm.totalCost || ''}
                     onChange={e => setMaintenanceForm({ ...maintenanceForm, totalCost: Number(e.target.value) })}
                   />
@@ -1558,7 +1787,7 @@ export default function WorkbenchPage() {
                   type="submit"
                   className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition"
                 >
-                  حفظ الصيانة
+                  {editingMaintenanceId ? 'تحديث الصيانة' : 'حفظ الصيانة'}
                 </button>
               </div>
             </form>

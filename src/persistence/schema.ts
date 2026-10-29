@@ -33,6 +33,7 @@ export const maintenanceLogsTable = sqliteTable('maintenance_logs', {
   odometer: real('odometer').notNull(),
   serviceType: text('service_type').notNull(),
   title: text('title').notNull(),
+  partsList: text('parts_list'), // JSON string of MaintenancePartItem[]
   partsCost: real('parts_cost').notNull().default(0),
   laborCost: real('labor_cost').notNull().default(0),
   totalCost: real('total_cost').notNull(),

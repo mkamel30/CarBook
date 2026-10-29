@@ -30,6 +30,15 @@ export const maintenanceScheduleSchema = z.object({
 
 export type MaintenanceSchedule = z.infer<typeof maintenanceScheduleSchema>;
 
+export const maintenancePartItemSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1, 'Part name is required'),
+  condition: z.enum(['new', 'used_import']), // جديدة أو استيراد
+  cost: z.number().nonnegative(),
+});
+
+export type MaintenancePartItem = z.infer<typeof maintenancePartItemSchema>;
+
 export const maintenanceLogSchema = z.object({
   id: z.string().uuid().optional(),
   vehicleId: z.string().uuid(),
@@ -37,6 +46,7 @@ export const maintenanceLogSchema = z.object({
   odometer: z.number().nonnegative('Odometer cannot be negative'),
   serviceType: z.enum(['oil_change', 'periodic', 'repair', 'inspection', 'tires', 'brakes', 'other']),
   title: z.string().min(1, 'Title is required'),
+  partsList: z.array(maintenancePartItemSchema).optional().nullable(),
   partsCost: z.number().nonnegative().default(0),
   laborCost: z.number().nonnegative().default(0),
   totalCost: z.number().nonnegative(),

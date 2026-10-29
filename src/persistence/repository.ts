@@ -267,8 +267,8 @@ export class StorageRepository {
 
     await client.batch([
       {
-        sql: `INSERT INTO maintenance_logs (id, vehicle_id, service_date, odometer, service_type, title, parts_cost, labor_cost, total_cost, workshop, notes, next_due_odometer, next_due_date, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO maintenance_logs (id, vehicle_id, service_date, odometer, service_type, title, parts_list, parts_cost, labor_cost, total_cost, workshop, notes, next_due_odometer, next_due_date, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           validated.id!,
           validated.vehicleId,
@@ -276,6 +276,7 @@ export class StorageRepository {
           validated.odometer,
           validated.serviceType,
           validated.title,
+          validated.partsList ? JSON.stringify(validated.partsList) : null,
           validated.partsCost,
           validated.laborCost,
           validated.totalCost,
@@ -295,6 +296,107 @@ export class StorageRepository {
     return validated;
   }
 
+  async updateMaintenanceLog(id: string, data: Partial<Omit<MaintenanceLog, 'id' | 'createdAt'>>): Promise<MaintenanceLog> {
+    const { client, db } = await this.getHandles();
+    const existingRecords = await db.select().from(schema.maintenanceLogsTable).where(eq(schema.maintenanceLogsTable.id, id));
+    if (existingRecords.length === 0) {
+      throw new Error(`Maintenance log ${id} not found`);
+    }
+    const existing = existingRecords[0];
+    const existingParts = existing.partsList ? JSON.parse(existing.partsList) : null;
+
+    const merged = {
+      id: existing.id,
+      vehicleId: existing.vehicleId,
+      serviceDate: data.serviceDate ?? existing.serviceDate,
+      odometer: data.odometer ?? existing.odometer,
+      serviceType: data.serviceType ?? existing.serviceType,
+      title: data.title ?? existing.title,
+      partsList: data.partsList !== undefined ? data.partsList : existingParts,
+      partsCost: data.partsCost ?? existing.partsCost,
+      laborCost: data.laborCost ?? existing.laborCost,
+      totalCost: data.totalCost ?? existing.totalCost,
+      workshop: data.workshop !== undefined ? data.workshop : existing.workshop,
+      notes: data.notes !== undefined ? data.notes : existing.notes,
+      nextDueOdometer: data.nextDueOdometer !== undefined ? data.nextDueOdometer : existing.nextDueOdometer,
+      nextDueDate: data.nextDueDate !== undefined ? data.nextDueDate : existing.nextDueDate,
+      createdAt: existing.createdAt,
+    };
+
+    const validated = maintenanceLogSchema.parse(merged);
+    const now = new Date().toISOString();
+
+    await client.batch([
+      {
+        sql: `UPDATE maintenance_logs
+              SET service_date = ?, odometer = ?, service_type = ?, title = ?, parts_list = ?, parts_cost = ?, labor_cost = ?, total_cost = ?, workshop = ?, notes = ?, next_due_odometer = ?, next_due_date = ?
+              WHERE id = ?`,
+        args: [
+          validated.serviceDate,
+          validated.odometer,
+          validated.serviceType,
+          validated.title,
+          validated.partsList ? JSON.stringify(validated.partsList) : null,
+          validated.partsCost,
+          validated.laborCost,
+          validated.totalCost,
+          validated.workshop || null,
+          validated.notes || null,
+          validated.nextDueOdometer || null,
+          validated.nextDueDate || null,
+          id,
+        ],
+      },
+      {
+        sql: `UPDATE vehicles
+              SET current_odometer = (
+                SELECT MAX(odo) FROM (
+                  SELECT initial_odometer AS odo FROM vehicles WHERE id = ?
+                  UNION ALL
+                  SELECT odometer AS odo FROM fuel_logs WHERE vehicle_id = ?
+                  UNION ALL
+                  SELECT odometer AS odo FROM maintenance_logs WHERE vehicle_id = ?
+                )
+              ),
+              updated_at = ?
+              WHERE id = ?`,
+        args: [validated.vehicleId, validated.vehicleId, validated.vehicleId, now, validated.vehicleId],
+      },
+    ], 'write');
+
+    return validated;
+  }
+
+  async deleteMaintenanceLog(id: string): Promise<void> {
+    const { client, db } = await this.getHandles();
+    const existing = await db.select().from(schema.maintenanceLogsTable).where(eq(schema.maintenanceLogsTable.id, id));
+    if (existing.length === 0) return;
+    const vehicleId = existing[0].vehicleId;
+    const now = new Date().toISOString();
+
+    await client.batch([
+      {
+        sql: `DELETE FROM maintenance_logs WHERE id = ?`,
+        args: [id],
+      },
+      {
+        sql: `UPDATE vehicles
+              SET current_odometer = (
+                SELECT MAX(odo) FROM (
+                  SELECT initial_odometer AS odo FROM vehicles WHERE id = ?
+                  UNION ALL
+                  SELECT odometer AS odo FROM fuel_logs WHERE vehicle_id = ?
+                  UNION ALL
+                  SELECT odometer AS odo FROM maintenance_logs WHERE vehicle_id = ?
+                )
+              ),
+              updated_at = ?
+              WHERE id = ?`,
+        args: [vehicleId, vehicleId, vehicleId, now, vehicleId],
+      },
+    ], 'write');
+  }
+
   async getMaintenanceLogsByVehicle(vehicleId: string): Promise<MaintenanceLog[]> {
     const { db } = await this.getHandles();
     const records = await db.select()
@@ -302,7 +404,18 @@ export class StorageRepository {
       .where(eq(schema.maintenanceLogsTable.vehicleId, vehicleId))
       .orderBy(desc(schema.maintenanceLogsTable.odometer));
 
-    return records.map(r => maintenanceLogSchema.parse(r));
+    return records.map(r => {
+      let partsList = null;
+      if (r.partsList) {
+        try {
+          partsList = JSON.parse(r.partsList);
+        } catch {}
+      }
+      return maintenanceLogSchema.parse({
+        ...r,
+        partsList,
+      });
+    });
   }
 
   // App Settings

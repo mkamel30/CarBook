@@ -54,6 +54,7 @@ export async function getDatabase(dbFilePath?: string) {
       odometer REAL NOT NULL,
       service_type TEXT NOT NULL,
       title TEXT NOT NULL,
+      parts_list TEXT,
       parts_cost REAL NOT NULL DEFAULT 0,
       labor_cost REAL NOT NULL DEFAULT 0,
       total_cost REAL NOT NULL,
@@ -84,6 +85,13 @@ export async function getDatabase(dbFilePath?: string) {
   ], 'write');
 
   const db = drizzle(client, { schema });
+
+  // Safe migration for existing databases: ensure parts_list column exists
+  try {
+    await client.execute('ALTER TABLE maintenance_logs ADD COLUMN parts_list TEXT;');
+  } catch (e) {
+    // Column already exists or table was just created
+  }
 
   if (!dbFilePath) {
     _db = db;
