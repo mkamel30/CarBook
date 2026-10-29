@@ -44,7 +44,11 @@ export async function getDatabase(dbFilePath?: string) {
       recommended_oil TEXT,
       specs TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      rev INTEGER NOT NULL DEFAULT 0,
+      seq INTEGER,
+      deleted INTEGER NOT NULL DEFAULT 0,
+      sync_ts INTEGER NOT NULL DEFAULT 0
     );`,
     `CREATE TABLE IF NOT EXISTS maintenance_schedules (
       id TEXT PRIMARY KEY,
@@ -55,7 +59,11 @@ export async function getDatabase(dbFilePath?: string) {
       interval_km REAL NOT NULL,
       interval_months INTEGER,
       last_done_odometer REAL,
-      last_done_date TEXT
+      last_done_date TEXT,
+      rev INTEGER NOT NULL DEFAULT 0,
+      seq INTEGER,
+      deleted INTEGER NOT NULL DEFAULT 0,
+      sync_ts INTEGER NOT NULL DEFAULT 0
     );`,
     `CREATE TABLE IF NOT EXISTS maintenance_logs (
       id TEXT PRIMARY KEY,
@@ -72,7 +80,11 @@ export async function getDatabase(dbFilePath?: string) {
       notes TEXT,
       next_due_odometer REAL,
       next_due_date TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      rev INTEGER NOT NULL DEFAULT 0,
+      seq INTEGER,
+      deleted INTEGER NOT NULL DEFAULT 0,
+      sync_ts INTEGER NOT NULL DEFAULT 0
     );`,
     `CREATE TABLE IF NOT EXISTS fuel_logs (
       id TEXT PRIMARY KEY,
@@ -84,7 +96,11 @@ export async function getDatabase(dbFilePath?: string) {
       total_cost REAL NOT NULL,
       is_full_tank INTEGER NOT NULL DEFAULT 1,
       notes TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      rev INTEGER NOT NULL DEFAULT 0,
+      seq INTEGER,
+      deleted INTEGER NOT NULL DEFAULT 0,
+      sync_ts INTEGER NOT NULL DEFAULT 0
     );`,
     `CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
@@ -106,7 +122,17 @@ export async function getDatabase(dbFilePath?: string) {
       UNIQUE(make_normalized, model_normalized, year)
     );`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_specs_cache_lookup 
-    ON global_vehicle_specs_cache(make_normalized, model_normalized, year);`
+    ON global_vehicle_specs_cache(make_normalized, model_normalized, year);`,
+    // Global monotonic op counter used to assign sync `seq` for cursor-based pull.
+    `CREATE TABLE IF NOT EXISTS sync_counter (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      value INTEGER NOT NULL DEFAULT 0
+    );`,
+    `INSERT OR IGNORE INTO sync_counter (id, value) VALUES (1, 0);`,
+    `CREATE INDEX IF NOT EXISTS idx_vehicles_seq ON vehicles(seq);`,
+    `CREATE INDEX IF NOT EXISTS idx_schedules_seq ON maintenance_schedules(seq);`,
+    `CREATE INDEX IF NOT EXISTS idx_logs_seq ON maintenance_logs(seq);`,
+    `CREATE INDEX IF NOT EXISTS idx_fuel_seq ON fuel_logs(seq);`
   ], 'write');
 
   const db = drizzle(client, { schema });
@@ -130,6 +156,35 @@ export async function getDatabase(dbFilePath?: string) {
   try {
     await client.execute('CREATE INDEX IF NOT EXISTS idx_vehicles_user_id ON vehicles(user_id);');
   } catch (e) {}
+
+  // Sync columns for pre-existing databases (new databases get them via CREATE above).
+  const syncTables = ['vehicles', 'maintenance_schedules', 'maintenance_logs', 'fuel_logs'];
+  for (const t of syncTables) {
+    try { await client.execute(`ALTER TABLE ${t} ADD COLUMN rev INTEGER NOT NULL DEFAULT 0;`); } catch (e) {}
+    try { await client.execute(`ALTER TABLE ${t} ADD COLUMN seq INTEGER;`); } catch (e) {}
+    try { await client.execute(`ALTER TABLE ${t} ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0;`); } catch (e) {}
+    try { await client.execute(`ALTER TABLE ${t} ADD COLUMN sync_ts INTEGER NOT NULL DEFAULT 0;`); } catch (e) {}
+    try { await client.execute(`CREATE INDEX IF NOT EXISTS idx_${t}_seq ON ${t}(seq);`); } catch (e) {}
+  }
+
+  // Backfill seq for rows that predate sync so the first client pull (since=0) receives them.
+  for (const t of syncTables) {
+    try {
+      const res = await client.execute({ sql: `SELECT COUNT(*) AS c FROM ${t} WHERE seq IS NULL`, args: [] });
+      const pending = Number((res.rows[0] as any).c || 0);
+      if (pending > 0) {
+        await client.batch([
+          { sql: `UPDATE sync_counter SET value = value + ? WHERE id = 1;`, args: [pending] },
+          { sql: `WITH bump AS (SELECT value AS hi FROM sync_counter WHERE id = 1),
+                   ranked AS (SELECT id, hi - (COUNT(*) OVER (ORDER BY rowid) - 1) AS s
+                              FROM ${t} CROSS JOIN bump WHERE seq IS NULL)
+                  UPDATE ${t} SET seq = (SELECT s FROM ranked WHERE ranked.id = ${t}.id),
+                                  rev = MAX(rev, 1),
+                                  sync_ts = COALESCE(NULLIF(sync_ts, 0), 0);`, args: [] },
+        ], 'write');
+      }
+    } catch (e) {}
+  }
 
   if (!dbFilePath) {
     _db = db;

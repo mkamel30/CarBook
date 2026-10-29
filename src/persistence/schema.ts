@@ -23,6 +23,10 @@ export const vehiclesTable = sqliteTable('vehicles', {
   specs: text('specs'), // JSON string of VehicleSpecs
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
+  rev: integer('rev').notNull().default(0),
+  seq: integer('seq'),
+  deleted: integer('deleted').notNull().default(0),
+  syncTs: integer('sync_ts').notNull().default(0),
 });
 
 export const maintenanceSchedulesTable = sqliteTable('maintenance_schedules', {
@@ -35,6 +39,10 @@ export const maintenanceSchedulesTable = sqliteTable('maintenance_schedules', {
   intervalMonths: integer('interval_months'),
   lastDoneOdometer: real('last_done_odometer'),
   lastDoneDate: text('last_done_date'),
+  rev: integer('rev').notNull().default(0),
+  seq: integer('seq'),
+  deleted: integer('deleted').notNull().default(0),
+  syncTs: integer('sync_ts').notNull().default(0),
 });
 
 export const maintenanceLogsTable = sqliteTable('maintenance_logs', {
@@ -53,6 +61,10 @@ export const maintenanceLogsTable = sqliteTable('maintenance_logs', {
   nextDueOdometer: real('next_due_odometer'),
   nextDueDate: text('next_due_date'),
   createdAt: text('created_at').notNull(),
+  rev: integer('rev').notNull().default(0),
+  seq: integer('seq'),
+  deleted: integer('deleted').notNull().default(0),
+  syncTs: integer('sync_ts').notNull().default(0),
 });
 
 export const fuelLogsTable = sqliteTable('fuel_logs', {
@@ -66,6 +78,10 @@ export const fuelLogsTable = sqliteTable('fuel_logs', {
   isFullTank: integer('is_full_tank', { mode: 'boolean' }).notNull().default(true),
   notes: text('notes'),
   createdAt: text('created_at').notNull(),
+  rev: integer('rev').notNull().default(0),
+  seq: integer('seq'),
+  deleted: integer('deleted').notNull().default(0),
+  syncTs: integer('sync_ts').notNull().default(0),
 });
 
 export const appSettingsTable = sqliteTable('app_settings', {
