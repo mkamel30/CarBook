@@ -5,21 +5,25 @@ import fs from 'fs';
 import path from 'path';
 
 describe('Google Auth & Multi-Tenancy Engine', () => {
-  const testDbPath = path.resolve(process.cwd(), 'test_auth_multitenancy.db');
+  let testDbPath: string;
   let repo: StorageRepository;
 
-  beforeEach(() => {
-    if (fs.existsSync(testDbPath)) {
-      try { fs.unlinkSync(testDbPath); } catch {}
+  // A fixed filename is not enough: the previous test's handle can still be releasing
+  // the file on Windows, so the unlink no-ops and rows leak forward. Unique per test.
+  const removeDbFiles = (p: string) => {
+    for (const ext of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(p + ext); } catch {}
     }
+  };
+
+  beforeEach(() => {
+    testDbPath = path.resolve(process.cwd(), `test_auth_${Date.now()}_${Math.random().toString(36).slice(2)}.db`);
     repo = new StorageRepository(testDbPath);
   });
 
   afterEach(async () => {
     await repo.close();
-    if (fs.existsSync(testDbPath)) {
-      try { fs.unlinkSync(testDbPath); } catch {}
-    }
+    removeDbFiles(testDbPath);
   });
 
   it('correctly signs and verifies session JWT tokens', () => {
@@ -100,8 +104,10 @@ describe('Google Auth & Multi-Tenancy Engine', () => {
     expect(vehiclesB[0].name).toBe('Car B');
   });
 
-  it('automatically claims legacy unassigned vehicles when the first user logs in', async () => {
-    // 1. Existing car before multi-tenancy was enabled (user_id is NULL)
+  // The legacy sweep is deliberately gated to one address (see findOrCreateUser) so a
+  // shared server can never hand one person's orphaned history to whoever signs in next.
+  // These two tests pin that gate from both sides.
+  it('does not claim legacy unassigned vehicles for a different account', async () => {
     await repo.createVehicle({
       name: 'Legacy Chevy',
       make: 'Chevrolet',
@@ -111,14 +117,43 @@ describe('Google Auth & Multi-Tenancy Engine', () => {
       currentOdometer: 218500,
     });
 
-    // 2. First owner logs in with Google
+    const stranger = await repo.findOrCreateUser({
+      id: 'google_stranger_1',
+      email: 'stranger@gmail.com',
+      name: 'Stranger',
+    });
+    // The sweep only runs for a returning user, so sign in twice.
+    await repo.findOrCreateUser({
+      id: 'google_stranger_1',
+      email: 'stranger@gmail.com',
+      name: 'Stranger',
+    });
+
+    expect((await repo.getAllVehicles(stranger.id)).length).toBe(0);
+  });
+
+  it('claims legacy unassigned vehicles when the designated owner signs in again', async () => {
+    await repo.createVehicle({
+      name: 'Legacy Chevy',
+      make: 'Chevrolet',
+      model: 'Optra',
+      year: 2011,
+      initialOdometer: 218500,
+      currentOdometer: 218500,
+    });
+
     const owner = await repo.findOrCreateUser({
       id: 'google_owner_1',
-      email: 'owner@gmail.com',
+      email: 'mkamel30@gmail.com',
+      name: 'Owner',
+    });
+    // First login creates the row, so the claim lands on the next one.
+    await repo.findOrCreateUser({
+      id: 'google_owner_1',
+      email: 'mkamel30@gmail.com',
       name: 'Owner',
     });
 
-    // 3. Verify the legacy car was automatically claimed by the owner
     const ownerCars = await repo.getAllVehicles(owner.id);
     expect(ownerCars.length).toBe(1);
     expect(ownerCars[0].name).toBe('Legacy Chevy');
