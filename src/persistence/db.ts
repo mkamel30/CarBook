@@ -33,6 +33,7 @@ export async function getDatabase(dbFilePath?: string) {
       initial_odometer REAL NOT NULL DEFAULT 0,
       current_odometer REAL NOT NULL DEFAULT 0,
       recommended_oil TEXT,
+      specs TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );`,
@@ -86,9 +87,14 @@ export async function getDatabase(dbFilePath?: string) {
 
   const db = drizzle(client, { schema });
 
-  // Safe migration for existing databases: ensure parts_list column exists
+  // Safe migration for existing databases: ensure parts_list and specs columns exist
   try {
     await client.execute('ALTER TABLE maintenance_logs ADD COLUMN parts_list TEXT;');
+  } catch (e) {
+    // Column already exists or table was just created
+  }
+  try {
+    await client.execute('ALTER TABLE vehicles ADD COLUMN specs TEXT;');
   } catch (e) {
     // Column already exists or table was just created
   }

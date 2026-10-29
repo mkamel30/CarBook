@@ -1,5 +1,22 @@
 import { z } from 'zod';
 
+export const vehicleSpecsSchema = z.object({
+  engineOilViscosity: z.string().optional().nullable(),
+  engineOilCapacityLiters: z.string().optional().nullable(),
+  transmissionFluidType: z.string().optional().nullable(),
+  coolantType: z.string().optional().nullable(),
+  brakeFluidType: z.string().optional().nullable(),
+  tirePressurePsiFront: z.string().optional().nullable(),
+  tirePressurePsiRear: z.string().optional().nullable(),
+  fuelTankCapacityLiters: z.string().optional().nullable(),
+  recommendedFuelOctane: z.string().optional().nullable(),
+  sparkPlugType: z.string().optional().nullable(),
+  batterySpec: z.string().optional().nullable(),
+  generalNotesAr: z.string().optional().nullable(),
+});
+
+export type VehicleSpecs = z.infer<typeof vehicleSpecsSchema>;
+
 export const vehicleSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(1, 'Vehicle name is required'),
@@ -10,6 +27,7 @@ export const vehicleSchema = z.object({
   initialOdometer: z.number().nonnegative('Initial odometer cannot be negative'),
   currentOdometer: z.number().nonnegative('Current odometer cannot be negative'),
   recommendedOil: z.string().optional().nullable(),
+  specs: vehicleSpecsSchema.optional().nullable(),
   createdAt: z.string().datetime().optional(),
   updatedAt: z.string().datetime().optional(),
 });

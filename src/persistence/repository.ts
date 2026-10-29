@@ -46,6 +46,7 @@ export class StorageRepository {
       initialOdometer: validated.initialOdometer,
       currentOdometer: validated.currentOdometer,
       recommendedOil: validated.recommendedOil,
+      specs: validated.specs ? JSON.stringify(validated.specs) : null,
       createdAt: validated.createdAt!,
       updatedAt: validated.updatedAt!,
     });
@@ -53,11 +54,26 @@ export class StorageRepository {
     return validated;
   }
 
+  async updateVehicleSpecs(vehicleId: string, specs: any): Promise<void> {
+    const { client } = await this.getHandles();
+    const now = new Date().toISOString();
+    await client.execute({
+      sql: `UPDATE vehicles SET specs = ?, updated_at = ? WHERE id = ?`,
+      args: [JSON.stringify(specs), now, vehicleId],
+    });
+  }
+
   async getVehicleById(id: string): Promise<Vehicle | null> {
     const { db } = await this.getHandles();
     const records = await db.select().from(schema.vehiclesTable).where(eq(schema.vehiclesTable.id, id));
     if (records.length === 0) return null;
     const r = records[0];
+    let specs = null;
+    if (r.specs) {
+      try {
+        specs = JSON.parse(r.specs);
+      } catch {}
+    }
     return vehicleSchema.parse({
       id: r.id,
       name: r.name,
@@ -68,6 +84,7 @@ export class StorageRepository {
       initialOdometer: r.initialOdometer,
       currentOdometer: r.currentOdometer,
       recommendedOil: r.recommendedOil,
+      specs,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     });
@@ -76,19 +93,28 @@ export class StorageRepository {
   async getAllVehicles(): Promise<Vehicle[]> {
     const { db } = await this.getHandles();
     const records = await db.select().from(schema.vehiclesTable);
-    return records.map(r => vehicleSchema.parse({
-      id: r.id,
-      name: r.name,
-      make: r.make,
-      model: r.model,
-      year: r.year,
-      licensePlate: r.licensePlate,
-      initialOdometer: r.initialOdometer,
-      currentOdometer: r.currentOdometer,
-      recommendedOil: r.recommendedOil,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    }));
+    return records.map(r => {
+      let specs = null;
+      if (r.specs) {
+        try {
+          specs = JSON.parse(r.specs);
+        } catch {}
+      }
+      return vehicleSchema.parse({
+        id: r.id,
+        name: r.name,
+        make: r.make,
+        model: r.model,
+        year: r.year,
+        licensePlate: r.licensePlate,
+        initialOdometer: r.initialOdometer,
+        currentOdometer: r.currentOdometer,
+        recommendedOil: r.recommendedOil,
+        specs,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      });
+    });
   }
 
   // Maintenance Schedules

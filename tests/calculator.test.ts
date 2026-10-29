@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { calculateFuelConsumption, evaluateMaintenanceStatus } from '@/services/calculator';
-import { lookupVehicleScheduleProposal } from '@/services/ai';
+import { lookupVehicleScheduleProposal, lookupFullVehicleManual, askAiCarDoctor } from '@/services/ai';
 import { FuelLog, MaintenanceSchedule } from '@/domain/schemas';
 
 describe('Calculator & Business Logic Engine (TASK-04)', () => {
@@ -129,5 +129,81 @@ describe('Calculator & Business Logic Engine (TASK-04)', () => {
         }
       )
     ).rejects.toThrow();
+  });
+
+  it('fetches and validates complete vehicle OEM manual specifications', async () => {
+    const mockManualSpecs = {
+      engineOilViscosity: '0W-20 Full Synthetic',
+      engineOilCapacityLiters: '4.2 لتر مع الفلتر',
+      transmissionFluidType: 'Toyota CVT FE',
+      coolantType: 'Super Long Life Coolant Pink',
+      brakeFluidType: 'DOT 4',
+      tirePressurePsiFront: '32 PSI',
+      tirePressurePsiRear: '32 PSI',
+      fuelTankCapacityLiters: '50 لتر',
+      recommendedFuelOctane: '92 أو 95 أوكتان',
+      sparkPlugType: 'Iridium ILKAR7B11',
+      batterySpec: '12V 45Ah',
+      generalNotesAr: 'تغيير زيت الفتيس كل 60,000 كم',
+    };
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: `Here is the data:\n\`\`\`json\n${JSON.stringify(mockManualSpecs)}\n\`\`\``,
+            },
+          },
+        ],
+      }),
+    });
+
+    const specs = await lookupFullVehicleManual(
+      'Toyota',
+      'Corolla',
+      2022,
+      { apiKey: 'test-key', provider: 'openrouter' },
+      mockFetch as any
+    );
+
+    expect(specs.engineOilViscosity).toBe('0W-20 Full Synthetic');
+    expect(specs.tirePressurePsiFront).toBe('32 PSI');
+    expect(specs.fuelTankCapacityLiters).toBe('50 لتر');
+  });
+
+  it('consults AI Car Doctor grounded in vehicle history and odometer', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: 'صوت الطقطقة مع الملفات يرجع غالباً لتلف الكوبلن الخارجي (CV Joint). ينصح بفحصه فوراً.',
+            },
+          },
+        ],
+      }),
+    });
+
+    const advice = await askAiCarDoctor(
+      {
+        make: 'Toyota',
+        model: 'Corolla',
+        year: 2022,
+        currentOdometer: 65000,
+      },
+      'في صوت طقطقة مع الملفات لليمين',
+      [
+        { serviceDate: '2026-01-10', title: 'تغيير زيت وفلتر', odometer: 60000 },
+      ],
+      { apiKey: 'test-key', provider: 'openrouter' },
+      mockFetch as any
+    );
+
+    expect(advice).toContain('الكوبلن الخارجي');
   });
 });

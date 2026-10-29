@@ -10,6 +10,7 @@ export const vehiclesTable = sqliteTable('vehicles', {
   initialOdometer: real('initial_odometer').notNull().default(0),
   currentOdometer: real('current_odometer').notNull().default(0),
   recommendedOil: text('recommended_oil'),
+  specs: text('specs'), // JSON string of VehicleSpecs
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

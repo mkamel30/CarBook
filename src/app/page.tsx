@@ -16,13 +16,19 @@ import {
   TrendingDown,
   Gauge,
   Edit2,
-  Trash2
+  Trash2,
+  BookOpen,
+  HelpCircle,
+  Send,
+  Loader2,
+  Check,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function WorkbenchPage() {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<any | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'alerts' | 'report' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'alerts' | 'manual' | 'doctor' | 'report' | 'settings'>('overview');
   const [loading, setLoading] = useState(true);
 
   // Vehicle Form State
@@ -79,6 +85,13 @@ export default function WorkbenchPage() {
   const [maintenanceLogs, setMaintenanceLogs] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<any[]>([]);
   const [reportData, setReportData] = useState<any | null>(null);
+
+  // AI Manual & Doctor State
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [doctorQuery, setDoctorQuery] = useState('');
+  const [doctorLoading, setDoctorLoading] = useState(false);
+  const [doctorHistory, setDoctorHistory] = useState<{ query: string; advice: string }[]>([]);
 
   // Settings State
   const [settings, setSettings] = useState({
@@ -428,6 +441,63 @@ export default function WorkbenchPage() {
     }
   };
 
+  // Fetch OEM Manual Specs via AI
+  const handleFetchManual = async () => {
+    if (!selectedVehicle) return;
+    setManualLoading(true);
+    setManualError(null);
+    try {
+      const res = await fetch('/api/ai/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicleId: selectedVehicle.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSelectedVehicle({ ...selectedVehicle, specs: data.data });
+        loadVehicles();
+      } else {
+        setManualError(data.error);
+      }
+    } catch (e: any) {
+      setManualError(e.message);
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  // Ask AI Car Doctor
+  const handleAskDoctor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedVehicle || !doctorQuery.trim()) return;
+    const queryText = doctorQuery.trim();
+    setDoctorLoading(true);
+    try {
+      const res = await fetch('/api/ai/doctor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vehicleId: selectedVehicle.id,
+          query: queryText,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDoctorHistory(prev => [
+          { query: queryText, advice: data.data.advice },
+          ...prev,
+        ]);
+        setDoctorQuery('');
+      } else {
+        alert(data.error);
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setDoctorLoading(false);
+    }
+  };
+
   // Handle Settings Save
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -530,6 +600,22 @@ export default function WorkbenchPage() {
               }`}
             >
               <AlertTriangle className="w-4 h-4" /> جدول الصيانة والتنبيهات
+            </button>
+            <button
+              onClick={() => setActiveTab('manual')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
+                activeTab === 'manual' ? 'bg-amber-500/10 text-amber-500 border-r-2 border-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" /> كتالوج ومواصفات السيارة
+            </button>
+            <button
+              onClick={() => setActiveTab('doctor')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
+                activeTab === 'doctor' ? 'bg-amber-500/10 text-amber-500 border-r-2 border-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+              }`}
+            >
+              <HelpCircle className="w-4 h-4" /> استشارة مهندس الصيانة (AI)
             </button>
             <button
               onClick={() => setActiveTab('report')}
@@ -972,6 +1058,294 @@ export default function WorkbenchPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Manual & Factory Specs Tab */}
+              {activeTab === 'manual' && (
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                      <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-amber-500" /> كتالوج ومواصفات المصنع الأصلية (OEM Specs)
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        المواصفات الفنية المعتمدة للزيوت، السوائل، ضغوط الإطارات، ونوع الوقود حسب توصية الصانع لـ {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year})
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={manualLoading}
+                      onClick={handleFetchManual}
+                      className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold px-3.5 py-1.5 rounded text-xs flex items-center gap-1.5 transition shrink-0"
+                    >
+                      {manualLoading ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> جاري جلب المواصفات...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          {selectedVehicle.specs ? 'تحديث المواصفات بالذكاء الاصطناعي' : 'استخراج كتالوج السيارة بالذكاء الاصطناعي'}
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {manualError && (
+                    <div className="bg-rose-950/40 border border-rose-900/60 p-3 rounded-lg text-xs text-rose-300 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                      <span>{manualError}</span>
+                    </div>
+                  )}
+
+                  {manualLoading && (
+                    <div className="bg-slate-950 border border-slate-800 p-8 rounded-xl text-center space-y-3">
+                      <Loader2 className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
+                      <div className="text-xs font-semibold text-slate-200">
+                        جاري فحص واستخراج كتالوج المصنع المعتمد لـ {selectedVehicle.make} {selectedVehicle.model} {selectedVehicle.year}...
+                      </div>
+                      <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+                        يقوم الذكاء الاصطناعي بمراجعة مواصفات لزوجة زيت المحرك، سعة التانك، نوع زيت الفتيس، سائل التبريد، وضغوط الإطارات لحفظها محلياً في قاعدة البيانات.
+                      </p>
+                    </div>
+                  )}
+
+                  {!manualLoading && selectedVehicle.specs && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {/* Engine Oil Specs */}
+                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
+                          <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
+                            <Wrench className="w-4 h-4" /> زيت المحرك والسعة
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">اللزوجة والمواصفة المعتمدة:</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.engineOilViscosity || 'غير محدد'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">سعة الزيت (مع تغيير الفلتر):</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.engineOilCapacityLiters || 'غير محدد'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Transmission & Coolant */}
+                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
+                          <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
+                            <Gauge className="w-4 h-4" /> سوائل الحركة والتبريد
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">زيت ناقل الحركة (الفتيس/الجير):</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.transmissionFluidType || 'غير محدد'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">سائل التبريد (مياه الردياتير):</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.coolantType || 'غير محدد'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">سائل الفرامل (Brake Fluid):</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.brakeFluidType || 'غير محدد'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Tire Pressure */}
+                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
+                          <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
+                            <Gauge className="w-4 h-4" /> ضغط هواء الإطارات (بارد)
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">ضغط العجلات الأمامية:</span>
+                              <span className="font-bold text-emerald-400 font-mono">{selectedVehicle.specs.tirePressurePsiFront || 'غير محدد'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">ضغط العجلات الخلفية:</span>
+                              <span className="font-bold text-emerald-400 font-mono">{selectedVehicle.specs.tirePressurePsiRear || 'غير محدد'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Fuel System */}
+                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
+                          <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
+                            <Fuel className="w-4 h-4" /> منظومة الوقود والاشتعال
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">سعة خزان الوقود (التانك):</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.fuelTankCapacityLiters || 'غير محدد'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">نوع وأوكتان البنزين الموصى به:</span>
+                              <span className="font-bold text-amber-300">{selectedVehicle.specs.recommendedFuelOctane || 'غير محدد'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">شمعات الاشتعال (البوجيهات):</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.sparkPlugType || 'غير محدد'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Battery & Electrical */}
+                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
+                          <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
+                            <ShieldCheck className="w-4 h-4" /> البطارية والنظام الكهربائي
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">مواصفة البطارية المعتمدة:</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.batterySpec || 'غير محدد'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* General OEM Notes */}
+                      {selectedVehicle.specs.generalNotesAr && (
+                        <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-2">
+                          <div className="text-amber-400 font-semibold text-xs flex items-center gap-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> إرشادات وتوصيات الشركة الصانعة
+                          </div>
+                          <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
+                            {selectedVehicle.specs.generalNotesAr}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!manualLoading && !selectedVehicle.specs && (
+                    <div className="max-w-md mx-auto my-12 text-center bg-slate-950 p-8 rounded-xl border border-slate-800 space-y-4">
+                      <BookOpen className="w-12 h-12 text-amber-500 mx-auto" />
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-100">لم يتم استخراج كتالوج ومواصفات السيارة بعد</h3>
+                        <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                          استخدم الذكاء الاصطناعي لجلب لزوجة زيت المحرك، سعة التانك، نوع زيت الفتيس، مياه الردياتير، وضغط الإطارات المناسب لسيارتك {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year}) وحفظها محلياً للمراجعة في أي وقت بدون إنترنت.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleFetchManual}
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded text-xs inline-flex items-center gap-2 transition"
+                      >
+                        <Sparkles className="w-4 h-4" /> جلب كتالوج ومواصفات المصنع الآن
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* AI Car Doctor Consultation Tab */}
+              {activeTab === 'doctor' && (
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div>
+                      <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                        <HelpCircle className="w-4 h-4 text-amber-500" /> استشارة مهندس الصيانة المساعد (AI Car Doctor)
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        استشر مهندس الصيانة حول أي عطل، أصوات غريبة، رموز أعطال OBD-II، أو مواعيد الصيانة الوقائية بناءً على تاريخ سيارتك
+                      </p>
+                    </div>
+                    <div className="text-xs bg-slate-950 border border-slate-800 px-3 py-1.5 rounded text-slate-300 font-mono">
+                      {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year}) • العداد: <span className="text-amber-400 font-bold">{selectedVehicle.currentOdometer.toLocaleString()} كم</span>
+                    </div>
+                  </div>
+
+                  {/* Consultation Input Box */}
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <form onSubmit={handleAskDoctor} className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                          اكتب سؤالك أو صف المشكلة والأعراض أو كود العطل:
+                        </label>
+                        <textarea
+                          required
+                          rows={3}
+                          value={doctorQuery}
+                          onChange={e => setDoctorQuery(e.target.value)}
+                          placeholder="مثال: أسمع صوت طقطقة مع الملفات لليمين على سرعة بطيئة، أو ما سبب إضاءة لمبة المحرك مع كود P0420؟ أو متى يجب تغيير سير الكاتينة لسيارتي؟"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 outline-none focus:border-amber-500 leading-relaxed resize-none"
+                        />
+                      </div>
+
+                      {/* Quick Suggestions */}
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+                        <span className="font-medium text-slate-400">أسئلة سريعة:</span>
+                        {[
+                          'صوت طقطقة خفيف مع الملفات',
+                          'اهتزاز أو رجة في الدركسيون مع الفرامل',
+                          'ضعف عزم السيارة وتأخر التسارع',
+                          'أفضل لزوجة زيت محرك في الصيف والحرارة العالية',
+                        ].map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setDoctorQuery(suggestion)}
+                            className="bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 px-2.5 py-1 rounded-full transition"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="submit"
+                          disabled={doctorLoading || !doctorQuery.trim()}
+                          className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold px-4 py-2 rounded text-xs flex items-center gap-2 transition"
+                        >
+                          {doctorLoading ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جاري تحليل الأعراض والصيانات...
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-3.5 h-3.5" /> إرسال الاستشارة
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
+                  {/* Consultation History */}
+                  <div className="space-y-4">
+                    {doctorHistory.length === 0 ? (
+                      <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-6 text-center space-y-2">
+                        <ShieldCheck className="w-10 h-10 text-slate-600 mx-auto" />
+                        <h4 className="text-xs font-semibold text-slate-300">كيف يساعدك مهندس الصيانة المساعد؟</h4>
+                        <p className="text-[11px] text-slate-400 max-w-lg mx-auto leading-relaxed">
+                          يقوم الذكاء الاصطناعي بربط استفسارك بقراءة عداد السيارة الحالية ({selectedVehicle.currentOdometer.toLocaleString()} كم)، وتاريخ الصيانات المسجلة، والمواصفات المصنعية ونقاط الضعف الشائعة لموديل سيارتك لتقديم تشخيص دقيق ومباشر.
+                        </p>
+                      </div>
+                    ) : (
+                      doctorHistory.map((item, idx) => (
+                        <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-3">
+                          {/* User Query */}
+                          <div className="flex items-start gap-2.5 bg-slate-900/70 p-3 rounded-lg border border-slate-800/70">
+                            <span className="text-amber-400 font-bold text-xs shrink-0">سؤالك:</span>
+                            <span className="text-xs text-slate-200 leading-relaxed">{item.query}</span>
+                          </div>
+
+                          {/* Doctor Advice */}
+                          <div className="space-y-2 pr-1">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                              <Wrench className="w-3.5 h-3.5" /> تشخيص وتوصية مهندس الصيانة:
+                            </div>
+                            <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/40 p-4 rounded-lg border border-slate-800/50">
+                              {item.advice}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
