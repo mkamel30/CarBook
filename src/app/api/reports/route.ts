@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { StorageRepository } from '@/persistence/repository';
-import { evaluateMaintenanceStatus, calculateFuelConsumption } from '@/services/calculator';
+import { evaluateMaintenanceStatus, enrichFuelMetrics } from '@/services/calculator';
 import { getAuthenticatedUser } from '@/services/auth';
 
 export async function GET(req: NextRequest) {
@@ -31,20 +31,12 @@ export async function GET(req: NextRequest) {
     const totalMaintenanceCost = maintenanceLogs.reduce((sum, m) => sum + m.totalCost, 0);
     const totalExpenses = totalFuelCost + totalMaintenanceCost;
 
-    // Fuel consumption history
-    const sortedFuelAsc = [...fuelLogs].sort((a, b) => a.odometer - b.odometer);
-    const consumptionStats = [];
-    for (let i = 1; i < sortedFuelAsc.length; i++) {
-      const prev = sortedFuelAsc[i - 1];
-      const curr = sortedFuelAsc[i];
-      if (prev.isFullTank && curr.isFullTank) {
-        const stats = calculateFuelConsumption(prev, curr);
-        if (stats) consumptionStats.push(stats);
-      }
-    }
+    // Fuel consumption history — full-tank pairs only (see enrichFuelMetrics)
+    const enrichedFuelLogs = enrichFuelMetrics(fuelLogs);
+    const consumptionStats = enrichedFuelLogs.filter((f) => f.litersPer100Km !== null);
 
     const averageLitersPer100Km = consumptionStats.length > 0
-      ? Number((consumptionStats.reduce((acc, c) => acc + c.litersPer100Km, 0) / consumptionStats.length).toFixed(2))
+      ? Number((consumptionStats.reduce((acc, c) => acc + c.litersPer100Km!, 0) / consumptionStats.length).toFixed(2))
       : null;
 
     return NextResponse.json({

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { calculateFuelConsumption, evaluateMaintenanceStatus } from '@/services/calculator';
+import { calculateFuelConsumption, enrichFuelMetrics, evaluateMaintenanceStatus } from '@/services/calculator';
 import { lookupVehicleScheduleProposal, lookupFullVehicleManual, askAiCarDoctor } from '@/services/ai';
 import { FuelLog, MaintenanceSchedule } from '@/domain/schemas';
 
@@ -37,6 +37,49 @@ describe('Calculator & Business Logic Engine (TASK-04)', () => {
     expect(result?.kmPerLiter).toBe(14.29);
     // 525 / 500 = 1.05 / km
     expect(result?.costPerKm).toBe(1.05);
+  });
+
+  it('omits consumption for partial fills and keeps the full-tank chain intact', () => {
+    const log = (
+      id: string,
+      fillDate: string,
+      odometer: number,
+      liters: number,
+      isFullTank: boolean
+    ): FuelLog => ({
+      id,
+      vehicleId: 'v1',
+      fillDate,
+      odometer,
+      liters,
+      pricePerLiter: 15,
+      totalCost: liters * 15,
+      isFullTank,
+    });
+
+    // 50000 full -> 50200 partial -> 50500 full
+    const enriched = enrichFuelMetrics([
+      log('a', '2026-10-01', 50000, 40, true),
+      log('b', '2026-10-05', 50200, 8, false),
+      log('c', '2026-10-10', 50500, 35, true),
+    ]);
+
+    expect(enriched.map((e) => e.id)).toEqual(['a', 'b', 'c']);
+
+    // A partial fill only covers part of the distance, so it reports nothing.
+    expect(enriched[1].litersPer100Km).toBeNull();
+    expect(enriched[1].distanceTraveledKm).toBeNull();
+    expect(enriched[1].costPerKm).toBeNull();
+
+    // The next full tank closes the window and absorbs the partial top-up inside it:
+    // 8 + 35 = 43 L over 500 km, not the 35 L bought on the last visit alone.
+    expect(enriched[2].distanceTraveledKm).toBe(500);
+    expect(enriched[2].litersPer100Km).toBe(8.6);
+    expect(enriched[2].kmPerLiter).toBe(11.63);
+    expect(enriched[2].costPerKm).toBe(1.29);
+
+    // The first full tank has nothing to compare against.
+    expect(enriched[0].litersPer100Km).toBeNull();
   });
 
   it('evaluates maintenance alert status as ok, due_soon, or overdue', () => {
