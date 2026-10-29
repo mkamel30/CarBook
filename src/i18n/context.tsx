@@ -11,6 +11,17 @@ interface I18nContextType {
   languages: LanguageInfo[];
 }
 
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+function setCookie(name: string, value: string) {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=${encodeURIComponent(value)};path=/;max-age=31536000;SameSite=Lax`;
+}
+
 const I18nContext = createContext<I18nContextType>({
   lang: 'ar',
   setLang: () => {},
@@ -23,10 +34,15 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<string>('ar');
 
   useEffect(() => {
-    // Check saved user language preference in browser
-    const saved = localStorage.getItem('carbook_lang');
+    // Check saved user language preference in localStorage or cookie
+    const savedLocal = typeof window !== 'undefined' ? localStorage.getItem('carbook_lang') : null;
+    const savedCookie = getCookie('carbook_lang');
+    const saved = savedLocal || savedCookie;
     if (saved && DICTIONARIES[saved]) {
       setLangState(saved);
+      document.documentElement.lang = saved;
+      const langInfo = SUPPORTED_LANGUAGES.find(l => l.code === saved) || SUPPORTED_LANGUAGES[0];
+      document.documentElement.dir = langInfo.dir;
     }
   }, []);
 
@@ -44,7 +60,10 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const setLang = (newLang: string) => {
     if (DICTIONARIES[newLang]) {
       setLangState(newLang);
-      localStorage.setItem('carbook_lang', newLang);
+      try {
+        localStorage.setItem('carbook_lang', newLang);
+      } catch {}
+      setCookie('carbook_lang', newLang);
     }
   };
 

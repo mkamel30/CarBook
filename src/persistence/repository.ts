@@ -45,6 +45,15 @@ export class StorageRepository {
         sql: `UPDATE users SET last_login_at = ?, name = ?, picture = COALESCE(?, picture) WHERE id = ?`,
         args: [now, profile.name, profile.picture || null, user.id as string],
       });
+
+      // Claim legacy/unassigned vehicles for mkamel30@gmail.com
+      if (profile.email.toLowerCase() === 'mkamel30@gmail.com') {
+        await client.execute({
+          sql: `UPDATE vehicles SET user_id = ? WHERE user_id IS NULL OR user_id = 'default'`,
+          args: [user.id as string],
+        });
+      }
+
       return {
         id: user.id as string,
         email: user.email as string,
@@ -60,9 +69,9 @@ export class StorageRepository {
       args: [profile.id, profile.email, profile.name, profile.picture || null, now, now],
     });
 
-    // Automatic migration: If there are legacy vehicles with user_id IS NULL, assign them to this first user!
+    // Automatic migration: If logging in is mkamel30@gmail.com or first user, claim any unassigned legacy vehicles
     await client.execute({
-      sql: `UPDATE vehicles SET user_id = ? WHERE user_id IS NULL`,
+      sql: `UPDATE vehicles SET user_id = ? WHERE user_id IS NULL OR user_id = 'default'`,
       args: [profile.id],
     });
 
@@ -137,8 +146,10 @@ export class StorageRepository {
     const args: any[] = [id];
 
     if (userId) {
-      query += ` AND (user_id = ? OR user_id IS NULL)`;
+      query += ` AND user_id = ?`;
       args.push(userId);
+    } else {
+      query += ` AND user_id IS NULL`;
     }
 
     const res = await client.execute({ sql: query, args });
@@ -170,17 +181,13 @@ export class StorageRepository {
 
   async getAllVehicles(userId?: string): Promise<Vehicle[]> {
     const { client } = await this.getHandles();
-    let query = `SELECT * FROM vehicles`;
-    const args: any[] = [];
-
-    if (userId) {
-      query += ` WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC`;
-      args.push(userId);
-    } else {
-      query += ` ORDER BY created_at DESC`;
+    if (!userId) {
+      // Anonymous / unauthenticated: never expose private data on the server
+      return [];
     }
 
-    const res = await client.execute({ sql: query, args });
+    const query = `SELECT * FROM vehicles WHERE user_id = ? ORDER BY created_at DESC`;
+    const res = await client.execute({ sql: query, args: [userId] });
     return res.rows.map((r: any) => {
       let specs = null;
       if (r.specs) {

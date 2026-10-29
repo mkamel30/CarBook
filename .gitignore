@@ -16,3 +16,10 @@ coverage/
 *.tsbuildinfo
 .DS_Store
 *.log
+deploy*.ps1
+deploy*.sh
+*.key
+*.pem
+*.pub
+temp/
+tmp/

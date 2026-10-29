@@ -124,4 +124,27 @@ describe('Google Auth & Multi-Tenancy Engine', () => {
     expect(ownerCars[0].name).toBe('Legacy Chevy');
     expect(ownerCars[0].userId).toBe(owner.id);
   });
+
+  it('does not expose any vehicles or data to unauthenticated visitors', async () => {
+    // Registered user
+    const owner = await repo.findOrCreateUser({
+      id: 'google_owner_secret',
+      email: 'secret@example.com',
+      name: 'Secret Owner',
+    });
+
+    // Car owned by that user
+    await repo.createVehicle({
+      name: 'Private Car',
+      make: 'Nissan',
+      model: 'Sunny',
+      year: 2020,
+      initialOdometer: 10000,
+      currentOdometer: 10000,
+    }, owner.id);
+
+    // Unauthenticated visitor calls getAllVehicles with undefined
+    const anonymousCars = await repo.getAllVehicles(undefined);
+    expect(anonymousCars).toEqual([]);
+  });
 });

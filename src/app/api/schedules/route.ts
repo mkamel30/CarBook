@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { StorageRepository } from '@/persistence/repository';
 import { evaluateMaintenanceStatus } from '@/services/calculator';
 import { DEFAULT_MAINTENANCE_PRESETS } from '@/services/presets';
+import { getAuthenticatedUser } from '@/services/auth';
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,10 +12,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'vehicleId is required' }, { status: 400 });
     }
 
+    const user = getAuthenticatedUser(req);
     const repo = new StorageRepository();
-    const vehicle = await repo.getVehicleById(vehicleId);
+    const vehicle = await repo.getVehicleById(vehicleId, user?.id);
     if (!vehicle) {
-      return NextResponse.json({ success: false, error: 'Vehicle not found' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Vehicle not found or unauthorized' }, { status: 404 });
     }
 
     let schedules = await repo.getSchedulesByVehicle(vehicleId);

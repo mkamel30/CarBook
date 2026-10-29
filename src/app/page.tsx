@@ -128,6 +128,12 @@ export default function WorkbenchPage() {
             const match = data.data.find((v: any) => v.id === prev.id);
             return match || data.data[0];
           });
+        } else {
+          setSelectedVehicle(null);
+          setFuelLogs([]);
+          setMaintenanceLogs([]);
+          setSchedules([]);
+          setReportData(null);
         }
       }
     } finally {
