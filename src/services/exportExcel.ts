@@ -25,12 +25,14 @@ export function autoFitColumns(data: Record<string, any>[]): { wch: number }[] {
  * Format parts breakdown into a clean readable string
  */
 export function formatParts(record: any, isAr: boolean): string {
-  if (!record.partsBreakdown) return '-';
+  if (!record) return '-';
+  const rawParts = record.partsList ?? record.parts_list ?? record.partsBreakdown;
+  if (!rawParts) return '-';
   try {
-    const parts: Array<{ name: string; condition?: string; cost: number }> =
-      typeof record.partsBreakdown === 'string'
-        ? JSON.parse(record.partsBreakdown)
-        : record.partsBreakdown;
+    const parts: Array<{ name: string; condition?: string; cost?: number }> =
+      typeof rawParts === 'string'
+        ? JSON.parse(rawParts)
+        : rawParts;
     if (!Array.isArray(parts) || parts.length === 0) return '-';
     return parts
       .map((p) => {
@@ -42,7 +44,8 @@ export function formatParts(record: any, isAr: boolean): string {
             : isAr
             ? 'جديد'
             : 'New';
-        return `${p.name} (${cond}): ${p.cost}`;
+        const costStr = p.cost !== undefined && p.cost !== null ? `: ${p.cost}` : '';
+        return `${p.name} (${cond})${costStr}`;
       })
       .join(' | ');
   } catch {
@@ -65,14 +68,14 @@ export function buildVehicleDossierWorkbook(
   // 1. Maintenance Sheet
   const maintData = (maintenanceLogs || []).map((m, idx) => ({
     '#': idx + 1,
-    [isAr ? 'التاريخ' : 'Date']: m.serviceDate || '-',
+    [isAr ? 'التاريخ' : 'Date']: m.serviceDate || m.service_date || '-',
     [isAr ? 'العداد (كم)' : 'Odometer (km)']: m.odometer ?? '-',
     [isAr ? 'الخدمة / البيان' : 'Service Title']: m.title || '-',
-    [isAr ? 'التصنيف' : 'Category']: m.serviceType || '-',
+    [isAr ? 'التصنيف' : 'Category']: m.serviceType || m.service_type || '-',
     [isAr ? 'تفاصيل قطع الغيار' : 'Parts Breakdown']: formatParts(m, isAr),
-    [isAr ? 'تكلفة قطع الغيار' : 'Parts Cost']: m.partsCost ?? 0,
-    [isAr ? 'المصنعية' : 'Labor Cost']: m.laborCost ?? 0,
-    [isAr ? 'الإجمالي' : 'Total Cost']: m.totalCost ?? 0,
+    [isAr ? 'تكلفة قطع الغيار' : 'Parts Cost']: m.partsCost ?? m.parts_cost ?? 0,
+    [isAr ? 'المصنعية' : 'Labor Cost']: m.laborCost ?? m.labor_cost ?? 0,
+    [isAr ? 'الإجمالي' : 'Total Cost']: m.totalCost ?? m.total_cost ?? 0,
     [isAr ? 'الورشة / المركز' : 'Workshop']: m.workshop || '-',
     [isAr ? 'ملاحظات' : 'Notes']: m.notes || '-',
   }));
@@ -88,27 +91,32 @@ export function buildVehicleDossierWorkbook(
   XLSX.utils.book_append_sheet(wb, maintWs, isAr ? 'سجل الصيانة' : 'Maintenance');
 
   // 2. Fuel Sheet
-  const fuelData = (fuelLogs || []).map((f, idx) => ({
-    '#': idx + 1,
-    [isAr ? 'التاريخ' : 'Date']: f.fillDate || '-',
-    [isAr ? 'العداد (كم)' : 'Odometer (km)']: f.odometer ?? '-',
-    [isAr ? 'المسافة المقطوعة (كم)' : 'Distance (km)']: f.distanceTraveled ?? '-',
-    [isAr ? 'كمية الوقود (لتر)' : 'Liters']: f.liters ?? 0,
-    [isAr ? 'سعر اللتر' : 'Price / Liter']: f.pricePerLiter ?? 0,
-    [isAr ? 'التكلفة الإجمالية' : 'Total Cost']: f.totalCost ?? 0,
-    [isAr ? 'معدل الاستهلاك (لتر/100كم)' : 'Consumption (L/100km)']: f.calculatedLitersPer100Km
-      ? Number(f.calculatedLitersPer100Km).toFixed(2)
-      : '-',
-    [isAr ? 'التكلفة لكل كم' : 'Cost / km']: f.costPerKm ? Number(f.costPerKm).toFixed(2) : '-',
-    [isAr ? 'تفويلة كاملة' : 'Full Tank']: f.isFullTank
-      ? isAr
-        ? 'نعم'
-        : 'Yes'
-      : isAr
-      ? 'لا'
-      : 'No',
-    [isAr ? 'ملاحظات' : 'Notes']: f.notes || '-',
-  }));
+  const fuelData = (fuelLogs || []).map((f, idx) => {
+    const distance = f.distanceTraveledKm ?? f.distanceTraveled ?? f.distance_traveled_km ?? f.distance_traveled ?? '-';
+    const rawConsumption = f.litersPer100Km ?? f.calculatedLitersPer100Km ?? f.liters_per_100km;
+    const consumption = rawConsumption !== undefined && rawConsumption !== null && !isNaN(Number(rawConsumption))
+      ? Number(rawConsumption).toFixed(2)
+      : '-';
+    const rawCostPerKm = f.costPerKm ?? f.cost_per_km;
+    const costPerKm = rawCostPerKm !== undefined && rawCostPerKm !== null && !isNaN(Number(rawCostPerKm))
+      ? Number(rawCostPerKm).toFixed(2)
+      : '-';
+    const isFull = f.isFullTank === true || f.isFullTank === 1 || f.is_full_tank === 1;
+
+    return {
+      '#': idx + 1,
+      [isAr ? 'التاريخ' : 'Date']: f.fillDate || f.fill_date || '-',
+      [isAr ? 'العداد (كم)' : 'Odometer (km)']: f.odometer ?? '-',
+      [isAr ? 'المسافة المقطوعة (كم)' : 'Distance (km)']: distance,
+      [isAr ? 'كمية الوقود (لتر)' : 'Liters']: f.liters ?? 0,
+      [isAr ? 'سعر اللتر' : 'Price / Liter']: f.pricePerLiter ?? f.price_per_liter ?? 0,
+      [isAr ? 'التكلفة الإجمالية' : 'Total Cost']: f.totalCost ?? f.total_cost ?? 0,
+      [isAr ? 'معدل الاستهلاك (لتر/100كم)' : 'Consumption (L/100km)']: consumption,
+      [isAr ? 'التكلفة لكل كم' : 'Cost / km']: costPerKm,
+      [isAr ? 'تفويلة كاملة' : 'Full Tank']: isFull ? (isAr ? 'نعم' : 'Yes') : (isAr ? 'لا' : 'No'),
+      [isAr ? 'ملاحظات' : 'Notes']: f.notes || '-',
+    };
+  });
 
   const fuelWs = XLSX.utils.json_to_sheet(
     fuelData.length > 0
@@ -121,6 +129,34 @@ export function buildVehicleDossierWorkbook(
   XLSX.utils.book_append_sheet(wb, fuelWs, isAr ? 'سجل الوقود' : 'Fuel Consumption');
 
   // 3. Vehicle & OEM Specs Sheet
+  let specs: any = {};
+  if (vehicle?.specs) {
+    try {
+      specs = typeof vehicle.specs === 'string' ? JSON.parse(vehicle.specs) : vehicle.specs;
+    } catch {
+      specs = {};
+    }
+  }
+
+  let tirePressure = vehicle?.tirePressureSpec || '-';
+  if (specs?.tirePressurePsiFront || specs?.tirePressurePsiRear) {
+    const front = specs.tirePressurePsiFront ? `${specs.tirePressurePsiFront} PSI` : '-';
+    const rear = specs.tirePressurePsiRear ? `${specs.tirePressurePsiRear} PSI` : '-';
+    tirePressure = isAr
+      ? `أمام: ${front} | خلف: ${rear}`
+      : `Front: ${front} | Rear: ${rear}`;
+  }
+
+  const fuelTankCap = specs?.fuelTankCapacityLiters
+    ? `${specs.fuelTankCapacityLiters} L`
+    : vehicle?.fuelTankCapacity
+    ? `${vehicle.fuelTankCapacity} L`
+    : '-';
+
+  const engineOilCap = specs?.engineOilCapacityLiters
+    ? `${specs.engineOilCapacityLiters} L`
+    : '-';
+
   const vehicleData = [
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'اسم المركبة' : 'Vehicle Name',
@@ -140,41 +176,60 @@ export function buildVehicleDossierWorkbook(
     },
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'رقم اللوحة' : 'License Plate',
-      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.licensePlate || '-',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.licensePlate || vehicle?.license_plate || (isAr ? 'غير مسجلة' : 'Not registered'),
     },
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'قراءة العداد الحالية' : 'Current Odometer (km)',
-      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.currentOdometer || vehicle?.initialOdometer || 0,
+      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.currentOdometer ?? vehicle?.initialOdometer ?? 0,
     },
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'لزوجة ومواصفة زيت المحرك' : 'Recommended Engine Oil',
-      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.recommendedOil || '-',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: specs?.engineOilViscosity || vehicle?.recommendedOil || vehicle?.recommended_oil || '-',
+    },
+    {
+      [isAr ? 'البند' : 'Parameter']: isAr ? 'سعة زيت المحرك' : 'Engine Oil Capacity',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: engineOilCap,
     },
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'سائل التبريد (Coolant)' : 'Engine Coolant',
-      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.coolantSpec || '-',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: specs?.coolantType || vehicle?.coolantSpec || '-',
     },
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'زيت ناقل الحركة (Transmission)' : 'Transmission Fluid',
-      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.transmissionSpec || '-',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: specs?.transmissionFluidType || vehicle?.transmissionSpec || '-',
+    },
+    {
+      [isAr ? 'البند' : 'Parameter']: isAr ? 'سائل الفرامل (Brake Fluid)' : 'Brake Fluid',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: specs?.brakeFluidType || '-',
     },
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'ضغط الإطارات الموصى به' : 'Tire Pressure',
-      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.tirePressureSpec || '-',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: tirePressure,
     },
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'سعة خزان الوقود' : 'Fuel Tank Capacity',
-      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.fuelTankCapacity ? `${vehicle.fuelTankCapacity} L` : '-',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: fuelTankCap,
+    },
+    {
+      [isAr ? 'البند' : 'Parameter']: isAr ? 'نوع الوقود / الأوكتان الموصى به' : 'Recommended Fuel Octane',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: specs?.recommendedFuelOctane || '-',
     },
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'شمعات الاحتراق (بوجيهات)' : 'Spark Plugs',
-      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.sparkPlugsSpec || '-',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: specs?.sparkPlugType || vehicle?.sparkPlugsSpec || '-',
     },
     {
       [isAr ? 'البند' : 'Parameter']: isAr ? 'مواصفة البطارية' : 'Battery Spec',
-      [isAr ? 'المواصفة / القيمة' : 'Value']: vehicle?.batterySpec || '-',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: specs?.batterySpec || vehicle?.batterySpec || '-',
     },
   ];
+
+  if (specs?.generalNotesAr) {
+    vehicleData.push({
+      [isAr ? 'البند' : 'Parameter']: isAr ? 'ملاحظات وتوصيات المصنع' : 'OEM General Notes',
+      [isAr ? 'المواصفة / القيمة' : 'Value']: specs.generalNotesAr,
+    });
+  }
 
   const vehicleWs = XLSX.utils.json_to_sheet(vehicleData);
   vehicleWs['!cols'] = autoFitColumns(vehicleData);
@@ -200,14 +255,14 @@ export function buildMaintenanceWorkbook(
 
   const maintData = (maintenanceLogs || []).map((m, idx) => ({
     '#': idx + 1,
-    [isAr ? 'التاريخ' : 'Date']: m.serviceDate || '-',
+    [isAr ? 'التاريخ' : 'Date']: m.serviceDate || m.service_date || '-',
     [isAr ? 'العداد (كم)' : 'Odometer (km)']: m.odometer ?? '-',
     [isAr ? 'الخدمة / البيان' : 'Service Title']: m.title || '-',
-    [isAr ? 'التصنيف' : 'Category']: m.serviceType || '-',
+    [isAr ? 'التصنيف' : 'Category']: m.serviceType || m.service_type || '-',
     [isAr ? 'تفاصيل قطع الغيار' : 'Parts Breakdown']: formatParts(m, isAr),
-    [isAr ? 'تكلفة قطع الغيار' : 'Parts Cost']: m.partsCost ?? 0,
-    [isAr ? 'المصنعية' : 'Labor Cost']: m.laborCost ?? 0,
-    [isAr ? 'الإجمالي' : 'Total Cost']: m.totalCost ?? 0,
+    [isAr ? 'تكلفة قطع الغيار' : 'Parts Cost']: m.partsCost ?? m.parts_cost ?? 0,
+    [isAr ? 'المصنعية' : 'Labor Cost']: m.laborCost ?? m.labor_cost ?? 0,
+    [isAr ? 'الإجمالي' : 'Total Cost']: m.totalCost ?? m.total_cost ?? 0,
     [isAr ? 'الورشة / المركز' : 'Workshop']: m.workshop || '-',
     [isAr ? 'ملاحظات' : 'Notes']: m.notes || '-',
   }));
@@ -240,27 +295,32 @@ export function buildFuelWorkbook(
   const isAr = lang === 'ar';
   const wb = XLSX.utils.book_new();
 
-  const fuelData = (fuelLogs || []).map((f, idx) => ({
-    '#': idx + 1,
-    [isAr ? 'التاريخ' : 'Date']: f.fillDate || '-',
-    [isAr ? 'العداد (كم)' : 'Odometer (km)']: f.odometer ?? '-',
-    [isAr ? 'المسافة المقطوعة (كم)' : 'Distance (km)']: f.distanceTraveled ?? '-',
-    [isAr ? 'كمية الوقود (لتر)' : 'Liters']: f.liters ?? 0,
-    [isAr ? 'سعر اللتر' : 'Price / Liter']: f.pricePerLiter ?? 0,
-    [isAr ? 'التكلفة الإجمالية' : 'Total Cost']: f.totalCost ?? 0,
-    [isAr ? 'معدل الاستهلاك (لتر/100كم)' : 'Consumption (L/100km)']: f.calculatedLitersPer100Km
-      ? Number(f.calculatedLitersPer100Km).toFixed(2)
-      : '-',
-    [isAr ? 'التكلفة لكل كم' : 'Cost / km']: f.costPerKm ? Number(f.costPerKm).toFixed(2) : '-',
-    [isAr ? 'تفويلة كاملة' : 'Full Tank']: f.isFullTank
-      ? isAr
-        ? 'نعم'
-        : 'Yes'
-      : isAr
-      ? 'لا'
-      : 'No',
-    [isAr ? 'ملاحظات' : 'Notes']: f.notes || '-',
-  }));
+  const fuelData = (fuelLogs || []).map((f, idx) => {
+    const distance = f.distanceTraveledKm ?? f.distanceTraveled ?? f.distance_traveled_km ?? f.distance_traveled ?? '-';
+    const rawConsumption = f.litersPer100Km ?? f.calculatedLitersPer100Km ?? f.liters_per_100km;
+    const consumption = rawConsumption !== undefined && rawConsumption !== null && !isNaN(Number(rawConsumption))
+      ? Number(rawConsumption).toFixed(2)
+      : '-';
+    const rawCostPerKm = f.costPerKm ?? f.cost_per_km;
+    const costPerKm = rawCostPerKm !== undefined && rawCostPerKm !== null && !isNaN(Number(rawCostPerKm))
+      ? Number(rawCostPerKm).toFixed(2)
+      : '-';
+    const isFull = f.isFullTank === true || f.isFullTank === 1 || f.is_full_tank === 1;
+
+    return {
+      '#': idx + 1,
+      [isAr ? 'التاريخ' : 'Date']: f.fillDate || f.fill_date || '-',
+      [isAr ? 'العداد (كم)' : 'Odometer (km)']: f.odometer ?? '-',
+      [isAr ? 'المسافة المقطوعة (كم)' : 'Distance (km)']: distance,
+      [isAr ? 'كمية الوقود (لتر)' : 'Liters']: f.liters ?? 0,
+      [isAr ? 'سعر اللتر' : 'Price / Liter']: f.pricePerLiter ?? f.price_per_liter ?? 0,
+      [isAr ? 'التكلفة الإجمالية' : 'Total Cost']: f.totalCost ?? f.total_cost ?? 0,
+      [isAr ? 'معدل الاستهلاك (لتر/100كم)' : 'Consumption (L/100km)']: consumption,
+      [isAr ? 'التكلفة لكل كم' : 'Cost / km']: costPerKm,
+      [isAr ? 'تفويلة كاملة' : 'Full Tank']: isFull ? (isAr ? 'نعم' : 'Yes') : (isAr ? 'لا' : 'No'),
+      [isAr ? 'ملاحظات' : 'Notes']: f.notes || '-',
+    };
+  });
 
   const fuelWs = XLSX.utils.json_to_sheet(
     fuelData.length > 0

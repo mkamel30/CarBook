@@ -17,13 +17,20 @@ describe('Excel Export Service', () => {
     year: 2020,
     licensePlate: 'س ص ع 123',
     currentOdometer: 85000,
-    recommendedOil: '5W-30 Full Synthetic',
-    coolantSpec: 'Toyota Super Long Life Pink',
-    transmissionSpec: 'Toyota ATF WS',
-    tirePressureSpec: '32 PSI front / 32 PSI rear',
-    fuelTankCapacity: 50,
-    sparkPlugsSpec: 'Denso Iridium SC20HR11',
-    batterySpec: '12V 45Ah DIN45',
+    specs: {
+      engineOilViscosity: '5W-30 Full Synthetic',
+      engineOilCapacityLiters: '4.2',
+      coolantType: 'Toyota Super Long Life Pink',
+      transmissionFluidType: 'Toyota ATF WS',
+      brakeFluidType: 'DOT 4',
+      tirePressurePsiFront: '32',
+      tirePressurePsiRear: '30',
+      fuelTankCapacityLiters: '50',
+      recommendedFuelOctane: '92',
+      sparkPlugType: 'Denso Iridium SC20HR11',
+      batterySpec: '12V 45Ah DIN45',
+      generalNotesAr: 'فحص دوري كل 10,000 كم',
+    },
   };
 
   const mockMaintenanceLogs = [
@@ -32,10 +39,10 @@ describe('Excel Export Service', () => {
       odometer: 80000,
       title: 'صيانة دورية وتغيير زيت',
       serviceType: 'oil_change',
-      partsBreakdown: JSON.stringify([
+      partsList: [
         { name: 'فلتر زيت أصلي', condition: 'new', cost: 250 },
         { name: 'طقم بوجيهات', condition: 'used_import', cost: 600 },
-      ]),
+      ],
       partsCost: 850,
       laborCost: 200,
       totalCost: 1050,
@@ -48,26 +55,33 @@ describe('Excel Export Service', () => {
     {
       fillDate: '2026-10-20',
       odometer: 80600,
-      distanceTraveled: 600,
+      distanceTraveledKm: 600,
       liters: 45,
       pricePerLiter: 15.25,
       totalCost: 686.25,
-      calculatedLitersPer100Km: 7.5,
+      litersPer100Km: 7.5,
       costPerKm: 1.14,
       isFullTank: true,
       notes: 'طريق السفر',
     },
   ];
 
-  it('formats parts breakdown correctly for Arabic and English', () => {
-    const partsJson = mockMaintenanceLogs[0];
-    const arFormatted = formatParts(partsJson, true);
+  it('formats parts breakdown correctly from partsList array for Arabic and English', () => {
+    const partsRecord = mockMaintenanceLogs[0];
+    const arFormatted = formatParts(partsRecord, true);
     expect(arFormatted).toContain('فلتر زيت أصلي (جديد): 250');
     expect(arFormatted).toContain('طقم بوجيهات (استيراد): 600');
 
-    const enFormatted = formatParts(partsJson, false);
+    const enFormatted = formatParts(partsRecord, false);
     expect(enFormatted).toContain('فلتر زيت أصلي (New): 250');
     expect(enFormatted).toContain('طقم بوجيهات (Used/Import): 600');
+  });
+
+  it('formats parts breakdown correctly from legacy partsBreakdown or parts_list JSON strings', () => {
+    const legacyRecord = {
+      parts_list: JSON.stringify([{ name: 'سير كاتينة', condition: 'new', cost: 400 }]),
+    };
+    expect(formatParts(legacyRecord, true)).toContain('سير كاتينة (جديد): 400');
   });
 
   it('calculates autoFitColumns properly', () => {
@@ -94,16 +108,30 @@ describe('Excel Export Service', () => {
     expect((maintJson[0] as any)['تفاصيل قطع الغيار']).toContain('فلتر زيت أصلي (جديد): 250');
     expect((maintJson[0] as any)['تفاصيل قطع الغيار']).toContain('طقم بوجيهات (استيراد): 600');
 
-    // Check fuel sheet
+    // Check fuel sheet maps distanceTraveledKm, litersPer100Km, and costPerKm
     const fuelSheet = wb.Sheets['سجل الوقود'];
     const fuelJson = XLSX.utils.sheet_to_json(fuelSheet);
     expect(fuelJson.length).toBe(1);
     expect((fuelJson[0] as any)['كمية الوقود (لتر)']).toBe(45);
+    expect((fuelJson[0] as any)['المسافة المقطوعة (كم)']).toBe(600);
+    expect((fuelJson[0] as any)['معدل الاستهلاك (لتر/100كم)']).toBe('7.50');
+    expect((fuelJson[0] as any)['التكلفة لكل كم']).toBe('1.14');
+    expect((fuelJson[0] as any)['تفويلة كاملة']).toBe('نعم');
 
-    // Check vehicle specs sheet
+    // Check vehicle specs sheet parses specs JSON correctly
     const vehicleSheet = wb.Sheets['بيانات ومواصفات المركبة'];
-    const vehicleJson = XLSX.utils.sheet_to_json(vehicleSheet);
-    expect(vehicleJson.length).toBeGreaterThanOrEqual(10);
+    const vehicleJson: any[] = XLSX.utils.sheet_to_json(vehicleSheet);
+    expect(vehicleJson.length).toBeGreaterThanOrEqual(12);
+
+    const findVal = (paramName: string) =>
+      vehicleJson.find((row) => row['البند'] === paramName)?.['المواصفة / القيمة'];
+
+    expect(findVal('سائل التبريد (Coolant)')).toBe('Toyota Super Long Life Pink');
+    expect(findVal('زيت ناقل الحركة (Transmission)')).toBe('Toyota ATF WS');
+    expect(findVal('شمعات الاحتراق (بوجيهات)')).toBe('Denso Iridium SC20HR11');
+    expect(findVal('سعة خزان الوقود')).toBe('50 L');
+    expect(findVal('مواصفة البطارية')).toBe('12V 45Ah DIN45');
+    expect(findVal('ضغط الإطارات الموصى به')).toContain('أمام: 32 PSI');
   });
 
   it('builds English dossier with proper sheet names and column headers', () => {
@@ -113,6 +141,12 @@ describe('Excel Export Service', () => {
     const maintSheet = wb.Sheets['Maintenance'];
     const maintJson = XLSX.utils.sheet_to_json(maintSheet);
     expect((maintJson[0] as any)['Parts Breakdown']).toContain('فلتر زيت أصلي (New): 250');
+
+    const fuelSheet = wb.Sheets['Fuel Consumption'];
+    const fuelJson = XLSX.utils.sheet_to_json(fuelSheet);
+    expect((fuelJson[0] as any)['Distance (km)']).toBe(600);
+    expect((fuelJson[0] as any)['Consumption (L/100km)']).toBe('7.50');
+    expect((fuelJson[0] as any)['Cost / km']).toBe('1.14');
   });
 
   it('builds dedicated maintenance workbook', () => {
@@ -127,5 +161,9 @@ describe('Excel Export Service', () => {
 
     expect(filename).toContain('Fuel');
     expect(wb.SheetNames).toEqual(['سجل الوقود']);
+    const fuelSheet = wb.Sheets['سجل الوقود'];
+    const fuelJson = XLSX.utils.sheet_to_json(fuelSheet);
+    expect((fuelJson[0] as any)['المسافة المقطوعة (كم)']).toBe(600);
+    expect((fuelJson[0] as any)['معدل الاستهلاك (لتر/100كم)']).toBe('7.50');
   });
 });
