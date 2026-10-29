@@ -29,6 +29,8 @@ set -e
 sudo mkdir -p /var/www/carbook
 sudo chown -R ubuntu:ubuntu /var/www/carbook
 
+# Completely remove old .next build directory to eliminate stale route-cache and old bundles
+rm -rf /var/www/carbook/.next
 tar -xzf /tmp/carbook_code.tar.gz -C /var/www/carbook
 rm -f /tmp/carbook_code.tar.gz
 
@@ -74,6 +76,15 @@ server {
 
     client_max_body_size 50M;
 
+    # Hashed static assets
+    location /_next/static/ {
+        proxy_pass http://127.0.0.1:3070;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # Dynamic and HTML routes - never cache so browser always loads latest build
     location / {
         proxy_pass http://127.0.0.1:3070;
         proxy_http_version 1.1;
@@ -85,6 +96,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
     }
 }
 EOF'
