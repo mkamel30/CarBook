@@ -5,8 +5,9 @@ const config: CapacitorConfig = {
   appName: 'CarBook',
   webDir: 'out',
   server: {
-    androidScheme: 'https',
+    url: 'http://carbook.141.147.136.170.sslip.io',
     cleartext: true,
+    androidScheme: 'https',
   },
   android: {
     backgroundColor: '#090d16',
