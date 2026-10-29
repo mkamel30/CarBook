@@ -29,7 +29,8 @@ export async function getDatabase(dbFilePath?: string) {
       name TEXT NOT NULL,
       picture TEXT,
       created_at TEXT NOT NULL,
-      last_login_at TEXT NOT NULL
+      last_login_at TEXT NOT NULL,
+      is_guest INTEGER NOT NULL DEFAULT 0
     );`,
     `CREATE TABLE IF NOT EXISTS vehicles (
       id TEXT PRIMARY KEY,
@@ -132,7 +133,23 @@ export async function getDatabase(dbFilePath?: string) {
     `CREATE INDEX IF NOT EXISTS idx_vehicles_seq ON vehicles(seq);`,
     `CREATE INDEX IF NOT EXISTS idx_schedules_seq ON maintenance_schedules(seq);`,
     `CREATE INDEX IF NOT EXISTS idx_logs_seq ON maintenance_logs(seq);`,
-    `CREATE INDEX IF NOT EXISTS idx_fuel_seq ON fuel_logs(seq);`
+    `CREATE INDEX IF NOT EXISTS idx_fuel_seq ON fuel_logs(seq);`,
+    // One row per signed-in device, so a phone login never signs the desktop out.
+    // Only the SHA-256 of the refresh token is stored; the token itself is never persisted.
+    // Rotated rows are kept with revoked_at set: replaying one is the signal that the
+    // token was copied, so it must stay distinguishable from a token never seen before.
+    `CREATE TABLE IF NOT EXISTS device_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      refresh_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_used_at TEXT NOT NULL,
+      revoked_at TEXT
+    );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_device_sessions_hash ON device_sessions(refresh_hash);`,
+    `CREATE INDEX IF NOT EXISTS idx_device_sessions_user ON device_sessions(user_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_device_sessions_device ON device_sessions(user_id, device_id);`
   ], 'write');
 
   const db = drizzle(client, { schema });
@@ -156,6 +173,11 @@ export async function getDatabase(dbFilePath?: string) {
   try {
     await client.execute('CREATE INDEX IF NOT EXISTS idx_vehicles_user_id ON vehicles(user_id);');
   } catch (e) {}
+  try {
+    await client.execute('ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0;');
+  } catch (e) {
+    // Column already exists or table was just created
+  }
 
   // Sync columns for pre-existing databases (new databases get them via CREATE above).
   const syncTables = ['vehicles', 'maintenance_schedules', 'maintenance_logs', 'fuel_logs'];
