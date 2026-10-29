@@ -127,8 +127,12 @@ export default function WorkbenchPage() {
       const data = await res.json();
       if (data.success) {
         setVehicles(data.data);
-        if (data.data.length > 0 && !selectedVehicle) {
-          setSelectedVehicle(data.data[0]);
+        if (data.data.length > 0) {
+          setSelectedVehicle((prev: any) => {
+            if (!prev) return data.data[0];
+            const match = data.data.find((v: any) => v.id === prev.id);
+            return match || data.data[0];
+          });
         }
       }
     } finally {
@@ -154,7 +158,17 @@ export default function WorkbenchPage() {
       if (fuelRes.success) setFuelLogs(fuelRes.data);
       if (maintRes.success) setMaintenanceLogs(maintRes.data);
       if (schedRes.success) setSchedules(schedRes.data.schedules);
-      if (repRes.success) setReportData(repRes.data);
+      if (repRes.success) {
+        setReportData(repRes.data);
+        if (repRes.data?.vehicle?.specs) {
+          setSelectedVehicle((prev: any) => {
+            if (prev && (!prev.specs || (typeof prev.specs === 'object' && Object.keys(prev.specs).length === 0))) {
+              return { ...prev, specs: repRes.data.vehicle.specs };
+            }
+            return prev;
+          });
+        }
+      }
     } catch (e) {
       console.error(e);
     }
@@ -1045,8 +1059,8 @@ export default function WorkbenchPage() {
                   </div>
 
                   {/* Desktop View: Full Grid Table */}
-                  <div className="hidden md:block bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
-                    <table className="w-full text-start text-xs">
+                  <div className="hidden md:block bg-slate-950 border border-slate-800 rounded-xl overflow-x-auto table-scrollbar">
+                    <table className="w-full min-w-[760px] text-start text-xs">
                       <thead className="bg-slate-900 border-b border-slate-800 text-slate-400">
                         <tr>
                           <th className="p-3 text-start">{t('fuel_th_date')}</th>
@@ -1246,8 +1260,8 @@ export default function WorkbenchPage() {
                   </div>
 
                   {/* Desktop View: Full Grid Table */}
-                  <div className="hidden md:block bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
-                    <table className="w-full text-start text-xs">
+                  <div className="hidden md:block bg-slate-950 border border-slate-800 rounded-xl overflow-x-auto table-scrollbar">
+                    <table className="w-full min-w-[760px] text-start text-xs">
                       <thead className="bg-slate-900 border-b border-slate-800 text-slate-400">
                         <tr>
                           <th className="p-3 text-start">{t('maint_th_date')}</th>
@@ -1753,38 +1767,100 @@ export default function WorkbenchPage() {
                     </div>
 
                     {/* Technical & OEM Specifications Box */}
-                    <div className="print-card-subtle bg-slate-900/60 p-4 rounded-lg border border-slate-800 space-y-2">
-                      <h3 className="text-xs font-bold text-slate-300 print:text-slate-900 flex items-center gap-1.5">
-                        <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
-                        {lang === 'ar' ? 'المواصفات الفنية وسوائل المحرك المعتمدة' : 'OEM Technical & Fluid Specifications'}
-                      </h3>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
-                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
-                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'سائل التبريد:' : 'Coolant:'}</span>
-                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.coolantSpec || '—'}</span>
+                    {(() => {
+                      const rawSpecs = selectedVehicle?.specs || reportData?.vehicle?.specs;
+                      let specs: any = {};
+                      if (rawSpecs) {
+                        try {
+                          specs = typeof rawSpecs === 'string'
+                            ? JSON.parse(rawSpecs)
+                            : rawSpecs;
+                        } catch {
+                          specs = {};
+                        }
+                      }
+
+                      let tirePressure = selectedVehicle?.tirePressureSpec || '—';
+                      if (specs.tirePressurePsiFront || specs.tirePressurePsiRear) {
+                        if (specs.tirePressurePsiFront && specs.tirePressurePsiRear && specs.tirePressurePsiFront === specs.tirePressurePsiRear) {
+                          tirePressure = specs.tirePressurePsiFront;
+                        } else {
+                          tirePressure = lang === 'ar'
+                            ? `أمام: ${specs.tirePressurePsiFront || '—'} | خلف: ${specs.tirePressurePsiRear || '—'}`
+                            : `Front: ${specs.tirePressurePsiFront || '—'} | Rear: ${specs.tirePressurePsiRear || '—'}`;
+                        }
+                      }
+
+                      const hasSpecs = Boolean(rawSpecs && Object.keys(specs).length > 0);
+
+                      return (
+                        <div className="print-card-subtle bg-slate-900/60 p-4 rounded-lg border border-slate-800 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-bold text-slate-300 print:text-slate-900 flex items-center gap-1.5">
+                              <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
+                              {lang === 'ar' ? 'المواصفات الفنية وسوائل المحرك المعتمدة' : 'OEM Technical & Fluid Specifications'}
+                            </h3>
+                            {!hasSpecs && (
+                              <button
+                                type="button"
+                                disabled={manualLoading}
+                                onClick={handleFetchManual}
+                                className="print:hidden text-[11px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded flex items-center gap-1 transition font-medium"
+                              >
+                                {manualLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                {lang === 'ar' ? 'جلب بذكاء الاصطناعي' : 'Fetch with AI'}
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                            <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
+                              <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">{lang === 'ar' ? 'سائل التبريد:' : 'Coolant:'}</span>
+                              <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">{specs.coolantType || selectedVehicle.coolantSpec || '—'}</span>
+                            </div>
+                            <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
+                              <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">{lang === 'ar' ? 'زيت القير:' : 'Trans Fluid:'}</span>
+                              <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">{specs.transmissionFluidType || selectedVehicle.transmissionSpec || '—'}</span>
+                            </div>
+                            <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
+                              <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">{lang === 'ar' ? 'ضغط الإطارات:' : 'Tire Pressure:'}</span>
+                              <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">{tirePressure}</span>
+                            </div>
+                            <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
+                              <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">{lang === 'ar' ? 'سعة الخزان:' : 'Tank Capacity:'}</span>
+                              <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">{specs.fuelTankCapacityLiters || (selectedVehicle.fuelTankCapacity ? `${selectedVehicle.fuelTankCapacity} L` : '—')}</span>
+                            </div>
+                            <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
+                              <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">{lang === 'ar' ? 'شمعات الاحتراق:' : 'Spark Plugs:'}</span>
+                              <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">{specs.sparkPlugType || selectedVehicle.sparkPlugsSpec || '—'}</span>
+                            </div>
+                            <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
+                              <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">{lang === 'ar' ? 'مواصفة البطارية:' : 'Battery:'}</span>
+                              <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">{specs.batterySpec || selectedVehicle.batterySpec || '—'}</span>
+                            </div>
+                            <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
+                              <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">{lang === 'ar' ? 'لزوجة زيت المحرك:' : 'Engine Oil:'}</span>
+                              <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">{specs.engineOilViscosity || selectedVehicle.recommendedOil || '—'}</span>
+                            </div>
+                            <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
+                              <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">{lang === 'ar' ? 'سعة زيت المحرك:' : 'Oil Capacity:'}</span>
+                              <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">{specs.engineOilCapacityLiters || '—'}</span>
+                            </div>
+                            <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
+                              <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">{lang === 'ar' ? 'سائل الفرامل:' : 'Brake Fluid:'}</span>
+                              <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">{specs.brakeFluidType || '—'}</span>
+                            </div>
+                          </div>
+
+                          {specs.generalNotesAr && (
+                            <div className="text-[11px] text-slate-300 print:text-slate-800 bg-slate-950/60 p-2.5 rounded border border-slate-800 print:border-slate-300 leading-relaxed mt-2">
+                              <span className="font-bold text-amber-400 print:text-slate-900 block mb-0.5">{lang === 'ar' ? '💡 إرشادات وتوصيات المصنع:' : '💡 Key OEM Guidelines:'}</span>
+                              {specs.generalNotesAr}
+                            </div>
+                          )}
                         </div>
-                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
-                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'زيت القير:' : 'Trans Fluid:'}</span>
-                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.transmissionSpec || '—'}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
-                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'ضغط الإطارات:' : 'Tire Pressure:'}</span>
-                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.tirePressureSpec || '—'}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
-                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'سعة الخزان:' : 'Tank Capacity:'}</span>
-                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.fuelTankCapacity ? `${selectedVehicle.fuelTankCapacity} L` : '—'}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
-                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'شمعات الاحتراق:' : 'Spark Plugs:'}</span>
-                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.sparkPlugsSpec || '—'}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
-                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'مواصفة البطارية:' : 'Battery:'}</span>
-                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.batterySpec || '—'}</span>
-                        </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     {/* Maintenance Log Table in Report */}
                     <div className="space-y-2">
@@ -1794,8 +1870,8 @@ export default function WorkbenchPage() {
                           {maintenanceLogs.length} {lang === 'ar' ? 'عملية مسجلة' : 'records logged'}
                         </span>
                       </h3>
-                      <div className="border border-slate-800 print:border-slate-300 rounded overflow-hidden">
-                        <table className="w-full text-start text-xs">
+                      <div className="border border-slate-800 print:border-slate-300 rounded overflow-x-auto print:overflow-visible table-scrollbar">
+                        <table className="w-full min-w-[650px] print:min-w-0 text-start text-xs">
                           <thead className="bg-slate-900 border-b border-slate-800 text-slate-400 print:bg-slate-100 print:text-slate-900">
                             <tr>
                               <th className="p-2 text-start">{t('rep_th_date')}</th>
@@ -1816,9 +1892,10 @@ export default function WorkbenchPage() {
                             ) : (
                               maintenanceLogs.map((m, idx) => {
                                 let parts: Array<{ name: string; condition?: string; cost: number }> = [];
-                                if (m.partsBreakdown) {
+                                const rawParts = m.partsList ?? m.parts_list ?? m.partsBreakdown;
+                                if (rawParts) {
                                   try {
-                                    parts = typeof m.partsBreakdown === 'string' ? JSON.parse(m.partsBreakdown) : m.partsBreakdown;
+                                    parts = typeof rawParts === 'string' ? JSON.parse(rawParts) : rawParts;
                                   } catch {}
                                 }
                                 return (

@@ -89,6 +89,32 @@ body {
     background-color: #64748B;
     margin: 0.5rem auto 1rem auto;
   }
+
+  /* Custom scrollbar for tables across desktop and mobile */
+  .table-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-scrollbar::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+
+  .table-scrollbar::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.6);
+    border-radius: 9999px;
+  }
+
+  .table-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.45);
+    border-radius: 9999px;
+  }
+
+  .table-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(245, 158, 11, 0.7);
+  }
 }
 
 /* =========================================================================
