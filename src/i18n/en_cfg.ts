@@ -1,0 +1,242 @@
+// Automatically mirrors src/locales/en.cfg
+const enRaw = `
+# Metadata
+lang_code = en
+lang_name = English
+dir = ltr
+
+# App Branding
+app_name = CarBook
+app_tagline = Smart Vehicle Maintenance & Fuel Consumption Log
+app_welcome_title = Welcome to CarBook
+app_welcome_desc = Start by adding your vehicle to track fuel efficiency, scheduled service intervals, and smart odometer alerts.
+app_add_first_car = Add Your Vehicle Now
+app_no_vehicles = No vehicles added yet
+app_select_prompt = Please add or select a vehicle to get started
+
+# Navigation
+nav_current_vehicle = Current Vehicle
+nav_add_vehicle = Add
+nav_overview = Dashboard
+nav_fuel = Fuel Logs & Efficiency
+nav_maintenance = Maintenance & Service
+nav_alerts = Service Intervals & Alerts
+nav_manual = OEM Vehicle Manual
+nav_doctor = AI Car Doctor
+nav_report = Vehicle Health Report
+nav_settings = Settings & AI Config
+
+# Top Header Actions
+btn_add_fuel = Log Fuel Fill
+btn_add_maintenance = Log Service / Oil
+header_odometer = Current Odo:
+header_plate = Plate:
+header_no_plate = No Plate
+unit_km = km
+unit_egp = EGP
+unit_currency = $
+unit_liter = L
+unit_l_per_100km = L/100km
+
+# Overview Tab
+ov_current_odometer = Current Odometer
+ov_avg_consumption = Average Fuel Consumption
+ov_calculating = Calculating
+ov_total_fuel_cost = Total Fuel Expenses
+ov_total_maint_cost = Total Maintenance Expenses
+ov_upcoming_alerts = Upcoming Service Schedule
+ov_view_all = View All
+ov_recent_fuel = Recent Fuel Logs
+ov_recent_maint = Recent Maintenance Records
+ov_full_tank = Full Tank
+ov_partial_tank = Partial Tank
+ov_no_logs_yet = No records logged yet
+
+# Fuel Tab
+fuel_title = Fuel Fill Records & Efficiency Log
+fuel_desc = Accurate calculation of L/100km and cost per kilometer between consecutive fill-ups
+fuel_btn_new = Log New Fuel Fill
+fuel_th_date = Date
+fuel_th_odometer = Odometer
+fuel_th_liters = Quantity
+fuel_th_price_per_l = Price / L
+fuel_th_total_cost = Total Paid
+fuel_th_type = Fill Type
+fuel_th_consumption = Consumption (L/100km)
+fuel_th_cost_per_km = Cost / km
+fuel_th_notes = Notes
+fuel_th_actions = Actions
+fuel_full_badge = Full Tank
+fuel_partial_badge = Partial
+fuel_na = N/A
+fuel_empty_state = No fuel fills logged for this vehicle yet.
+
+# Maintenance Tab
+maint_title = Maintenance, Spare Parts & Oil Log
+maint_desc = Complete log of all service invoices with breakdown of parts (New / OEM Import) and labor
+maint_btn_new = Log New Maintenance
+maint_th_date = Date
+maint_th_odometer = Odometer
+maint_th_service = Service Description
+maint_th_parts_detail = Spare Parts Breakdown
+maint_th_workshop = Workshop / Service Center
+maint_th_costs = Costs (Parts + Labor)
+maint_th_total = Total Amount
+maint_th_actions = Actions
+maint_parts_count = parts
+maint_labor = Labor
+maint_cond_new = New / OEM
+maint_cond_used = Used / Import
+maint_empty_state = No maintenance records logged for this vehicle yet.
+
+# Schedules & Alerts Tab
+alerts_title = Preventive Maintenance Schedule & Alerts
+alerts_desc = Smart mileage and time-based alerts to protect your vehicle from overdue service
+alerts_filter_all = All
+alerts_filter_urgent = Urgent / Overdue
+alerts_filter_due_soon = Due Soon
+alerts_status_ok = Good Condition
+alerts_status_due_soon = Due Soon
+alerts_status_overdue = Overdue Service!
+alerts_interval = Interval:
+alerts_last_done = Last performed at:
+alerts_remaining = Remaining:
+alerts_passed = Overdue by:
+
+# OEM Manual Tab
+manual_title = Factory OEM Manual Specifications
+manual_desc = Certified technical specifications for fluids, lubricants, tire pressure, and fuel for
+manual_btn_fetch = Extract Factory Specs via AI
+manual_btn_refresh = Refresh Specs via AI
+manual_loading = Searching official factory service manuals...
+manual_loading_sub = AI is reviewing certified engine oil viscosity, tank capacity, transmission fluid standard, coolant type, and tire pressure to save locally in your offline database.
+manual_card_engine_oil = Engine Oil & Capacity
+manual_field_oil_viscosity = Recommended Viscosity & Spec:
+manual_field_oil_capacity = Oil Capacity (with filter):
+manual_card_fluids = Drivetrain & Cooling Fluids
+manual_field_trans_fluid = Transmission Fluid (ATF / CVT):
+manual_field_coolant = Engine Coolant / Antifreeze:
+manual_field_brake_fluid = Brake Fluid (DOT Spec):
+manual_card_tire_pressure = Cold Tire Pressure
+manual_field_tire_front = Front Tires:
+manual_field_tire_rear = Rear Tires:
+manual_card_fuel_ignition = Fuel & Ignition System
+manual_field_tank_capacity = Fuel Tank Capacity:
+manual_field_octane = Recommended Fuel Octane:
+manual_field_spark_plugs = Spark Plugs:
+manual_card_battery = Battery & Electrical System
+manual_field_battery = Battery Specification:
+manual_card_oem_tips = Manufacturer Service Guidelines
+manual_empty_title = No OEM Specifications Extracted Yet
+manual_empty_desc = Use AI to extract engine oil viscosity, fluid specifications, tire pressures, and tank capacity for your vehicle and store them locally for offline access anytime.
+manual_empty_btn = Fetch OEM Specs Now
+manual_not_specified = Not specified
+
+# AI Car Doctor Tab
+doc_title = AI Car Doctor Consultation
+doc_desc = Consult the virtual master technician about symptoms, strange noises, OBD-II diagnostic fault codes, or preventive intervals based on your vehicle history
+doc_input_label = Describe your symptom, noise, or trouble code:
+doc_input_placeholder = Example: I hear a clicking sound when turning right at low speeds, or why is code P0420 showing? Or when should I replace the timing belt for my car?
+doc_quick_title = Quick Inquiries:
+doc_quick_1 = Light clicking sound on sharp turns
+doc_quick_2 = Steering wheel vibration while braking
+doc_quick_3 = Sluggish acceleration and power loss
+doc_quick_4 = Best engine oil viscosity in high summer heat
+doc_btn_submit = Ask AI Doctor
+doc_btn_loading = Analyzing symptoms & service history...
+doc_welcome_title = How Does AI Car Doctor Work?
+doc_welcome_desc = The assistant cross-references your current odometer reading, past service records, and factory technical bulletins for your specific model to deliver a reliable, actionable diagnosis.
+doc_your_query = Your Inquiry:
+doc_advice_title = Master Technician Diagnosis & Recommendation:
+
+# Report Tab
+rep_title = Vehicle Health & Service History Report (Buyer / Owner)
+rep_desc = Verified transparent record of odometer readings, service history, and replacement parts
+rep_btn_print = Print / Export PDF
+rep_heading = Certified Vehicle Inspection & Maintenance Report
+rep_date = Report Date:
+rep_summary_odometer = Verified Odometer
+rep_summary_oil = Recommended Engine Oil
+rep_summary_total_maint = Total Verified Services
+rep_table_title = Documented Service & Lubricant Records:
+rep_th_date = Date
+rep_th_odometer = Odometer
+rep_th_service = Performed Service
+rep_th_workshop = Workshop / Center
+rep_th_cost = Cost
+rep_th_notes = Notes
+
+# Settings Tab
+set_title = System Settings & AI Configuration
+set_fuel_pricing_title = Fuel Types & Pricing
+set_fuel_pricing_desc = Define fuel grades and prices to automatically calculate liters and expenses on every new fill-up
+set_fuel_add_btn = Add New Fuel Type
+set_ai_title = AI Provider Configuration
+set_ai_desc = Enter your Google Gemini or OpenRouter API key to automatically suggest oil grades, service intervals, and consult the AI Car Doctor. Keys are stored safely in your local database.
+set_ai_provider = AI Provider
+set_ai_key_label = API Key
+set_ai_key_saved = Key configured:
+set_ai_key_placeholder = Enter a new API key to update...
+set_save_btn = Save Settings
+set_save_success = Settings saved successfully!
+
+# Modals - Add Vehicle Modal
+modal_car_add_title = Add New Vehicle
+modal_car_name_label = Vehicle Friendly Name (e.g. My Daily Driver)
+modal_car_name_placeholder = My Daily Driver
+modal_car_make = Make
+modal_car_model = Model
+modal_car_year = Year
+modal_car_plate = License Plate (optional)
+modal_car_init_odo = Initial Odometer (km)
+modal_car_ai_box = Suggest Engine Oil & Service Schedule with AI
+modal_car_ai_btn = Search & Suggest
+modal_car_ai_loading = Searching...
+modal_car_ai_found = Factory recommendations found
+modal_car_ai_oil = Suggested Oil:
+modal_car_ai_note = Preventive maintenance intervals will be automatically generated.
+modal_car_oil_label = Recommended Engine Oil
+modal_car_btn_save = Save Vehicle
+
+# Modals - Fuel Modal
+modal_fuel_new_title = Log Fuel Fill
+modal_fuel_edit_title = Edit Fuel Fill
+modal_fuel_type_label = Fuel Grade (from Settings)
+modal_fuel_liters_label = Fuel Quantity (Liters)
+modal_fuel_price_label = Price per Liter
+modal_fuel_total_label = Total Paid Amount
+modal_fuel_full_tank_checkbox = Full Tank Fill (required for accurate L/100km calculation)
+modal_fuel_notes_label = Notes (optional)
+modal_fuel_btn_save = Save Fuel Fill
+modal_fuel_btn_update = Update Fuel Fill
+
+# Modals - Maintenance Modal
+modal_maint_new_title = Log Maintenance / Oil Change
+modal_maint_edit_title = Edit Maintenance Record
+modal_maint_date = Date
+modal_maint_odo = Odometer (km)
+modal_maint_title_label = Service Description
+modal_maint_title_placeholder = e.g. 10,000 km Full Synthetic Oil Change + OEM Oil Filter
+modal_maint_parts_box_title = Spare Parts & Consumables Breakdown
+modal_maint_add_part_btn = Add Spare Part
+modal_maint_part_name = Part Name
+modal_maint_part_cond_new = New / OEM Original
+modal_maint_part_cond_used = Imported / Good Used
+modal_maint_part_price = Price
+modal_maint_parts_total_label = Total Parts Cost
+modal_maint_labor_label = Labor Cost
+modal_maint_total_label = Grand Total
+modal_maint_workshop = Workshop / Service Center (optional)
+modal_maint_next_odo = Target Odometer for Next Service (optional)
+modal_maint_btn_save = Save Record
+modal_maint_btn_update = Update Record
+
+# Common Actions & Dialogs
+btn_cancel = Cancel
+btn_edit = Edit
+btn_delete = Delete
+confirm_delete_fuel = Are you sure you want to delete this fuel fill?
+confirm_delete_maint = Are you sure you want to delete this maintenance record?
+`;
+
+export default enRaw;

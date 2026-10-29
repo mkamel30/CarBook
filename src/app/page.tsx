@@ -22,10 +22,13 @@ import {
   Send,
   Loader2,
   Check,
-  ShieldCheck
+  ShieldCheck,
+  Globe
 } from 'lucide-react';
+import { useTranslation } from '@/i18n/context';
 
 export default function WorkbenchPage() {
+  const { t, lang, setLang, dir, languages } = useTranslation();
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'alerts' | 'manual' | 'doctor' | 'report' | 'settings'>('overview');
@@ -296,7 +299,7 @@ export default function WorkbenchPage() {
   };
 
   const handleDeleteFuel = async (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذه التفويلة؟')) return;
+    if (!confirm(t('confirm_delete_fuel'))) return;
     const res = await fetch(`/api/fuel?id=${id}`, { method: 'DELETE' });
     const data = await res.json();
     if (data.success) {
@@ -388,7 +391,7 @@ export default function WorkbenchPage() {
   };
 
   const handleDeleteMaintenance = async (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذا السجل؟')) return;
+    if (!confirm(t('confirm_delete_maint'))) return;
     const res = await fetch(`/api/maintenance?id=${id}`, { method: 'DELETE' });
     const data = await res.json();
     if (data.success) {
@@ -520,16 +523,16 @@ export default function WorkbenchPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100">
-      {/* Sidebar / Left Navigation */}
-      <aside className="w-64 bg-slate-950 border-l border-slate-800 flex flex-col justify-between">
+      {/* Sidebar / Navigation */}
+      <aside className={`w-64 bg-slate-950 flex flex-col justify-between shrink-0 ${dir === 'rtl' ? 'border-l' : 'border-r'} border-slate-800`}>
         <div>
           {/* App Branding */}
           <div className="p-4 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Car className="text-amber-500 w-6 h-6" />
+              <Car className="text-amber-500 w-6 h-6 shrink-0" />
               <div>
                 <h1 className="font-bold text-sm tracking-wide">CarBook</h1>
-                <p className="text-xs text-slate-400">دفتر ومتابعة صيانة واستهلاك السيارة</p>
+                <p className="text-xs text-slate-400">{t('app_tagline')}</p>
               </div>
             </div>
           </div>
@@ -537,17 +540,17 @@ export default function WorkbenchPage() {
           {/* Vehicle Selector */}
           <div className="p-3 border-b border-slate-800">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-slate-400 uppercase">السيارة الحالية</span>
+              <span className="text-xs font-semibold text-slate-400 uppercase">{t('nav_current_vehicle')}</span>
               <button
                 onClick={() => setShowAddVehicleModal(true)}
                 className="text-xs text-amber-500 hover:text-amber-400 flex items-center gap-1 font-medium"
               >
-                <PlusCircle className="w-3.5 h-3.5" /> إضافة
+                <PlusCircle className="w-3.5 h-3.5" /> {t('nav_add_vehicle')}
               </button>
             </div>
             {vehicles.length === 0 ? (
               <div className="text-xs text-slate-500 p-2 text-center bg-slate-900 rounded border border-dashed border-slate-800">
-                لا توجد سيارات بعد
+                {t('app_no_vehicles')}
               </div>
             ) : (
               <select
@@ -572,71 +575,85 @@ export default function WorkbenchPage() {
             <button
               onClick={() => setActiveTab('overview')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
-                activeTab === 'overview' ? 'bg-amber-500/10 text-amber-500 border-r-2 border-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                activeTab === 'overview'
+                  ? `bg-amber-500/10 text-amber-500 ${dir === 'rtl' ? 'border-r-2' : 'border-l-2'} border-amber-500`
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
               }`}
             >
-              <Gauge className="w-4 h-4" /> لوحة التحكم العامة
+              <Gauge className="w-4 h-4 shrink-0" /> {t('nav_overview')}
             </button>
             <button
               onClick={() => setActiveTab('fuel')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
-                activeTab === 'fuel' ? 'bg-amber-500/10 text-amber-500 border-r-2 border-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                activeTab === 'fuel'
+                  ? `bg-amber-500/10 text-amber-500 ${dir === 'rtl' ? 'border-r-2' : 'border-l-2'} border-amber-500`
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
               }`}
             >
-              <Fuel className="w-4 h-4" /> سجل التفويل واستهلاك البنزين
+              <Fuel className="w-4 h-4 shrink-0" /> {t('nav_fuel')}
             </button>
             <button
               onClick={() => setActiveTab('maintenance')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
-                activeTab === 'maintenance' ? 'bg-amber-500/10 text-amber-500 border-r-2 border-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                activeTab === 'maintenance'
+                  ? `bg-amber-500/10 text-amber-500 ${dir === 'rtl' ? 'border-r-2' : 'border-l-2'} border-amber-500`
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
               }`}
             >
-              <Wrench className="w-4 h-4" /> سجل الصيانات وتغيير الزيت
+              <Wrench className="w-4 h-4 shrink-0" /> {t('nav_maintenance')}
             </button>
             <button
               onClick={() => setActiveTab('alerts')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
-                activeTab === 'alerts' ? 'bg-amber-500/10 text-amber-500 border-r-2 border-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                activeTab === 'alerts'
+                  ? `bg-amber-500/10 text-amber-500 ${dir === 'rtl' ? 'border-r-2' : 'border-l-2'} border-amber-500`
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
               }`}
             >
-              <AlertTriangle className="w-4 h-4" /> جدول الصيانة والتنبيهات
+              <AlertTriangle className="w-4 h-4 shrink-0" /> {t('nav_alerts')}
             </button>
             <button
               onClick={() => setActiveTab('manual')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
-                activeTab === 'manual' ? 'bg-amber-500/10 text-amber-500 border-r-2 border-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                activeTab === 'manual'
+                  ? `bg-amber-500/10 text-amber-500 ${dir === 'rtl' ? 'border-r-2' : 'border-l-2'} border-amber-500`
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
               }`}
             >
-              <BookOpen className="w-4 h-4" /> كتالوج ومواصفات السيارة
+              <BookOpen className="w-4 h-4 shrink-0" /> {t('nav_manual')}
             </button>
             <button
               onClick={() => setActiveTab('doctor')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
-                activeTab === 'doctor' ? 'bg-amber-500/10 text-amber-500 border-r-2 border-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                activeTab === 'doctor'
+                  ? `bg-amber-500/10 text-amber-500 ${dir === 'rtl' ? 'border-r-2' : 'border-l-2'} border-amber-500`
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
               }`}
             >
-              <HelpCircle className="w-4 h-4" /> استشارة مهندس الصيانة (AI)
+              <HelpCircle className="w-4 h-4 shrink-0" /> {t('nav_doctor')}
             </button>
             <button
               onClick={() => setActiveTab('report')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
-                activeTab === 'report' ? 'bg-amber-500/10 text-amber-500 border-r-2 border-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                activeTab === 'report'
+                  ? `bg-amber-500/10 text-amber-500 ${dir === 'rtl' ? 'border-r-2' : 'border-l-2'} border-amber-500`
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
               }`}
             >
-              <FileText className="w-4 h-4" /> تقرير الفحص والبيع
+              <FileText className="w-4 h-4 shrink-0" /> {t('nav_report')}
             </button>
           </nav>
         </div>
 
         {/* Bottom Actions */}
-        <div className="p-3 border-t border-slate-800">
+        <div className="p-3 border-t border-slate-800 space-y-2">
           <button
             onClick={() => setActiveTab('settings')}
             className={`w-full flex items-center gap-2 px-3 py-2 rounded text-xs font-medium transition ${
               activeTab === 'settings' ? 'bg-amber-500/10 text-amber-500' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
             }`}
           >
-            <Settings className="w-4 h-4" /> إعدادات النظام وذكاء AI
+            <Settings className="w-4 h-4 shrink-0" /> {t('nav_settings')}
           </button>
         </div>
       </aside>
@@ -644,7 +661,7 @@ export default function WorkbenchPage() {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-y-auto">
         {/* Top Header */}
-        <header className="h-14 border-b border-slate-800 bg-slate-950/60 px-6 flex items-center justify-between">
+        <header className="h-14 border-b border-slate-800 bg-slate-950/60 px-6 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             {selectedVehicle ? (
               <div className="flex items-center gap-3">
@@ -657,32 +674,44 @@ export default function WorkbenchPage() {
                     {selectedVehicle.licensePlate}
                   </span>
                 )}
-                <div className="text-xs text-slate-400 flex items-center gap-1 border-r border-slate-800 pr-3 mr-3">
-                  <span>العداد الحالي:</span>
-                  <span className="font-bold text-amber-400">{selectedVehicle.currentOdometer.toLocaleString()} كم</span>
+                <div className={`text-xs text-slate-400 flex items-center gap-1 ${dir === 'rtl' ? 'border-r pr-3 mr-3' : 'border-l pl-3 ml-3'} border-slate-800`}>
+                  <span>{t('header_odometer')}</span>
+                  <span className="font-bold text-amber-400 font-mono">{selectedVehicle.currentOdometer.toLocaleString()} {t('unit_km')}</span>
                 </div>
               </div>
             ) : (
-              <span className="text-xs text-slate-400">يرجى إضافة أو اختيار سيارة للبدء</span>
+              <span className="text-xs text-slate-400">{t('app_select_prompt')}</span>
             )}
           </div>
 
-          {selectedVehicle && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={openAddFuelModal}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-3 py-1.5 rounded text-xs flex items-center gap-1.5 transition"
-              >
-                <Fuel className="w-3.5 h-3.5" /> تسجيل تفويلة
-              </button>
-              <button
-                onClick={openAddMaintenanceModal}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-3 py-1.5 rounded text-xs flex items-center gap-1.5 border border-slate-700 transition"
-              >
-                <Wrench className="w-3.5 h-3.5" /> تسجيل صيانة / زيت
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Language Switcher */}
+            <button
+              onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+              title="Change Language / تغيير اللغة"
+            >
+              <Globe className="w-3.5 h-3.5 text-amber-400" />
+              <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
+            </button>
+
+            {selectedVehicle && (
+              <>
+                <button
+                  onClick={openAddFuelModal}
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-3 py-1.5 rounded text-xs flex items-center gap-1.5 transition"
+                >
+                  <Fuel className="w-3.5 h-3.5" /> {t('btn_add_fuel')}
+                </button>
+                <button
+                  onClick={openAddMaintenanceModal}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-3 py-1.5 rounded text-xs flex items-center gap-1.5 border border-slate-700 transition"
+                >
+                  <Wrench className="w-3.5 h-3.5" /> {t('btn_add_maintenance')}
+                </button>
+              </>
+            )}
+          </div>
         </header>
 
         {/* Tab Body */}
@@ -690,15 +719,15 @@ export default function WorkbenchPage() {
           {!selectedVehicle && activeTab !== 'settings' ? (
             <div className="max-w-md mx-auto my-20 text-center bg-slate-950 p-8 rounded-xl border border-slate-800">
               <Car className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-              <h2 className="text-base font-semibold mb-2">مرحباً بك في برنامج متابعة السيارة</h2>
+              <h2 className="text-base font-semibold mb-2">{t('app_welcome_title')}</h2>
               <p className="text-xs text-slate-400 mb-6">
-                ابدأ بإضافة سيارتك لمتابعة استهلاك الوقود وجدول الصيانات والتنبيهات الدورية لقراءة العداد Odometer.
+                {t('app_welcome_desc')}
               </p>
               <button
                 onClick={() => setShowAddVehicleModal(true)}
                 className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded text-xs inline-flex items-center gap-2"
               >
-                <PlusCircle className="w-4 h-4" /> إضافة سيارتك الآن
+                <PlusCircle className="w-4 h-4" /> {t('app_add_first_car')}
               </button>
             </div>
           ) : (
@@ -709,27 +738,27 @@ export default function WorkbenchPage() {
                   {/* Key Metrics Cards */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="bg-slate-950 border border-slate-800 p-4 rounded-lg">
-                      <div className="text-xs text-slate-400 mb-1">العداد الحالي</div>
-                      <div className="text-xl font-bold text-amber-400">
-                        {selectedVehicle.currentOdometer.toLocaleString()} <span className="text-xs font-normal text-slate-400">كم</span>
+                      <div className="text-xs text-slate-400 mb-1">{t('ov_current_odometer')}</div>
+                      <div className="text-xl font-bold text-amber-400 font-mono">
+                        {selectedVehicle.currentOdometer.toLocaleString()} <span className="text-xs font-normal text-slate-400">{t('unit_km')}</span>
                       </div>
                     </div>
                     <div className="bg-slate-950 border border-slate-800 p-4 rounded-lg">
-                      <div className="text-xs text-slate-400 mb-1">متوسط استهلاك الوقود</div>
-                      <div className="text-xl font-bold text-emerald-400">
-                        {reportData?.summary?.averageLitersPer100Km ? `${reportData.summary.averageLitersPer100Km} لتر/100كم` : 'تحت الحساب'}
+                      <div className="text-xs text-slate-400 mb-1">{t('ov_avg_consumption')}</div>
+                      <div className="text-xl font-bold text-emerald-400 font-mono">
+                        {reportData?.summary?.averageLitersPer100Km ? `${reportData.summary.averageLitersPer100Km} ${t('unit_l_per_100km')}` : t('ov_calculating')}
                       </div>
                     </div>
                     <div className="bg-slate-950 border border-slate-800 p-4 rounded-lg">
-                      <div className="text-xs text-slate-400 mb-1">إجمالي مصاريف البنزين</div>
-                      <div className="text-xl font-bold text-slate-100">
-                        {reportData?.summary?.totalFuelCost?.toLocaleString() || 0} <span className="text-xs font-normal text-slate-400">جنيه</span>
+                      <div className="text-xs text-slate-400 mb-1">{t('ov_total_fuel_cost')}</div>
+                      <div className="text-xl font-bold text-slate-100 font-mono">
+                        {reportData?.summary?.totalFuelCost?.toLocaleString() || 0} <span className="text-xs font-normal text-slate-400">{t('unit_currency')}</span>
                       </div>
                     </div>
                     <div className="bg-slate-950 border border-slate-800 p-4 rounded-lg">
-                      <div className="text-xs text-slate-400 mb-1">إجمالي مصاريف الصيانة</div>
-                      <div className="text-xl font-bold text-slate-100">
-                        {reportData?.summary?.totalMaintenanceCost?.toLocaleString() || 0} <span className="text-xs font-normal text-slate-400">جنيه</span>
+                      <div className="text-xs text-slate-400 mb-1">{t('ov_total_maint_cost')}</div>
+                      <div className="text-xl font-bold text-slate-100 font-mono">
+                        {reportData?.summary?.totalMaintenanceCost?.toLocaleString() || 0} <span className="text-xs font-normal text-slate-400">{t('unit_currency')}</span>
                       </div>
                     </div>
                   </div>
@@ -739,10 +768,10 @@ export default function WorkbenchPage() {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-400" />
-                        <h3 className="font-semibold text-xs text-slate-200">حالة الصيانات الدورية القادمة</h3>
+                        <h3 className="font-semibold text-xs text-slate-200">{t('ov_upcoming_alerts')}</h3>
                       </div>
                       <button onClick={() => setActiveTab('alerts')} className="text-xs text-amber-400 hover:underline">
-                        عرض الكل
+                        {t('ov_view_all')}
                       </button>
                     </div>
 
@@ -759,8 +788,12 @@ export default function WorkbenchPage() {
                           }`}
                         >
                           <div>
-                            <div className="font-semibold">{s.schedule.titleAr}</div>
-                            <div className="text-[11px] opacity-80">{s.alertMessageAr}</div>
+                            <div className="font-semibold">{lang === 'en' ? (s.schedule.titleEn || s.schedule.titleAr) : s.schedule.titleAr}</div>
+                            <div className="text-[11px] opacity-80">
+                              {lang === 'en'
+                                ? (s.status === 'overdue' ? `Overdue by ${Math.abs(s.remainingKm || 0).toLocaleString()} km` : s.status === 'due_soon' ? `Due soon (${s.remainingKm?.toLocaleString()} km remaining)` : `Good condition (${s.remainingKm?.toLocaleString()} km remaining)`)
+                                : s.alertMessageAr}
+                            </div>
                           </div>
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -771,7 +804,7 @@ export default function WorkbenchPage() {
                                 : 'bg-slate-800 text-slate-300'
                             }`}
                           >
-                            {s.status === 'overdue' ? 'متأخر' : s.status === 'due_soon' ? 'قريب' : 'جيد'}
+                            {s.status === 'overdue' ? t('alerts_status_overdue') : s.status === 'due_soon' ? t('alerts_status_due_soon') : t('alerts_status_ok')}
                           </span>
                         </div>
                       ))}
@@ -784,29 +817,33 @@ export default function WorkbenchPage() {
                     <div className="bg-slate-950 border border-slate-800 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-xs text-slate-200 flex items-center gap-1.5">
-                          <Fuel className="w-3.5 h-3.5 text-amber-400" /> أحدث تفويلات البنزين
+                          <Fuel className="w-3.5 h-3.5 text-amber-400" /> {t('ov_recent_fuel')}
                         </h3>
                         <button onClick={() => setActiveTab('fuel')} className="text-xs text-amber-400 hover:underline">
-                          عرض السجل
+                          {t('ov_view_all')}
                         </button>
                       </div>
                       <div className="space-y-2">
-                        {fuelLogs.slice(0, 3).map((f, idx) => (
-                          <div key={idx} className="bg-slate-900 p-2.5 rounded text-xs flex justify-between items-center">
-                            <div>
-                              <div className="font-medium text-slate-200">{f.fillDate} — {f.odometer.toLocaleString()} كم</div>
-                              <div className="text-slate-400 text-[11px]">
-                                {f.liters} لتر ({f.pricePerLiter} ج/لتر)
-                                {f.litersPer100Km && (
-                                  <span className="text-emerald-400 mr-2">
-                                    • {f.litersPer100Km} لتر/100كم ({f.costPerKm} ج/كم)
-                                  </span>
-                                )}
+                        {fuelLogs.length === 0 ? (
+                          <div className="text-xs text-slate-500 text-center py-4">{t('ov_no_logs_yet')}</div>
+                        ) : (
+                          fuelLogs.slice(0, 3).map((f, idx) => (
+                            <div key={idx} className="bg-slate-900 p-2.5 rounded text-xs flex justify-between items-center">
+                              <div>
+                                <div className="font-medium text-slate-200 font-mono">{f.fillDate} — {f.odometer.toLocaleString()} {t('unit_km')}</div>
+                                <div className="text-slate-400 text-[11px]">
+                                  {f.liters} {t('unit_liter')} ({f.pricePerLiter} {t('unit_currency')}/{t('unit_liter')})
+                                  {f.litersPer100Km && (
+                                    <span className="text-emerald-400 mx-2 font-mono">
+                                      • {f.litersPer100Km} {t('unit_l_per_100km')} ({f.costPerKm} {t('unit_currency')}/{t('unit_km')})
+                                    </span>
+                                  )}
+                                </div>
                               </div>
+                              <div className="font-bold text-amber-400 font-mono">{f.totalCost} {t('unit_currency')}</div>
                             </div>
-                            <div className="font-bold text-amber-400">{f.totalCost} ج</div>
-                          </div>
-                        ))}
+                          ))
+                        )}
                       </div>
                     </div>
 
@@ -814,22 +851,26 @@ export default function WorkbenchPage() {
                     <div className="bg-slate-950 border border-slate-800 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-xs text-slate-200 flex items-center gap-1.5">
-                          <Wrench className="w-3.5 h-3.5 text-amber-400" /> أحدث الصيانات
+                          <Wrench className="w-3.5 h-3.5 text-amber-400" /> {t('ov_recent_maint')}
                         </h3>
                         <button onClick={() => setActiveTab('maintenance')} className="text-xs text-amber-400 hover:underline">
-                          عرض السجل
+                          {t('ov_view_all')}
                         </button>
                       </div>
                       <div className="space-y-2">
-                        {maintenanceLogs.slice(0, 3).map((m, idx) => (
-                          <div key={idx} className="bg-slate-900 p-2.5 rounded text-xs flex justify-between items-center">
-                            <div>
-                              <div className="font-medium text-slate-200">{m.title}</div>
-                              <div className="text-slate-400 text-[11px]">{m.serviceDate} — {m.odometer.toLocaleString()} كم</div>
+                        {maintenanceLogs.length === 0 ? (
+                          <div className="text-xs text-slate-500 text-center py-4">{t('ov_no_logs_yet')}</div>
+                        ) : (
+                          maintenanceLogs.slice(0, 3).map((m, idx) => (
+                            <div key={idx} className="bg-slate-900 p-2.5 rounded text-xs flex justify-between items-center">
+                              <div>
+                                <div className="font-medium text-slate-200">{m.title}</div>
+                                <div className="text-slate-400 text-[11px] font-mono">{m.serviceDate} — {m.odometer.toLocaleString()} {t('unit_km')}</div>
+                              </div>
+                              <div className="font-bold text-slate-200 font-mono">{m.totalCost} {t('unit_currency')}</div>
                             </div>
-                            <div className="font-bold text-slate-200">{m.totalCost} ج</div>
-                          </div>
-                        ))}
+                          ))
+                        )}
                       </div>
                     </div>
                   </div>
@@ -840,91 +881,94 @@ export default function WorkbenchPage() {
               {activeTab === 'fuel' && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <h2 className="text-sm font-semibold text-slate-200">سجل استهلاك وتفويلات البنزين</h2>
+                    <div>
+                      <h2 className="text-sm font-semibold text-slate-200">{t('fuel_title')}</h2>
+                      <p className="text-xs text-slate-400 mt-0.5">{t('fuel_desc')}</p>
+                    </div>
                     <button
                       onClick={openAddFuelModal}
-                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5"
+                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition shrink-0"
                     >
-                      <PlusCircle className="w-3.5 h-3.5" /> إضافة تفويلة جديدة
+                      <PlusCircle className="w-3.5 h-3.5" /> {t('fuel_btn_new')}
                     </button>
                   </div>
 
                   <div className="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
-                    <table className="w-full text-right text-xs">
+                    <table className="w-full text-start text-xs">
                       <thead className="bg-slate-900 border-b border-slate-800 text-slate-400">
                         <tr>
-                          <th className="p-3">التاريخ</th>
-                          <th className="p-3">العداد Odometer</th>
-                          <th className="p-3">المسافة المقطوعة</th>
-                          <th className="p-3">كمية الوقود</th>
-                          <th className="p-3">سعر اللتر</th>
-                          <th className="p-3">التكلفة الإجمالية</th>
-                          <th className="p-3">معدل الاستهلاك</th>
-                          <th className="p-3">تكلفة الكيلومتر</th>
-                          <th className="p-3">نوع التفويلة</th>
-                          <th className="p-3">ملاحظات</th>
-                          <th className="p-3 text-center">إجراءات</th>
+                          <th className="p-3 text-start">{t('fuel_th_date')}</th>
+                          <th className="p-3 text-start">{t('fuel_th_odometer')}</th>
+                          <th className="p-3 text-start">{t('fuel_th_liters')}</th>
+                          <th className="p-3 text-start">{t('fuel_th_price_per_l')}</th>
+                          <th className="p-3 text-start">{t('fuel_th_total_cost')}</th>
+                          <th className="p-3 text-start">{t('fuel_th_consumption')}</th>
+                          <th className="p-3 text-start">{t('fuel_th_cost_per_km')}</th>
+                          <th className="p-3 text-start">{t('fuel_th_type')}</th>
+                          <th className="p-3 text-start">{t('fuel_th_notes')}</th>
+                          <th className="p-3 text-center">{t('fuel_th_actions')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800 text-slate-300">
-                        {fuelLogs.map((log, idx) => (
-                          <tr key={idx} className="hover:bg-slate-900/50">
-                            <td className="p-3">{log.fillDate}</td>
-                            <td className="p-3 font-semibold text-amber-400">{log.odometer.toLocaleString()} كم</td>
-                            <td className="p-3 text-slate-300">
-                              {log.distanceTraveledKm ? (
-                                <span className="font-mono">+{log.distanceTraveledKm.toLocaleString()} كم</span>
-                              ) : (
-                                <span className="text-slate-500">—</span>
-                              )}
-                            </td>
-                            <td className="p-3">{log.liters} لتر</td>
-                            <td className="p-3">{log.pricePerLiter} ج</td>
-                            <td className="p-3 font-bold">{log.totalCost} ج</td>
-                            <td className="p-3">
-                              {log.litersPer100Km ? (
-                                <span className="bg-emerald-950/70 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded font-mono font-bold">
-                                  {log.litersPer100Km} L/100km
-                                </span>
-                              ) : (
-                                <span className="text-slate-500 text-[11px]">— (أول تفويلة)</span>
-                              )}
-                            </td>
-                            <td className="p-3">
-                              {log.costPerKm ? (
-                                <span className="bg-amber-950/60 text-amber-300 border border-amber-800/50 px-2 py-0.5 rounded font-mono font-bold">
-                                  {log.costPerKm} ج/كم
-                                </span>
-                              ) : (
-                                <span className="text-slate-500">—</span>
-                              )}
-                            </td>
-                            <td className="p-3">
-                              <span className={`px-2 py-0.5 rounded text-[10px] ${log.isFullTank ? 'bg-emerald-950 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
-                                {log.isFullTank ? 'تفويلة كاملة' : 'جزئية'}
-                              </span>
-                            </td>
-                            <td className="p-3 text-slate-400">{log.notes || '—'}</td>
-                            <td className="p-3 text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => openEditFuelModal(log)}
-                                  className="text-amber-400 hover:text-amber-300 p-1 rounded hover:bg-slate-800 transition"
-                                  title="تعديل التفويلة"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteFuel(log.id)}
-                                  className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-slate-800 transition"
-                                  title="حذف التفويلة"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                        {fuelLogs.length === 0 ? (
+                          <tr>
+                            <td colSpan={10} className="p-6 text-center text-xs text-slate-500">
+                              {t('fuel_empty_state')}
                             </td>
                           </tr>
-                        ))}
+                        ) : (
+                          fuelLogs.map((log, idx) => (
+                            <tr key={idx} className="hover:bg-slate-900/50">
+                              <td className="p-3 font-mono">{log.fillDate}</td>
+                              <td className="p-3 font-semibold text-amber-400 font-mono">{log.odometer.toLocaleString()} {t('unit_km')}</td>
+                              <td className="p-3 font-mono">{log.liters} {t('unit_liter')}</td>
+                              <td className="p-3 font-mono">{log.pricePerLiter} {t('unit_currency')}</td>
+                              <td className="p-3 font-bold font-mono">{log.totalCost} {t('unit_currency')}</td>
+                              <td className="p-3">
+                                {log.litersPer100Km ? (
+                                  <span className="bg-emerald-950/70 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded font-mono font-bold">
+                                    {log.litersPer100Km} {t('unit_l_per_100km')}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500 text-[11px]">—</span>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                {log.costPerKm ? (
+                                  <span className="bg-amber-950/60 text-amber-300 border border-amber-800/50 px-2 py-0.5 rounded font-mono font-bold">
+                                    {log.costPerKm} {t('unit_currency')}/{t('unit_km')}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500">—</span>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] ${log.isFullTank ? 'bg-emerald-950 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                                  {log.isFullTank ? t('fuel_full_badge') : t('fuel_partial_badge')}
+                                </span>
+                              </td>
+                              <td className="p-3 text-slate-400">{log.notes || '—'}</td>
+                              <td className="p-3 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => openEditFuelModal(log)}
+                                    className="text-amber-400 hover:text-amber-300 p-1 rounded hover:bg-slate-800 transition"
+                                    title={t('btn_edit')}
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteFuel(log.id)}
+                                    className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-slate-800 transition"
+                                    title={t('btn_delete')}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -935,80 +979,81 @@ export default function WorkbenchPage() {
               {activeTab === 'maintenance' && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <h2 className="text-sm font-semibold text-slate-200">سجل الصيانات الدورية وقطع الغيار</h2>
+                    <div>
+                      <h2 className="text-sm font-semibold text-slate-200">{t('maint_title')}</h2>
+                      <p className="text-xs text-slate-400 mt-0.5">{t('maint_desc')}</p>
+                    </div>
                     <button
                       onClick={openAddMaintenanceModal}
-                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5"
+                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition shrink-0"
                     >
-                      <PlusCircle className="w-3.5 h-3.5" /> إضافة صيانة جديدة
+                      <PlusCircle className="w-3.5 h-3.5" /> {t('maint_btn_new')}
                     </button>
                   </div>
 
                   <div className="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
-                    <table className="w-full text-right text-xs">
+                    <table className="w-full text-start text-xs">
                       <thead className="bg-slate-900 border-b border-slate-800 text-slate-400">
                         <tr>
-                          <th className="p-3">التاريخ</th>
-                          <th className="p-3">العداد</th>
-                          <th className="p-3">بيان الصيانة</th>
-                          <th className="p-3">نوع الصيانة</th>
-                          <th className="p-3">قطع الغيار</th>
-                          <th className="p-3">المصنعية</th>
-                          <th className="p-3">الإجمالي</th>
-                          <th className="p-3">الورشة / المركز</th>
-                          <th className="p-3">الصيانة القادمة</th>
-                          <th className="p-3 text-center">إجراءات</th>
+                          <th className="p-3 text-start">{t('maint_th_date')}</th>
+                          <th className="p-3 text-start">{t('maint_th_odometer')}</th>
+                          <th className="p-3 text-start">{t('maint_th_service')}</th>
+                          <th className="p-3 text-start">{t('maint_th_costs')}</th>
+                          <th className="p-3 text-start">{t('maint_th_total')}</th>
+                          <th className="p-3 text-start">{t('maint_th_workshop')}</th>
+                          <th className="p-3 text-center">{t('maint_th_actions')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800 text-slate-300">
-                        {maintenanceLogs.map((log, idx) => (
-                          <tr key={idx} className="hover:bg-slate-900/50">
-                            <td className="p-3">{log.serviceDate}</td>
-                            <td className="p-3 font-semibold text-amber-400">{log.odometer.toLocaleString()} كم</td>
-                            <td className="p-3 font-medium text-slate-100">
-                              <div>{log.title}</div>
-                              {log.partsList && log.partsList.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {log.partsList.map((p: any, pIdx: number) => (
-                                    <span key={pIdx} className="text-[10px] bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 text-slate-300">
-                                      {p.name} ({p.condition === 'new' ? 'جديد' : 'استيراد'} - {p.cost} ج)
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </td>
-                            <td className="p-3">
-                              <span className="bg-slate-800 px-2 py-0.5 rounded text-[10px]">
-                                {log.serviceType}
-                              </span>
-                            </td>
-                            <td className="p-3">{log.partsCost} ج</td>
-                            <td className="p-3">{log.laborCost} ج</td>
-                            <td className="p-3 font-bold text-amber-400">{log.totalCost} ج</td>
-                            <td className="p-3 text-slate-400">{log.workshop || '—'}</td>
-                            <td className="p-3 text-slate-400">
-                              {log.nextDueOdometer ? `${log.nextDueOdometer.toLocaleString()} كم` : '—'}
-                            </td>
-                            <td className="p-3 text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => openEditMaintenanceModal(log)}
-                                  className="text-amber-400 hover:text-amber-300 p-1 rounded hover:bg-slate-800 transition"
-                                  title="تعديل الصيانة"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteMaintenance(log.id)}
-                                  className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-slate-800 transition"
-                                  title="حذف الصيانة"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                        {maintenanceLogs.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="p-6 text-center text-xs text-slate-500">
+                              {t('maint_empty_state')}
                             </td>
                           </tr>
-                        ))}
+                        ) : (
+                          maintenanceLogs.map((log, idx) => (
+                            <tr key={idx} className="hover:bg-slate-900/50">
+                              <td className="p-3 font-mono">{log.serviceDate}</td>
+                              <td className="p-3 font-semibold text-amber-400 font-mono">{log.odometer.toLocaleString()} {t('unit_km')}</td>
+                              <td className="p-3 font-medium text-slate-100">
+                                <div>{log.title}</div>
+                                {log.partsList && log.partsList.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {log.partsList.map((p: any, pIdx: number) => (
+                                      <span key={pIdx} className="text-[10px] bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 text-slate-300">
+                                        {p.name} ({p.condition === 'new' ? t('maint_cond_new') : t('maint_cond_used')} - {p.cost} {t('unit_currency')})
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-3 text-slate-400 font-mono">
+                                {log.partsCost} {t('unit_currency')} ({t('maint_parts_count')}) + {log.laborCost} {t('unit_currency')} ({t('maint_labor')})
+                              </td>
+                              <td className="p-3 font-bold text-amber-400 font-mono">{log.totalCost} {t('unit_currency')}</td>
+                              <td className="p-3 text-slate-400">{log.workshop || '—'}</td>
+                              <td className="p-3 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => openEditMaintenanceModal(log)}
+                                    className="text-amber-400 hover:text-amber-300 p-1 rounded hover:bg-slate-800 transition"
+                                    title={t('btn_edit')}
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteMaintenance(log.id)}
+                                    className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-slate-800 transition"
+                                    title={t('btn_delete')}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1018,7 +1063,10 @@ export default function WorkbenchPage() {
               {/* Maintenance Schedule & Alerts Tab */}
               {activeTab === 'alerts' && (
                 <div className="space-y-4">
-                  <h2 className="text-sm font-semibold text-slate-200">جدول الصيانات المبرمجة وتنبيهات العداد</h2>
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-200">{t('alerts_title')}</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">{t('alerts_desc')}</p>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {schedules.map((item, idx) => (
                       <div
@@ -1033,7 +1081,9 @@ export default function WorkbenchPage() {
                       >
                         <div>
                           <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-bold text-sm text-slate-100">{item.schedule.titleAr}</h3>
+                            <h3 className="font-bold text-sm text-slate-100">
+                              {lang === 'en' ? (item.schedule.titleEn || item.schedule.titleAr) : item.schedule.titleAr}
+                            </h3>
                             <span
                               className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                 item.status === 'overdue'
@@ -1043,18 +1093,26 @@ export default function WorkbenchPage() {
                                   : 'bg-slate-800 text-slate-300'
                               }`}
                             >
-                              {item.status === 'overdue' ? 'تجاوزت الموعد' : item.status === 'due_soon' ? 'اقترب الموعد' : 'حالة ممتازة'}
+                              {item.status === 'overdue' ? t('alerts_status_overdue') : item.status === 'due_soon' ? t('alerts_status_due_soon') : t('alerts_status_ok')}
                             </span>
                           </div>
-                          <div className="text-[11px] text-slate-400 mb-2">{item.schedule.titleEn}</div>
+                          <div className="text-[11px] text-slate-400 mb-2">
+                            {lang === 'en' ? item.schedule.titleAr : item.schedule.titleEn}
+                          </div>
                           <div className="space-y-1 mb-3 text-xs">
-                            <div>الفاصل الدوري: <span className="font-semibold text-slate-200">{item.schedule.intervalKm.toLocaleString()} كم</span></div>
-                            <div>آخر إجراء تم عند عداد: <span className="font-semibold text-slate-200">{item.schedule.lastDoneOdometer?.toLocaleString() || 0} كم</span></div>
+                            <div>{t('alerts_interval')} <span className="font-semibold text-slate-200 font-mono">{item.schedule.intervalKm.toLocaleString()} {t('unit_km')}</span></div>
+                            <div>{t('alerts_last_done')} <span className="font-semibold text-slate-200 font-mono">{item.schedule.lastDoneOdometer?.toLocaleString() || 0} {t('unit_km')}</span></div>
                           </div>
                         </div>
 
                         <div className="pt-2 border-t border-slate-800/80 font-medium">
-                          {item.alertMessageAr}
+                          {lang === 'en'
+                            ? (item.status === 'overdue'
+                                ? `Overdue by ${Math.abs(item.remainingKm || 0).toLocaleString()} km!`
+                                : item.status === 'due_soon'
+                                ? `Due soon (${item.remainingKm?.toLocaleString()} km remaining)`
+                                : `Good condition (${item.remainingKm?.toLocaleString()} km remaining)`)
+                            : item.alertMessageAr}
                         </div>
                       </div>
                     ))}
@@ -1068,10 +1126,10 @@ export default function WorkbenchPage() {
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                       <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                        <BookOpen className="w-4 h-4 text-amber-500" /> كتالوج ومواصفات المصنع الأصلية (OEM Specs)
+                        <BookOpen className="w-4 h-4 text-amber-500" /> {t('manual_title')}
                       </h2>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        المواصفات الفنية المعتمدة للزيوت، السوائل، ضغوط الإطارات، ونوع الوقود حسب توصية الصانع لـ {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year})
+                        {t('manual_desc')} {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year})
                       </p>
                     </div>
 
@@ -1083,12 +1141,12 @@ export default function WorkbenchPage() {
                     >
                       {manualLoading ? (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> جاري جلب المواصفات...
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('manual_loading')}
                         </>
                       ) : (
                         <>
                           <Sparkles className="w-3.5 h-3.5" />
-                          {selectedVehicle.specs ? 'تحديث المواصفات بالذكاء الاصطناعي' : 'استخراج كتالوج السيارة بالذكاء الاصطناعي'}
+                          {selectedVehicle.specs ? t('manual_btn_refresh') : t('manual_btn_fetch')}
                         </>
                       )}
                     </button>
@@ -1105,10 +1163,10 @@ export default function WorkbenchPage() {
                     <div className="bg-slate-950 border border-slate-800 p-8 rounded-xl text-center space-y-3">
                       <Loader2 className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
                       <div className="text-xs font-semibold text-slate-200">
-                        جاري فحص واستخراج كتالوج المصنع المعتمد لـ {selectedVehicle.make} {selectedVehicle.model} {selectedVehicle.year}...
+                        {t('manual_loading')}
                       </div>
                       <p className="text-[11px] text-slate-400 max-w-md mx-auto">
-                        يقوم الذكاء الاصطناعي بمراجعة مواصفات لزوجة زيت المحرك، سعة التانك، نوع زيت الفتيس، سائل التبريد، وضغوط الإطارات لحفظها محلياً في قاعدة البيانات.
+                        {t('manual_loading_sub')}
                       </p>
                     </div>
                   )}
@@ -1119,16 +1177,16 @@ export default function WorkbenchPage() {
                         {/* Engine Oil Specs */}
                         <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
                           <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
-                            <Wrench className="w-4 h-4" /> زيت المحرك والسعة
+                            <Wrench className="w-4 h-4" /> {t('manual_card_engine_oil')}
                           </div>
                           <div className="space-y-2 text-xs">
                             <div>
-                              <span className="text-slate-400 block text-[11px]">اللزوجة والمواصفة المعتمدة:</span>
-                              <span className="font-bold text-slate-100">{selectedVehicle.specs.engineOilViscosity || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_oil_viscosity')}</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.engineOilViscosity || t('manual_not_specified')}</span>
                             </div>
                             <div>
-                              <span className="text-slate-400 block text-[11px]">سعة الزيت (مع تغيير الفلتر):</span>
-                              <span className="font-bold text-slate-100">{selectedVehicle.specs.engineOilCapacityLiters || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_oil_capacity')}</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.engineOilCapacityLiters || t('manual_not_specified')}</span>
                             </div>
                           </div>
                         </div>
@@ -1136,20 +1194,20 @@ export default function WorkbenchPage() {
                         {/* Transmission & Coolant */}
                         <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
                           <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
-                            <Gauge className="w-4 h-4" /> سوائل الحركة والتبريد
+                            <Gauge className="w-4 h-4" /> {t('manual_card_fluids')}
                           </div>
                           <div className="space-y-2 text-xs">
                             <div>
-                              <span className="text-slate-400 block text-[11px]">زيت ناقل الحركة (الفتيس/الجير):</span>
-                              <span className="font-bold text-slate-100">{selectedVehicle.specs.transmissionFluidType || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_trans_fluid')}</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.transmissionFluidType || t('manual_not_specified')}</span>
                             </div>
                             <div>
-                              <span className="text-slate-400 block text-[11px]">سائل التبريد (مياه الردياتير):</span>
-                              <span className="font-bold text-slate-100">{selectedVehicle.specs.coolantType || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_coolant')}</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.coolantType || t('manual_not_specified')}</span>
                             </div>
                             <div>
-                              <span className="text-slate-400 block text-[11px]">سائل الفرامل (Brake Fluid):</span>
-                              <span className="font-bold text-slate-100">{selectedVehicle.specs.brakeFluidType || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_brake_fluid')}</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.brakeFluidType || t('manual_not_specified')}</span>
                             </div>
                           </div>
                         </div>
@@ -1157,16 +1215,16 @@ export default function WorkbenchPage() {
                         {/* Tire Pressure */}
                         <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
                           <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
-                            <Gauge className="w-4 h-4" /> ضغط هواء الإطارات (بارد)
+                            <Gauge className="w-4 h-4" /> {t('manual_card_tire_pressure')}
                           </div>
                           <div className="space-y-2 text-xs">
                             <div>
-                              <span className="text-slate-400 block text-[11px]">ضغط العجلات الأمامية:</span>
-                              <span className="font-bold text-emerald-400 font-mono">{selectedVehicle.specs.tirePressurePsiFront || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_tire_front')}</span>
+                              <span className="font-bold text-emerald-400 font-mono">{selectedVehicle.specs.tirePressurePsiFront || t('manual_not_specified')}</span>
                             </div>
                             <div>
-                              <span className="text-slate-400 block text-[11px]">ضغط العجلات الخلفية:</span>
-                              <span className="font-bold text-emerald-400 font-mono">{selectedVehicle.specs.tirePressurePsiRear || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_tire_rear')}</span>
+                              <span className="font-bold text-emerald-400 font-mono">{selectedVehicle.specs.tirePressurePsiRear || t('manual_not_specified')}</span>
                             </div>
                           </div>
                         </div>
@@ -1174,20 +1232,20 @@ export default function WorkbenchPage() {
                         {/* Fuel System */}
                         <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
                           <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
-                            <Fuel className="w-4 h-4" /> منظومة الوقود والاشتعال
+                            <Fuel className="w-4 h-4" /> {t('manual_card_fuel_ignition')}
                           </div>
                           <div className="space-y-2 text-xs">
                             <div>
-                              <span className="text-slate-400 block text-[11px]">سعة خزان الوقود (التانك):</span>
-                              <span className="font-bold text-slate-100">{selectedVehicle.specs.fuelTankCapacityLiters || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_tank_capacity')}</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.fuelTankCapacityLiters || t('manual_not_specified')}</span>
                             </div>
                             <div>
-                              <span className="text-slate-400 block text-[11px]">نوع وأوكتان البنزين الموصى به:</span>
-                              <span className="font-bold text-amber-300">{selectedVehicle.specs.recommendedFuelOctane || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_octane')}</span>
+                              <span className="font-bold text-amber-300">{selectedVehicle.specs.recommendedFuelOctane || t('manual_not_specified')}</span>
                             </div>
                             <div>
-                              <span className="text-slate-400 block text-[11px]">شمعات الاشتعال (البوجيهات):</span>
-                              <span className="font-bold text-slate-100">{selectedVehicle.specs.sparkPlugType || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_spark_plugs')}</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.sparkPlugType || t('manual_not_specified')}</span>
                             </div>
                           </div>
                         </div>
@@ -1195,12 +1253,12 @@ export default function WorkbenchPage() {
                         {/* Battery & Electrical */}
                         <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
                           <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-amber-400 font-semibold text-xs">
-                            <ShieldCheck className="w-4 h-4" /> البطارية والنظام الكهربائي
+                            <ShieldCheck className="w-4 h-4" /> {t('manual_card_battery')}
                           </div>
                           <div className="space-y-2 text-xs">
                             <div>
-                              <span className="text-slate-400 block text-[11px]">مواصفة البطارية المعتمدة:</span>
-                              <span className="font-bold text-slate-100">{selectedVehicle.specs.batterySpec || 'غير محدد'}</span>
+                              <span className="text-slate-400 block text-[11px]">{t('manual_field_battery')}</span>
+                              <span className="font-bold text-slate-100">{selectedVehicle.specs.batterySpec || t('manual_not_specified')}</span>
                             </div>
                           </div>
                         </div>
@@ -1210,7 +1268,7 @@ export default function WorkbenchPage() {
                       {selectedVehicle.specs.generalNotesAr && (
                         <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-2">
                           <div className="text-amber-400 font-semibold text-xs flex items-center gap-1.5">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> إرشادات وتوصيات الشركة الصانعة
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> {t('manual_card_oem_tips')}
                           </div>
                           <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
                             {selectedVehicle.specs.generalNotesAr}
@@ -1224,9 +1282,9 @@ export default function WorkbenchPage() {
                     <div className="max-w-md mx-auto my-12 text-center bg-slate-950 p-8 rounded-xl border border-slate-800 space-y-4">
                       <BookOpen className="w-12 h-12 text-amber-500 mx-auto" />
                       <div>
-                        <h3 className="text-sm font-bold text-slate-100">لم يتم استخراج كتالوج ومواصفات السيارة بعد</h3>
+                        <h3 className="text-sm font-bold text-slate-100">{t('manual_empty_title')}</h3>
                         <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                          استخدم الذكاء الاصطناعي لجلب لزوجة زيت المحرك، سعة التانك، نوع زيت الفتيس، مياه الردياتير، وضغط الإطارات المناسب لسيارتك {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year}) وحفظها محلياً للمراجعة في أي وقت بدون إنترنت.
+                          {t('manual_empty_desc')}
                         </p>
                       </div>
                       <button
@@ -1234,7 +1292,7 @@ export default function WorkbenchPage() {
                         onClick={handleFetchManual}
                         className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded text-xs inline-flex items-center gap-2 transition"
                       >
-                        <Sparkles className="w-4 h-4" /> جلب كتالوج ومواصفات المصنع الآن
+                        <Sparkles className="w-4 h-4" /> {t('manual_empty_btn')}
                       </button>
                     </div>
                   )}
@@ -1247,14 +1305,14 @@ export default function WorkbenchPage() {
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div>
                       <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                        <HelpCircle className="w-4 h-4 text-amber-500" /> استشارة مهندس الصيانة المساعد (AI Car Doctor)
+                        <HelpCircle className="w-4 h-4 text-amber-500" /> {t('doc_title')}
                       </h2>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        استشر مهندس الصيانة حول أي عطل، أصوات غريبة، رموز أعطال OBD-II، أو مواعيد الصيانة الوقائية بناءً على تاريخ سيارتك
+                        {t('doc_desc')}
                       </p>
                     </div>
                     <div className="text-xs bg-slate-950 border border-slate-800 px-3 py-1.5 rounded text-slate-300 font-mono">
-                      {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year}) • العداد: <span className="text-amber-400 font-bold">{selectedVehicle.currentOdometer.toLocaleString()} كم</span>
+                      {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year}) • {t('header_odometer')} <span className="text-amber-400 font-bold">{selectedVehicle.currentOdometer.toLocaleString()} {t('unit_km')}</span>
                     </div>
                   </div>
 
@@ -1263,26 +1321,26 @@ export default function WorkbenchPage() {
                     <form onSubmit={handleAskDoctor} className="space-y-3">
                       <div>
                         <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                          اكتب سؤالك أو صف المشكلة والأعراض أو كود العطل:
+                          {t('doc_input_label')}
                         </label>
                         <textarea
                           required
                           rows={3}
                           value={doctorQuery}
                           onChange={e => setDoctorQuery(e.target.value)}
-                          placeholder="مثال: أسمع صوت طقطقة مع الملفات لليمين على سرعة بطيئة، أو ما سبب إضاءة لمبة المحرك مع كود P0420؟ أو متى يجب تغيير سير الكاتينة لسيارتي؟"
+                          placeholder={t('doc_input_placeholder')}
                           className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 outline-none focus:border-amber-500 leading-relaxed resize-none"
                         />
                       </div>
 
                       {/* Quick Suggestions */}
                       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
-                        <span className="font-medium text-slate-400">أسئلة سريعة:</span>
+                        <span className="font-medium text-slate-400">{t('doc_quick_title')}</span>
                         {[
-                          'صوت طقطقة خفيف مع الملفات',
-                          'اهتزاز أو رجة في الدركسيون مع الفرامل',
-                          'ضعف عزم السيارة وتأخر التسارع',
-                          'أفضل لزوجة زيت محرك في الصيف والحرارة العالية',
+                          t('doc_quick_1'),
+                          t('doc_quick_2'),
+                          t('doc_quick_3'),
+                          t('doc_quick_4'),
                         ].map((suggestion, idx) => (
                           <button
                             key={idx}
@@ -1303,11 +1361,11 @@ export default function WorkbenchPage() {
                         >
                           {doctorLoading ? (
                             <>
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جاري تحليل الأعراض والصيانات...
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('doc_btn_loading')}
                             </>
                           ) : (
                             <>
-                              <Send className="w-3.5 h-3.5" /> إرسال الاستشارة
+                              <Send className="w-3.5 h-3.5" /> {t('doc_btn_submit')}
                             </>
                           )}
                         </button>
@@ -1320,9 +1378,9 @@ export default function WorkbenchPage() {
                     {doctorHistory.length === 0 ? (
                       <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-6 text-center space-y-2">
                         <ShieldCheck className="w-10 h-10 text-slate-600 mx-auto" />
-                        <h4 className="text-xs font-semibold text-slate-300">كيف يساعدك مهندس الصيانة المساعد؟</h4>
+                        <h4 className="text-xs font-semibold text-slate-300">{t('doc_welcome_title')}</h4>
                         <p className="text-[11px] text-slate-400 max-w-lg mx-auto leading-relaxed">
-                          يقوم الذكاء الاصطناعي بربط استفسارك بقراءة عداد السيارة الحالية ({selectedVehicle.currentOdometer.toLocaleString()} كم)، وتاريخ الصيانات المسجلة، والمواصفات المصنعية ونقاط الضعف الشائعة لموديل سيارتك لتقديم تشخيص دقيق ومباشر.
+                          {t('doc_welcome_desc')}
                         </p>
                       </div>
                     ) : (
@@ -1330,14 +1388,14 @@ export default function WorkbenchPage() {
                         <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-3">
                           {/* User Query */}
                           <div className="flex items-start gap-2.5 bg-slate-900/70 p-3 rounded-lg border border-slate-800/70">
-                            <span className="text-amber-400 font-bold text-xs shrink-0">سؤالك:</span>
+                            <span className="text-amber-400 font-bold text-xs shrink-0">{t('doc_your_query')}</span>
                             <span className="text-xs text-slate-200 leading-relaxed">{item.query}</span>
                           </div>
 
                           {/* Doctor Advice */}
                           <div className="space-y-2 pr-1">
                             <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
-                              <Wrench className="w-3.5 h-3.5" /> تشخيص وتوصية مهندس الصيانة:
+                              <Wrench className="w-3.5 h-3.5" /> {t('doc_advice_title')}
                             </div>
                             <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/40 p-4 rounded-lg border border-slate-800/50">
                               {item.advice}
@@ -1355,14 +1413,14 @@ export default function WorkbenchPage() {
                 <div className="space-y-6">
                   <div className="flex justify-between items-center print:hidden">
                     <div>
-                      <h2 className="text-sm font-semibold text-slate-200">تقرير الفحص وتاريخ صيانة السيارة (مخصص للمشتري والمالك)</h2>
-                      <p className="text-xs text-slate-400">سجل شفاف معتمد لقراءة العداد وتاريخ الصيانات وقطع الغيار</p>
+                      <h2 className="text-sm font-semibold text-slate-200">{t('rep_title')}</h2>
+                      <p className="text-xs text-slate-400 mt-0.5">{t('rep_desc')}</p>
                     </div>
                     <button
                       onClick={() => window.print()}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-100 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 border border-slate-700"
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-100 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition"
                     >
-                      <Printer className="w-3.5 h-3.5" /> طباعة / تصدير PDF
+                      <Printer className="w-3.5 h-3.5" /> {t('rep_btn_print')}
                     </button>
                   </div>
 
@@ -1370,54 +1428,54 @@ export default function WorkbenchPage() {
                     {/* Report Header */}
                     <div className="border-b border-slate-800 pb-4 flex justify-between items-center">
                       <div>
-                        <h1 className="text-lg font-bold text-amber-500">تقرير الفحص والصيانة الدوري للسيارة</h1>
-                        <p className="text-xs text-slate-400">تاريخ التقرير: {new Date().toLocaleDateString('ar-EG')}</p>
+                        <h1 className="text-lg font-bold text-amber-500">{t('rep_heading')}</h1>
+                        <p className="text-xs text-slate-400">{t('rep_date')} {new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}</p>
                       </div>
-                      <div className="text-left">
+                      <div className={dir === 'rtl' ? 'text-left' : 'text-right'}>
                         <div className="text-sm font-bold">{selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year})</div>
-                        <div className="text-xs text-amber-400 font-mono">لوحة: {selectedVehicle.licensePlate || 'بدون لوحة'}</div>
+                        <div className="text-xs text-amber-400 font-mono">{t('header_plate')} {selectedVehicle.licensePlate || t('header_no_plate')}</div>
                       </div>
                     </div>
 
                     {/* Report Summary Cards */}
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div className="bg-slate-900 p-3 rounded border border-slate-800">
-                        <div className="text-xs text-slate-400">قراءة العداد المثبتة</div>
-                        <div className="text-base font-bold text-amber-400">{selectedVehicle.currentOdometer.toLocaleString()} كم</div>
+                        <div className="text-xs text-slate-400">{t('rep_summary_odometer')}</div>
+                        <div className="text-base font-bold text-amber-400 font-mono">{selectedVehicle.currentOdometer.toLocaleString()} {t('unit_km')}</div>
                       </div>
                       <div className="bg-slate-900 p-3 rounded border border-slate-800">
-                        <div className="text-xs text-slate-400">نوع الزيت الموصى به</div>
-                        <div className="text-base font-bold text-slate-200">{selectedVehicle.recommendedOil || 'غير محدد'}</div>
+                        <div className="text-xs text-slate-400">{t('rep_summary_oil')}</div>
+                        <div className="text-base font-bold text-slate-200">{selectedVehicle.recommendedOil || t('manual_not_specified')}</div>
                       </div>
                       <div className="bg-slate-900 p-3 rounded border border-slate-800">
-                        <div className="text-xs text-slate-400">إجمالي عمليات الصيانة المثبتة</div>
-                        <div className="text-base font-bold text-emerald-400">{maintenanceLogs.length} عملية</div>
+                        <div className="text-xs text-slate-400">{t('rep_summary_total_maint')}</div>
+                        <div className="text-base font-bold text-emerald-400 font-mono">{maintenanceLogs.length}</div>
                       </div>
                     </div>
 
                     {/* Maintenance Log Table in Report */}
                     <div>
-                      <h3 className="text-xs font-semibold mb-2 text-slate-300">سجل الصيانة وتغيير الزيوت الموثق:</h3>
+                      <h3 className="text-xs font-semibold mb-2 text-slate-300">{t('rep_table_title')}</h3>
                       <div className="border border-slate-800 rounded overflow-hidden">
-                        <table className="w-full text-right text-xs">
+                        <table className="w-full text-start text-xs">
                           <thead className="bg-slate-900 border-b border-slate-800 text-slate-400">
                             <tr>
-                              <th className="p-2">التاريخ</th>
-                              <th className="p-2">العداد</th>
-                              <th className="p-2">الخدمة المنفذة</th>
-                              <th className="p-2">الورشة / المركز</th>
-                              <th className="p-2">التكلفة</th>
-                              <th className="p-2">ملاحظات</th>
+                              <th className="p-2 text-start">{t('rep_th_date')}</th>
+                              <th className="p-2 text-start">{t('rep_th_odometer')}</th>
+                              <th className="p-2 text-start">{t('rep_th_service')}</th>
+                              <th className="p-2 text-start">{t('rep_th_workshop')}</th>
+                              <th className="p-2 text-start">{t('rep_th_cost')}</th>
+                              <th className="p-2 text-start">{t('rep_th_notes')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800">
                             {maintenanceLogs.map((m, idx) => (
                               <tr key={idx}>
-                                <td className="p-2">{m.serviceDate}</td>
-                                <td className="p-2 font-mono">{m.odometer.toLocaleString()} كم</td>
+                                <td className="p-2 font-mono">{m.serviceDate}</td>
+                                <td className="p-2 font-mono">{m.odometer.toLocaleString()} {t('unit_km')}</td>
                                 <td className="p-2 font-medium">{m.title}</td>
                                 <td className="p-2">{m.workshop || '—'}</td>
-                                <td className="p-2">{m.totalCost} ج</td>
+                                <td className="p-2 font-mono">{m.totalCost} {t('unit_currency')}</td>
                                 <td className="p-2 text-slate-400">{m.notes || '—'}</td>
                               </tr>
                             ))}
@@ -1434,14 +1492,46 @@ export default function WorkbenchPage() {
           {/* Settings Tab */}
           {activeTab === 'settings' && (
             <div className="max-w-2xl mx-auto space-y-6">
+              {/* Language Selection Card */}
+              <div className="bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                  <Globe className="w-5 h-5 text-amber-500" />
+                  <h2 className="text-sm font-bold text-slate-100">
+                    {lang === 'ar' ? 'لغة التطبيق (App Language)' : 'App Language'}
+                  </h2>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {lang === 'ar'
+                    ? 'يدعم CarBook نظام اللغات المتعددة عبر ملفات .cfg البسيطة. يمكنك التبديل بين اللغات أو إضافة لغة جديدة بسهولة.'
+                    : 'CarBook supports multiple languages configured via simple .cfg files. Switch your language or easily drop new language files.'}
+                </p>
+                <div className="grid grid-cols-2 gap-3 max-w-sm">
+                  {languages.map(l => (
+                    <button
+                      key={l.code}
+                      type="button"
+                      onClick={() => setLang(l.code)}
+                      className={`p-3 rounded-lg border text-xs font-bold flex items-center justify-between transition ${
+                        lang === l.code
+                          ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <span>{l.name}</span>
+                      {lang === l.code && <Check className="w-4 h-4 text-amber-400" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Fuel Types & Pricing Settings */}
               <div className="bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-4">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
                   <Fuel className="w-5 h-5 text-amber-500" />
-                  <h2 className="text-sm font-bold text-slate-100">أنواع وأسعار الوقود / البنزين</h2>
+                  <h2 className="text-sm font-bold text-slate-100">{t('set_fuel_pricing_title')}</h2>
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  قم بضبط أسعار أنواع الوقود الحالية ليتم استخدامها واقتراحها تلقائياً عند تسجيل التفويلات الجديدة. يمكنك تعديل سعر اللتر لكل نوع أو إضافة وحذف الأنواع.
+                  {t('set_fuel_pricing_desc')}
                 </p>
 
                 <div className="space-y-3">
@@ -1449,7 +1539,7 @@ export default function WorkbenchPage() {
                     <div key={ft.id || idx} className="flex items-center gap-3 bg-slate-900/60 p-2.5 rounded border border-slate-800">
                       <input
                         type="text"
-                        placeholder="اسم الوقود (مثال: بنزين 95)"
+                        placeholder="Gasoline 95 / بنزين 95"
                         className="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-amber-500"
                         value={ft.name}
                         onChange={e => {
@@ -1463,7 +1553,7 @@ export default function WorkbenchPage() {
                           type="number"
                           step="any"
                           min="0"
-                          placeholder="السعر"
+                          placeholder="Price"
                           className="w-24 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono outline-none focus:border-amber-500 text-center"
                           value={ft.price}
                           onChange={e => {
@@ -1472,7 +1562,7 @@ export default function WorkbenchPage() {
                             setSettings({ ...settings, fuelTypes: updated });
                           }}
                         />
-                        <span className="text-xs text-slate-400">جنيه/لتر</span>
+                        <span className="text-xs text-slate-400">{t('unit_currency')}/{t('unit_liter')}</span>
                       </div>
                       <button
                         type="button"
@@ -1481,7 +1571,7 @@ export default function WorkbenchPage() {
                           setSettings({ ...settings, fuelTypes: updated });
                         }}
                         className="text-rose-400 hover:text-rose-300 p-1 hover:bg-slate-800 rounded"
-                        title="حذف هذا النوع"
+                        title={t('btn_delete')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1494,12 +1584,12 @@ export default function WorkbenchPage() {
                       const newId = `fuel_${Date.now()}`;
                       setSettings({
                         ...settings,
-                        fuelTypes: [...settings.fuelTypes, { id: newId, name: 'نوع وقود جديد', price: 15.00 }],
+                        fuelTypes: [...settings.fuelTypes, { id: newId, name: lang === 'en' ? 'New Fuel Grade' : 'نوع وقود جديد', price: 15.00 }],
                       });
                     }}
                     className="text-xs text-amber-500 hover:text-amber-400 font-medium flex items-center gap-1 py-1"
                   >
-                    <PlusCircle className="w-3.5 h-3.5" /> إضافة نوع وقود جديد
+                    <PlusCircle className="w-3.5 h-3.5" /> {t('set_fuel_add_btn')}
                   </button>
                 </div>
               </div>
@@ -1508,21 +1598,21 @@ export default function WorkbenchPage() {
               <div className="bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-4">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
                   <Settings className="w-5 h-5 text-amber-500" />
-                  <h2 className="text-sm font-bold text-slate-100">إعدادات الذكاء الاصطناعي (AI Provider)</h2>
+                  <h2 className="text-sm font-bold text-slate-100">{t('set_ai_title')}</h2>
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  يمكنك إدخال مفتاح API لـ Google Gemini أو OpenRouter لجلب التوصيات الخاصة بنوع الزيت وجدول الصيانات الدوري المناسب لموديل سيارتك تلقائياً. المفتاح محفوظ محلياً بأمان ولا يتم مشاركته أبداً.
+                  {t('set_ai_desc')}
                 </p>
 
                 {settingsMsg && (
                   <div className="p-2 text-xs bg-emerald-950 border border-emerald-800 text-emerald-300 rounded">
-                    {settingsMsg}
+                    {t('set_save_success')}
                   </div>
                 )}
 
                 <form onSubmit={handleSaveSettings} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">مزود الخدمة</label>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">{t('set_ai_provider')}</label>
                     <select
                       className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                       value={settings.provider}
@@ -1535,11 +1625,11 @@ export default function WorkbenchPage() {
 
                   <div>
                     <label className="block text-xs font-medium text-slate-300 mb-1">
-                      مفتاح الـ API {settings.hasApiKey && <span className="text-emerald-400">(تم حفظ المفتاح: {settings.maskedApiKey})</span>}
+                      {t('set_ai_key_label')} {settings.hasApiKey && <span className="text-emerald-400">({t('set_ai_key_saved')} {settings.maskedApiKey})</span>}
                     </label>
                     <input
                       type="password"
-                      placeholder={settings.hasApiKey ? 'أدخل مفتاح جديد لتحديثه...' : 'sk-or-v1-... أو AIzaSy...'}
+                      placeholder={settings.hasApiKey ? t('set_ai_key_placeholder') : 'sk-or-v1-... or AIzaSy...'}
                       className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                       value={settings.apiKey}
                       onChange={e => setSettings(prev => ({ ...prev, apiKey: e.target.value }))}
@@ -1550,7 +1640,7 @@ export default function WorkbenchPage() {
                     type="submit"
                     className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded text-xs transition"
                   >
-                    حفظ الإعدادات
+                    {t('set_save_btn')}
                   </button>
                 </form>
               </div>
@@ -1565,20 +1655,20 @@ export default function WorkbenchPage() {
           <div className="bg-slate-950 border border-slate-800 rounded-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
-                <Car className="w-4 h-4 text-amber-500" /> إضافة سيارة جديدة
+                <Car className="w-4 h-4 text-amber-500" /> {t('modal_car_add_title')}
               </h3>
               <button onClick={() => setShowAddVehicleModal(false)} className="text-slate-400 hover:text-slate-200 text-xs">
-                إلغاء
+                {t('btn_cancel')}
               </button>
             </div>
 
             <form onSubmit={handleSaveVehicle} className="space-y-3">
               <div>
-                <label className="block text-xs text-slate-300 mb-1">اسم تعريفي للسيارة (مثال: سيارتي اليومية / سيارة العائلة)</label>
+                <label className="block text-xs text-slate-300 mb-1">{t('modal_car_name_label')}</label>
                 <input
                   required
                   type="text"
-                  placeholder="سيارتي اليومية"
+                  placeholder={t('modal_car_name_placeholder')}
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                   value={vehicleForm.name}
                   onChange={e => setVehicleForm({ ...vehicleForm, name: e.target.value })}
@@ -1587,7 +1677,7 @@ export default function WorkbenchPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">الماركة (Make)</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('modal_car_make')}</label>
                   <input
                     required
                     type="text"
@@ -1598,7 +1688,7 @@ export default function WorkbenchPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">الموديل (Model)</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('modal_car_model')}</label>
                   <input
                     required
                     type="text"
@@ -1612,7 +1702,7 @@ export default function WorkbenchPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">سنة الصنع</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('modal_car_year')}</label>
                   <input
                     required
                     type="number"
@@ -1622,10 +1712,10 @@ export default function WorkbenchPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">رقم اللوحة (اختياري)</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('modal_car_plate')}</label>
                   <input
                     type="text"
-                    placeholder="س ق ر 123"
+                    placeholder="123 ABC"
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                     value={vehicleForm.licensePlate}
                     onChange={e => setVehicleForm({ ...vehicleForm, licensePlate: e.target.value })}
@@ -1634,12 +1724,12 @@ export default function WorkbenchPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">قراءة العداد الابتدائية (كم)</label>
+                <label className="block text-xs text-slate-300 mb-1">{t('modal_car_init_odo')}</label>
                 <input
                   required
                   type="number"
                   min="0"
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                   value={vehicleForm.initialOdometer}
                   onChange={e => setVehicleForm({ ...vehicleForm, initialOdometer: Number(e.target.value) })}
                 />
@@ -1649,7 +1739,7 @@ export default function WorkbenchPage() {
               <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" /> اقتراح نوع الزيت وجدول الصيانة بالذكاء الاصطناعي
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" /> {t('modal_car_ai_box')}
                   </span>
                   <button
                     type="button"
@@ -1657,7 +1747,7 @@ export default function WorkbenchPage() {
                     onClick={handleAiLookup}
                     className="bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-500/40 px-2.5 py-1 rounded text-xs transition"
                   >
-                    {aiLoading ? 'جاري البحث...' : 'بحث واقتراح'}
+                    {aiLoading ? t('modal_car_ai_loading') : t('modal_car_ai_btn')}
                   </button>
                 </div>
 
@@ -1670,21 +1760,21 @@ export default function WorkbenchPage() {
                 {aiProposal && (
                   <div className="text-xs space-y-2 bg-slate-950 p-2.5 rounded border border-slate-800">
                     <div className="text-emerald-400 font-semibold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> تم العثور على توصيات لموديل سيارتك
+                      <CheckCircle2 className="w-3.5 h-3.5" /> {t('modal_car_ai_found')}
                     </div>
-                    <div>الزيت المقترح: <span className="font-bold text-slate-100">{aiProposal.recommendedOil}</span></div>
+                    <div>{t('modal_car_ai_oil')} <span className="font-bold text-slate-100">{aiProposal.recommendedOil}</span></div>
                     <div className="text-[11px] text-slate-400">
-                      سيتم تهيئة جدول الصيانة الدوري تلقائياً بناءً على مواصفات الموديل.
+                      {t('modal_car_ai_note')}
                     </div>
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">نوع الزيت الموصى به</label>
+                <label className="block text-xs text-slate-300 mb-1">{t('modal_car_oil_label')}</label>
                 <input
                   type="text"
-                  placeholder="مثال: 5W-30 تخليقي بالكامل"
+                  placeholder="5W-30 Full Synthetic"
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                   value={vehicleForm.recommendedOil}
                   onChange={e => setVehicleForm({ ...vehicleForm, recommendedOil: e.target.value })}
@@ -1697,13 +1787,13 @@ export default function WorkbenchPage() {
                   onClick={() => setShowAddVehicleModal(false)}
                   className="px-3 py-1.5 rounded text-xs text-slate-400 hover:text-slate-200"
                 >
-                  إلغاء
+                  {t('btn_cancel')}
                 </button>
                 <button
                   type="submit"
                   className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition"
                 >
-                  حفظ السيارة
+                  {t('modal_car_btn_save')}
                 </button>
               </div>
             </form>
@@ -1718,10 +1808,10 @@ export default function WorkbenchPage() {
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
                 <Fuel className="w-4 h-4 text-amber-500" />
-                {editingFuelId ? 'تعديل تفويلة بنزين' : 'تسجيل تفويلة بنزين'}
+                {editingFuelId ? t('modal_fuel_edit_title') : t('modal_fuel_new_title')}
               </h3>
               <button onClick={() => setShowFuelModal(false)} className="text-slate-400 hover:text-slate-200 text-xs">
-                إلغاء
+                {t('btn_cancel')}
               </button>
             </div>
 
@@ -1729,7 +1819,7 @@ export default function WorkbenchPage() {
               {/* Fuel Type Dropdown Selector */}
               {settings.fuelTypes && settings.fuelTypes.length > 0 && (
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1.5">نوع الوقود (مسجل في الإعدادات)</label>
+                  <label className="block text-xs text-slate-300 mb-1.5">{t('modal_fuel_type_label')}</label>
                   <select
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                     value={selectedFuelType}
@@ -1750,21 +1840,21 @@ export default function WorkbenchPage() {
                     }}
                   >
                     <option value="custom" disabled={Boolean(selectedFuelType && selectedFuelType !== 'custom')}>
-                      اختر نوع الوقود...
+                      {lang === 'en' ? 'Select fuel grade...' : 'اختر نوع الوقود...'}
                     </option>
                     {settings.fuelTypes.map(ft => (
                       <option key={ft.id} value={ft.id}>
-                        {ft.name} — ({ft.price} جنيه/لتر)
+                        {ft.name} — ({ft.price} {t('unit_currency')}/{t('unit_liter')})
                       </option>
                     ))}
-                    <option value="custom">سعر مخصص / نوع آخر</option>
+                    <option value="custom">{lang === 'en' ? 'Custom price / other' : 'سعر مخصص / نوع آخر'}</option>
                   </select>
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">التاريخ</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('fuel_th_date')}</label>
                   <input
                     required
                     type="date"
@@ -1774,12 +1864,12 @@ export default function WorkbenchPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">قراءة العداد Odometer (كم)</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('fuel_th_odometer')} ({t('unit_km')})</label>
                   <input
                     required
                     type="number"
                     min="0"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                     value={fuelForm.odometer}
                     onChange={e => setFuelForm({ ...fuelForm, odometer: Number(e.target.value) })}
                   />
@@ -1788,14 +1878,14 @@ export default function WorkbenchPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">كمية الوقود (لتر)</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('modal_fuel_liters_label')}</label>
                   <input
                     required
                     type="number"
                     step="any"
                     min="0"
-                    placeholder="مثال: 40.584"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                    placeholder="40.5"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                     value={fuelForm.liters || ''}
                     onChange={e => {
                       const val = e.target.value;
@@ -1807,14 +1897,14 @@ export default function WorkbenchPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">سعر اللتر (جنيه)</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('modal_fuel_price_label')}</label>
                   <input
                     required
                     type="number"
                     step="any"
                     min="0"
-                    placeholder="مثال: 22.25"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                    placeholder="15.00"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                     value={fuelForm.pricePerLiter || ''}
                     onChange={e => {
                       const val = e.target.value;
@@ -1830,14 +1920,14 @@ export default function WorkbenchPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">إجمالي التكلفة / المبلغ المدفوع (جنيه)</label>
+                <label className="block text-xs text-slate-300 mb-1">{t('modal_fuel_total_label')}</label>
                 <input
                   required
                   type="number"
                   step="any"
                   min="0"
-                  placeholder="مثال: 902.99"
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                  placeholder="600"
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                   value={fuelForm.totalCost || ''}
                   onChange={e => {
                     const val = e.target.value;
@@ -1856,14 +1946,14 @@ export default function WorkbenchPage() {
                   checked={fuelForm.isFullTank}
                   onChange={e => setFuelForm({ ...fuelForm, isFullTank: e.target.checked })}
                 />
-                <label htmlFor="fullTank" className="text-xs text-slate-300">تفويلة كاملة (لحساب استهلاك اللتر/100كم بدقة)</label>
+                <label htmlFor="fullTank" className="text-xs text-slate-300">{t('modal_fuel_full_tank_checkbox')}</label>
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">ملاحظات (اختياري)</label>
+                <label className="block text-xs text-slate-300 mb-1">{t('modal_fuel_notes_label')}</label>
                 <input
                   type="text"
-                  placeholder="نوع البنزين 95 أو المحطة"
+                  placeholder="Gas station / Fuel note"
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                   value={fuelForm.notes}
                   onChange={e => setFuelForm({ ...fuelForm, notes: e.target.value })}
@@ -1876,13 +1966,13 @@ export default function WorkbenchPage() {
                   onClick={() => setShowFuelModal(false)}
                   className="px-3 py-1.5 rounded text-xs text-slate-400 hover:text-slate-200"
                 >
-                  إلغاء
+                  {t('btn_cancel')}
                 </button>
                 <button
                   type="submit"
                   className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition"
                 >
-                  {editingFuelId ? 'تحديث التفويلة' : 'تسجيل التفويلة'}
+                  {editingFuelId ? t('modal_fuel_btn_update') : t('modal_fuel_btn_save')}
                 </button>
               </div>
             </form>
@@ -1897,17 +1987,17 @@ export default function WorkbenchPage() {
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
                 <Wrench className="w-4 h-4 text-amber-500" />
-                {editingMaintenanceId ? 'تعديل صيانة / تغيير زيت' : 'تسجيل صيانة / تغيير زيت'}
+                {editingMaintenanceId ? t('modal_maint_edit_title') : t('modal_maint_new_title')}
               </h3>
               <button onClick={() => setShowMaintenanceModal(false)} className="text-slate-400 hover:text-slate-200 text-xs">
-                إلغاء
+                {t('btn_cancel')}
               </button>
             </div>
 
             <form onSubmit={handleSaveMaintenance} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">التاريخ</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('modal_maint_date')}</label>
                   <input
                     required
                     type="date"
@@ -1917,12 +2007,12 @@ export default function WorkbenchPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">قراءة العداد (كم)</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('modal_maint_odo')}</label>
                   <input
                     required
                     type="number"
                     min="0"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                     value={maintenanceForm.odometer}
                     onChange={e => setMaintenanceForm({ ...maintenanceForm, odometer: Number(e.target.value) })}
                   />
@@ -1930,11 +2020,11 @@ export default function WorkbenchPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">بيان الصيانة</label>
+                <label className="block text-xs text-slate-300 mb-1">{t('modal_maint_title_label')}</label>
                 <input
                   required
                   type="text"
-                  placeholder="مثال: تغيير زيت المحرك 10,000 كم + فلتر الزيت الأصلي"
+                  placeholder={t('modal_maint_title_placeholder')}
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                   value={maintenanceForm.title}
                   onChange={e => setMaintenanceForm({ ...maintenanceForm, title: e.target.value })}
@@ -1942,25 +2032,25 @@ export default function WorkbenchPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">نوع الخدمة</label>
+                <label className="block text-xs text-slate-300 mb-1">{lang === 'en' ? 'Service Type' : 'نوع الخدمة'}</label>
                 <select
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                   value={maintenanceForm.serviceType}
                   onChange={e => setMaintenanceForm({ ...maintenanceForm, serviceType: e.target.value })}
                 >
-                  <option value="oil_change">تغيير زيت وفلاتر</option>
-                  <option value="periodic">صيانة دورية</option>
-                  <option value="brakes">فرامل وتيل</option>
-                  <option value="tires">إطارات وضبط زوايا</option>
-                  <option value="repair">إصلاح عطل</option>
-                  <option value="other">أخرى</option>
+                  <option value="oil_change">{lang === 'en' ? 'Oil & Filters Change' : 'تغيير زيت وفلاتر'}</option>
+                  <option value="periodic">{lang === 'en' ? 'Periodic Maintenance' : 'صيانة دورية'}</option>
+                  <option value="brakes">{lang === 'en' ? 'Brakes & Pads' : 'فرامل وتيل'}</option>
+                  <option value="tires">{lang === 'en' ? 'Tires & Alignment' : 'إطارات وضبط زوايا'}</option>
+                  <option value="repair">{lang === 'en' ? 'Mechanical Repair' : 'إصلاح عطل'}</option>
+                  <option value="other">{lang === 'en' ? 'Other' : 'أخرى'}</option>
                 </select>
               </div>
 
               {/* Parts Items List */}
               <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-semibold text-slate-200">قطع الغيار المستخدمة</span>
+                  <span className="text-xs font-semibold text-slate-200">{t('modal_maint_parts_box_title')}</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -1971,13 +2061,15 @@ export default function WorkbenchPage() {
                     }}
                     className="text-xs text-amber-500 hover:text-amber-400 font-medium flex items-center gap-1"
                   >
-                    <PlusCircle className="w-3.5 h-3.5" /> إضافة قطعة غيار
+                    <PlusCircle className="w-3.5 h-3.5" /> {t('modal_maint_add_part_btn')}
                   </button>
                 </div>
 
                 {partsList.length === 0 ? (
                   <div className="text-[11px] text-slate-400 text-center py-2 border border-dashed border-slate-800 rounded">
-                    لم تتم إضافة قطع غيار بعد. اضغط "إضافة قطعة غيار" لتفصيل القطع (جديدة أو استيراد).
+                    {lang === 'en'
+                      ? 'No spare parts added yet. Click "Add Spare Part" to detail components (New or OEM Import).'
+                      : 'لم تتم إضافة قطع غيار بعد. اضغط "إضافة قطعة غيار" لتفصيل القطع (جديدة أو استيراد).'}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1988,7 +2080,7 @@ export default function WorkbenchPage() {
                           <input
                             required
                             type="text"
-                            placeholder="اسم القطعة (مثال: فلتر زيت، تيل فرامل)"
+                            placeholder={t('modal_maint_part_name')}
                             className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-slate-200 outline-none focus:border-amber-500"
                             value={part.name}
                             onChange={e => {
@@ -2010,8 +2102,8 @@ export default function WorkbenchPage() {
                               setPartsList(updated);
                             }}
                           >
-                            <option value="new">جديدة</option>
-                            <option value="used_import">استيراد</option>
+                            <option value="new">{t('maint_cond_new')}</option>
+                            <option value="used_import">{t('maint_cond_used')}</option>
                           </select>
                         </div>
 
@@ -2023,7 +2115,7 @@ export default function WorkbenchPage() {
                               type="number"
                               step="any"
                               min="0"
-                              placeholder="السعر"
+                              placeholder={t('modal_maint_part_price')}
                               className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-slate-200 font-mono outline-none focus:border-amber-500 text-center"
                               value={part.cost || ''}
                               onChange={e => {
@@ -2041,7 +2133,7 @@ export default function WorkbenchPage() {
                                 }));
                               }}
                             />
-                            <span className="text-[11px] text-slate-400">ج</span>
+                            <span className="text-[11px] text-slate-400">{t('unit_currency')}</span>
                           </div>
                         </div>
 
@@ -2060,7 +2152,7 @@ export default function WorkbenchPage() {
                               }));
                             }}
                             className="text-rose-400 hover:text-rose-300 p-1 hover:bg-slate-800 rounded"
-                            title="حذف القطعة"
+                            title={t('btn_delete')}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -2075,7 +2167,7 @@ export default function WorkbenchPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs text-slate-300 mb-1">
-                    إجمالي قطع الغيار {partsList.length > 0 && <span className="text-amber-400 font-mono">({partsList.length})</span>}
+                    {t('modal_maint_parts_total_label')} {partsList.length > 0 && <span className="text-amber-400 font-mono">({partsList.length})</span>}
                   </label>
                   <input
                     type="number"
@@ -2094,7 +2186,7 @@ export default function WorkbenchPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">المصنعية (جنيه)</label>
+                  <label className="block text-xs text-slate-300 mb-1">{t('modal_maint_labor_label')}</label>
                   <input
                     type="number"
                     step="any"
@@ -2113,7 +2205,7 @@ export default function WorkbenchPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-bold">الإجمالي الكلي (جنيه)</label>
+                  <label className="block text-xs text-slate-300 mb-1 font-bold">{t('modal_maint_total_label')}</label>
                   <input
                     required
                     type="number"
@@ -2128,10 +2220,10 @@ export default function WorkbenchPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">الورشة / المركز (اختياري)</label>
+                <label className="block text-xs text-slate-300 mb-1">{t('modal_maint_workshop')}</label>
                 <input
                   type="text"
-                  placeholder="مركز الخدمة المعتمد"
+                  placeholder="Official Service Center / Garage"
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                   value={maintenanceForm.workshop}
                   onChange={e => setMaintenanceForm({ ...maintenanceForm, workshop: e.target.value })}
@@ -2139,11 +2231,11 @@ export default function WorkbenchPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">العداد المستهدف للصيانة القادمة (اختياري)</label>
+                <label className="block text-xs text-slate-300 mb-1">{t('modal_maint_next_odo')}</label>
                 <input
                   type="number"
-                  placeholder="مثال: 60000"
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                  placeholder="e.g. 60000"
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                   value={maintenanceForm.nextDueOdometer || ''}
                   onChange={e => setMaintenanceForm({ ...maintenanceForm, nextDueOdometer: Number(e.target.value) })}
                 />
@@ -2155,13 +2247,13 @@ export default function WorkbenchPage() {
                   onClick={() => setShowMaintenanceModal(false)}
                   className="px-3 py-1.5 rounded text-xs text-slate-400 hover:text-slate-200"
                 >
-                  إلغاء
+                  {t('btn_cancel')}
                 </button>
                 <button
                   type="submit"
                   className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition"
                 >
-                  {editingMaintenanceId ? 'تحديث الصيانة' : 'حفظ الصيانة'}
+                  {editingMaintenanceId ? t('modal_maint_btn_update') : t('modal_maint_btn_save')}
                 </button>
               </div>
             </form>
