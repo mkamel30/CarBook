@@ -1,4 +1,16 @@
 /** @type {import('tailwindcss').Config} */
+
+const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+
+/** Maps a colour ramp onto the CSS custom properties declared in globals.css. */
+function ramp(prefix) {
+  const out = {};
+  for (const shade of SHADES) {
+    out[shade] = `rgb(var(--${prefix}-${shade}) / <alpha-value>)`;
+  }
+  return out;
+}
+
 module.exports = {
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
@@ -8,27 +20,40 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        slate: ramp('slate'),
+        gray: ramp('gray'),
+        amber: ramp('amber'),
+        emerald: ramp('emerald'),
+        rose: ramp('rose'),
         m3: {
-          surface: '#090D16',
-          'surface-dim': '#070A10',
-          'surface-container-lowest': '#05070D',
-          'surface-container-low': '#0F1523',
-          'surface-container': '#141C2E',
-          'surface-container-high': '#1B253B',
-          'surface-container-highest': '#232F4A',
-          primary: '#F59E0B',
-          'primary-container': '#3E2805',
-          'on-primary': '#000000',
-          'on-surface': '#E2E8F0',
-          'on-surface-variant': '#94A3B8',
-          outline: '#334155',
-          'outline-variant': '#1E293B',
+          surface: 'rgb(var(--m3-surface) / <alpha-value>)',
+          'surface-dim': 'rgb(var(--m3-surface-dim) / <alpha-value>)',
+          'surface-container-lowest': 'rgb(var(--m3-container-lowest) / <alpha-value>)',
+          'surface-container-low': 'rgb(var(--m3-container-low) / <alpha-value>)',
+          'surface-container': 'rgb(var(--m3-container) / <alpha-value>)',
+          'surface-container-high': 'rgb(var(--m3-container-high) / <alpha-value>)',
+          'surface-container-highest': 'rgb(var(--m3-container-highest) / <alpha-value>)',
+          primary: 'rgb(var(--m3-primary) / <alpha-value>)',
+          'primary-container': 'rgb(var(--m3-primary-container) / <alpha-value>)',
+          'on-primary': 'rgb(var(--m3-on-primary) / <alpha-value>)',
+          'on-surface': 'rgb(var(--m3-on-surface) / <alpha-value>)',
+          'on-surface-variant': 'rgb(var(--m3-on-surface-variant) / <alpha-value>)',
+          outline: 'rgb(var(--m3-outline) / <alpha-value>)',
+          'outline-variant': 'rgb(var(--m3-outline-variant) / <alpha-value>)',
         },
       },
       borderRadius: {
+        card: 'var(--radius-card)',
+        panel: 'var(--radius-panel)',
         '3xl': '1.75rem', // 28px standard M3 dialog / sheet
         '2xl': '1.25rem', // 20px standard M3 card
         '4xl': '2rem',    // 32px large container
+      },
+      boxShadow: {
+        card: 'var(--shadow-card)',
+      },
+      fontFamily: {
+        ui: ['var(--font-ui)'],
       },
     },
   },

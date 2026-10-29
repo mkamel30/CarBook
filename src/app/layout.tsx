@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { I18nProvider } from '@/i18n/context';
+import { ThemeProvider } from '@/theme/context';
 
 export const metadata: Metadata = {
   title: "CarBook | دفتر ومتابعة صيانة واستهلاك السيارة",
@@ -13,16 +14,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ar" dir="rtl">
+    <html lang="ar" dir="rtl" data-theme="material">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
-      <body className="min-h-screen bg-slate-900 text-slate-100 font-sans antialiased" style={{ fontFamily: "'Cairo', sans-serif" }}>
-        <I18nProvider>
-          {children}
-        </I18nProvider>
+      <body className="min-h-screen bg-slate-900 text-slate-100 font-sans antialiased">
+        <ThemeProvider>
+          <I18nProvider>
+            {children}
+          </I18nProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
