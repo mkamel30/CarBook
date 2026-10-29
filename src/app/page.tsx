@@ -23,9 +23,15 @@ import {
   Loader2,
   Check,
   ShieldCheck,
-  Globe
+  Globe,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import {
+  exportVehicleDossierToExcel,
+  exportMaintenanceToExcel,
+  exportFuelToExcel
+} from '@/services/exportExcel';
 
 export default function WorkbenchPage() {
   const { t, lang, setLang, dir, languages } = useTranslation();
@@ -885,12 +891,21 @@ export default function WorkbenchPage() {
                       <h2 className="text-sm font-semibold text-slate-200">{t('fuel_title')}</h2>
                       <p className="text-xs text-slate-400 mt-0.5">{t('fuel_desc')}</p>
                     </div>
-                    <button
-                      onClick={openAddFuelModal}
-                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition shrink-0"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" /> {t('fuel_btn_new')}
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => exportFuelToExcel(selectedVehicle, fuelLogs, lang)}
+                        className="bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition"
+                        title={t('rep_btn_excel_fuel')}
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" /> {t('rep_btn_excel_fuel')}
+                      </button>
+                      <button
+                        onClick={openAddFuelModal}
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5" /> {t('fuel_btn_new')}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
@@ -983,12 +998,21 @@ export default function WorkbenchPage() {
                       <h2 className="text-sm font-semibold text-slate-200">{t('maint_title')}</h2>
                       <p className="text-xs text-slate-400 mt-0.5">{t('maint_desc')}</p>
                     </div>
-                    <button
-                      onClick={openAddMaintenanceModal}
-                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition shrink-0"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" /> {t('maint_btn_new')}
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => exportMaintenanceToExcel(selectedVehicle, maintenanceLogs, lang)}
+                        className="bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition"
+                        title={t('rep_btn_excel_maint')}
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" /> {t('rep_btn_excel_maint')}
+                      </button>
+                      <button
+                        onClick={openAddMaintenanceModal}
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5" /> {t('maint_btn_new')}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
@@ -1408,57 +1432,140 @@ export default function WorkbenchPage() {
                 </div>
               )}
 
-              {/* Printable Buyer Report Tab */}
+              {/* Printable Buyer & Inspection Report Tab */}
               {activeTab === 'report' && (
                 <div className="space-y-6">
-                  <div className="flex justify-between items-center print:hidden">
+                  {/* Action Bar (Hidden on Print) */}
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-slate-900/50 p-4 rounded-lg border border-slate-800 print:hidden">
                     <div>
-                      <h2 className="text-sm font-semibold text-slate-200">{t('rep_title')}</h2>
+                      <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-amber-500" />
+                        {t('rep_title')}
+                      </h2>
                       <p className="text-xs text-slate-400 mt-0.5">{t('rep_desc')}</p>
                     </div>
-                    <button
-                      onClick={() => window.print()}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-100 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition"
-                    >
-                      <Printer className="w-3.5 h-3.5" /> {t('rep_btn_print')}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => exportVehicleDossierToExcel(selectedVehicle, maintenanceLogs, fuelLogs, lang)}
+                        className="bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 px-3.5 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" /> {t('rep_btn_excel')}
+                      </button>
+                      <button
+                        onClick={() => window.print()}
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3.5 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                      >
+                        <Printer className="w-3.5 h-3.5" /> {t('rep_btn_print')}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-6">
-                    {/* Report Header */}
-                    <div className="border-b border-slate-800 pb-4 flex justify-between items-center">
-                      <div>
-                        <h1 className="text-lg font-bold text-amber-500">{t('rep_heading')}</h1>
-                        <p className="text-xs text-slate-400">{t('rep_date')} {new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}</p>
+                  {/* Certified Printable Dossier Container */}
+                  <div className="printable-document bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-6">
+                    {/* Official Document Header */}
+                    <div className="border-b-2 border-slate-800 pb-5 flex justify-between items-start">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base font-extrabold tracking-wider text-amber-500 print:text-amber-800 uppercase">
+                            CarBook Dossier
+                          </span>
+                          <span className="text-[10px] bg-amber-500/10 text-amber-400 print:bg-slate-100 print:text-slate-800 px-2 py-0.5 rounded font-mono font-bold">
+                            CB-{(selectedVehicle.id || '2026').slice(0, 8).toUpperCase()}
+                          </span>
+                        </div>
+                        <h1 className="text-lg font-bold text-slate-100 print:text-slate-950">{t('rep_heading')}</h1>
+                        <p className="text-xs text-slate-400 print:text-slate-600">
+                          {t('rep_date')} {new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        </p>
                       </div>
-                      <div className={dir === 'rtl' ? 'text-left' : 'text-right'}>
-                        <div className="text-sm font-bold">{selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year})</div>
-                        <div className="text-xs text-amber-400 font-mono">{t('header_plate')} {selectedVehicle.licensePlate || t('header_no_plate')}</div>
+                      <div className={`space-y-1 ${dir === 'rtl' ? 'text-left' : 'text-right'}`}>
+                        <div className="text-base font-bold text-slate-100 print:text-slate-950">
+                          {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year})
+                        </div>
+                        <div className="text-xs text-amber-400 print:text-amber-800 font-mono font-bold">
+                          {t('header_plate')} {selectedVehicle.licensePlate || t('header_no_plate')}
+                        </div>
+                        <div className="text-[11px] text-slate-400 print:text-slate-600">
+                          {selectedVehicle.name}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Report Summary Cards */}
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="bg-slate-900 p-3 rounded border border-slate-800">
-                        <div className="text-xs text-slate-400">{t('rep_summary_odometer')}</div>
-                        <div className="text-base font-bold text-amber-400 font-mono">{selectedVehicle.currentOdometer.toLocaleString()} {t('unit_km')}</div>
+                    {/* Executive Summary Metrics Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                      <div className="print-card-accent bg-slate-900 p-3 rounded border border-slate-800">
+                        <div className="text-[11px] text-slate-400 print:text-slate-600">{t('rep_summary_odometer')}</div>
+                        <div className="text-base font-bold text-amber-400 print:text-amber-900 font-mono mt-0.5">
+                          {selectedVehicle.currentOdometer.toLocaleString()} {t('unit_km')}
+                        </div>
                       </div>
-                      <div className="bg-slate-900 p-3 rounded border border-slate-800">
-                        <div className="text-xs text-slate-400">{t('rep_summary_oil')}</div>
-                        <div className="text-base font-bold text-slate-200">{selectedVehicle.recommendedOil || t('manual_not_specified')}</div>
+                      <div className="print-card-subtle bg-slate-900 p-3 rounded border border-slate-800">
+                        <div className="text-[11px] text-slate-400 print:text-slate-600">{t('rep_summary_oil')}</div>
+                        <div className="text-sm font-bold text-slate-200 print:text-slate-900 mt-1">
+                          {selectedVehicle.recommendedOil || t('manual_not_specified')}
+                        </div>
                       </div>
-                      <div className="bg-slate-900 p-3 rounded border border-slate-800">
-                        <div className="text-xs text-slate-400">{t('rep_summary_total_maint')}</div>
-                        <div className="text-base font-bold text-emerald-400 font-mono">{maintenanceLogs.length}</div>
+                      <div className="print-card-subtle bg-slate-900 p-3 rounded border border-slate-800">
+                        <div className="text-[11px] text-slate-400 print:text-slate-600">{t('rep_summary_total_maint')}</div>
+                        <div className="text-base font-bold text-emerald-400 print:text-emerald-900 font-mono mt-0.5">
+                          {maintenanceLogs.length}
+                        </div>
+                      </div>
+                      <div className="print-card-subtle bg-slate-900 p-3 rounded border border-slate-800">
+                        <div className="text-[11px] text-slate-400 print:text-slate-600">
+                          {lang === 'ar' ? 'إجمالي تكاليف الصيانة' : 'Total Service Costs'}
+                        </div>
+                        <div className="text-base font-bold text-slate-200 print:text-slate-900 font-mono mt-0.5">
+                          {maintenanceLogs.reduce((acc, m) => acc + (Number(m.totalCost) || 0), 0).toLocaleString()} {t('unit_currency')}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Technical & OEM Specifications Box */}
+                    <div className="print-card-subtle bg-slate-900/60 p-4 rounded-lg border border-slate-800 space-y-2">
+                      <h3 className="text-xs font-bold text-slate-300 print:text-slate-900 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
+                        {lang === 'ar' ? 'المواصفات الفنية وسوائل المحرك المعتمدة' : 'OEM Technical & Fluid Specifications'}
+                      </h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
+                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'سائل التبريد:' : 'Coolant:'}</span>
+                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.coolantSpec || '—'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
+                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'زيت القير:' : 'Trans Fluid:'}</span>
+                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.transmissionSpec || '—'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
+                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'ضغط الإطارات:' : 'Tire Pressure:'}</span>
+                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.tirePressureSpec || '—'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
+                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'سعة الخزان:' : 'Tank Capacity:'}</span>
+                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.fuelTankCapacity ? `${selectedVehicle.fuelTankCapacity} L` : '—'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
+                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'شمعات الاحتراق:' : 'Spark Plugs:'}</span>
+                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.sparkPlugsSpec || '—'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-800 print:border-slate-300 py-1">
+                          <span className="text-slate-400 print:text-slate-600">{lang === 'ar' ? 'مواصفة البطارية:' : 'Battery:'}</span>
+                          <span className="font-semibold text-slate-200 print:text-slate-900">{selectedVehicle.batterySpec || '—'}</span>
+                        </div>
                       </div>
                     </div>
 
                     {/* Maintenance Log Table in Report */}
-                    <div>
-                      <h3 className="text-xs font-semibold mb-2 text-slate-300">{t('rep_table_title')}</h3>
-                      <div className="border border-slate-800 rounded overflow-hidden">
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-bold text-slate-300 print:text-slate-900 flex items-center justify-between">
+                        <span>{t('rep_table_title')}</span>
+                        <span className="text-[11px] font-normal text-slate-400 print:text-slate-600">
+                          {maintenanceLogs.length} {lang === 'ar' ? 'عملية مسجلة' : 'records logged'}
+                        </span>
+                      </h3>
+                      <div className="border border-slate-800 print:border-slate-300 rounded overflow-hidden">
                         <table className="w-full text-start text-xs">
-                          <thead className="bg-slate-900 border-b border-slate-800 text-slate-400">
+                          <thead className="bg-slate-900 border-b border-slate-800 text-slate-400 print:bg-slate-100 print:text-slate-900">
                             <tr>
                               <th className="p-2 text-start">{t('rep_th_date')}</th>
                               <th className="p-2 text-start">{t('rep_th_odometer')}</th>
@@ -1468,20 +1575,71 @@ export default function WorkbenchPage() {
                               <th className="p-2 text-start">{t('rep_th_notes')}</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-800">
-                            {maintenanceLogs.map((m, idx) => (
-                              <tr key={idx}>
-                                <td className="p-2 font-mono">{m.serviceDate}</td>
-                                <td className="p-2 font-mono">{m.odometer.toLocaleString()} {t('unit_km')}</td>
-                                <td className="p-2 font-medium">{m.title}</td>
-                                <td className="p-2">{m.workshop || '—'}</td>
-                                <td className="p-2 font-mono">{m.totalCost} {t('unit_currency')}</td>
-                                <td className="p-2 text-slate-400">{m.notes || '—'}</td>
+                          <tbody className="divide-y divide-slate-800 print:divide-slate-200">
+                            {maintenanceLogs.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="p-4 text-center text-slate-500 italic">
+                                  {lang === 'ar' ? 'لا توجد سجلات صيانة مسجلة حتى الآن' : 'No maintenance records logged yet'}
+                                </td>
                               </tr>
-                            ))}
+                            ) : (
+                              maintenanceLogs.map((m, idx) => {
+                                let parts: Array<{ name: string; condition?: string; cost: number }> = [];
+                                if (m.partsBreakdown) {
+                                  try {
+                                    parts = typeof m.partsBreakdown === 'string' ? JSON.parse(m.partsBreakdown) : m.partsBreakdown;
+                                  } catch {}
+                                }
+                                return (
+                                  <tr key={idx}>
+                                    <td className="p-2 font-mono whitespace-nowrap">{m.serviceDate}</td>
+                                    <td className="p-2 font-mono whitespace-nowrap">{m.odometer?.toLocaleString()} {t('unit_km')}</td>
+                                    <td className="p-2">
+                                      <div className="font-semibold text-slate-200 print:text-slate-950">{m.title}</div>
+                                      {Array.isArray(parts) && parts.length > 0 && (
+                                        <div className="mt-1 flex flex-wrap gap-1">
+                                          {parts.map((p, pIdx) => (
+                                            <span
+                                              key={pIdx}
+                                              className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-slate-900 print:bg-slate-100 border border-slate-800 print:border-slate-300 text-slate-300 print:text-slate-800"
+                                            >
+                                              {p.name} ({p.condition === 'used_import' ? (lang === 'ar' ? 'استيراد' : 'Used') : (lang === 'ar' ? 'جديد' : 'New')}: {p.cost} {t('unit_currency')})
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="p-2">{m.workshop || '—'}</td>
+                                    <td className="p-2 font-mono font-bold whitespace-nowrap">{m.totalCost} {t('unit_currency')}</td>
+                                    <td className="p-2 text-slate-400 print:text-slate-600">{m.notes || '—'}</td>
+                                  </tr>
+                                );
+                              })
+                            )}
                           </tbody>
                         </table>
                       </div>
+                    </div>
+
+                    {/* Signatures & Seal Verification Block */}
+                    <div className="signature-block grid grid-cols-2 gap-8 pt-4 border-t border-slate-800 print:border-slate-400">
+                      <div className="space-y-6">
+                        <div className="text-xs font-semibold text-slate-400 print:text-slate-700">
+                          {t('rep_sig_owner')}
+                        </div>
+                        <div className="border-b border-dashed border-slate-700 print:border-slate-400 h-8"></div>
+                      </div>
+                      <div className="space-y-6">
+                        <div className="text-xs font-semibold text-slate-400 print:text-slate-700">
+                          {t('rep_sig_inspector')}
+                        </div>
+                        <div className="border-b border-dashed border-slate-700 print:border-slate-400 h-8"></div>
+                      </div>
+                    </div>
+
+                    {/* Official Certification Footnote */}
+                    <div className="text-center pt-2 text-[10px] text-slate-500 print:text-slate-600">
+                      {t('rep_official_seal')} • CarBook Engine
                     </div>
                   </div>
                 </div>
