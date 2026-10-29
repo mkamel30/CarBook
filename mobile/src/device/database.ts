@@ -13,8 +13,6 @@ export function makeDatabase(): Database {
     schema: deviceSchema,
     useWebWorker: false,
     useIncrementalIndexedDB: false,
-    usePowerOf2Sizes: true,
-    useFreeList: true,
   });
   return new Database({ adapter, modelClasses: Object.values(MODELS) as any });
 }
