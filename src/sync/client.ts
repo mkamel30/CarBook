@@ -33,11 +33,11 @@ export interface LocalStore {
   /** Last serverSeq this device has acknowledged (pull cursor). */
   getSince(): number;
   /** Rows created/updated/deleted locally since the last successful sync. */
-  collectDirty(): PushPayload;
+  collectDirty(): PushPayload | Promise<PushPayload>;
   /** Apply server changes; tombstones arrive as deleted ids. */
-  applyPulled(pulled: Record<string, PulledTable>): void;
+  applyPulled(pulled: Record<string, PulledTable>): void | Promise<void>;
   /** Commit the new cursor + clear dirty flags. Called only after a clean response. */
-  markSynced(serverSeq: number): void;
+  markSynced(serverSeq: number): void | Promise<void>;
 }
 
 export interface SyncClientOptions {
@@ -74,7 +74,7 @@ export async function syncOnce(
   opts: SyncClientOptions,
 ): Promise<SyncOutcome> {
   const doFetch = opts.fetchImpl ?? fetch;
-  const pushed = store.collectDirty();
+  const pushed = await store.collectDirty();
   const since = store.getSince();
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -100,8 +100,8 @@ export async function syncOnce(
   const data = json.data as SyncResponseData;
   // Apply first, then advance the cursor only if applying didn't throw — so a
   // crash mid-apply leaves `since` unchanged and the pull is safely re-fetched.
-  store.applyPulled(data.pulled || {});
-  store.markSynced(data.serverSeq);
+  await store.applyPulled(data.pulled || {});
+  await store.markSynced(data.serverSeq);
 
   return {
     serverSeq: data.serverSeq,
