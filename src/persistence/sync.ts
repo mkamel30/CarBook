@@ -149,6 +149,9 @@ export async function runSync(
   // 1) Collect candidate ops and decide which are accepted (ownership + LWW).
   const accepted: PendingOp[] = [];
   const pushed = req.pushed || {};
+  // A device that creates a car and its logs in one call must not have the children
+  // rejected for a parent that is accepted in this same request but not written yet.
+  const vehiclesInRequest = new Set<string>();
 
   for (const table of Object.keys(SYNC_TABLES)) {
     const def = SYNC_TABLES[table];
@@ -177,11 +180,14 @@ export async function runSync(
           rejected.push({ table, id: raw.id, reason: 'forbidden' });
           continue;
         }
+        vehiclesInRequest.add(raw.id);
       } else {
         const vehicleId = raw.vehicle_id ?? ex?.vehicle_id;
         if (!vehicleId) { rejected.push({ table, id: raw.id, reason: 'no_parent' }); continue; }
-        const vOwner = await scalar(client, 'SELECT user_id FROM vehicles WHERE id = ?;', [vehicleId]);
-        if (vOwner !== userId) { rejected.push({ table, id: raw.id, reason: 'forbidden' }); continue; }
+        if (!vehiclesInRequest.has(vehicleId)) {
+          const vOwner = await scalar(client, 'SELECT user_id FROM vehicles WHERE id = ?;', [vehicleId]);
+          if (vOwner !== userId) { rejected.push({ table, id: raw.id, reason: 'forbidden' }); continue; }
+        }
       }
 
       accepted.push({ table, row: raw, kind: 'upsert', ts });

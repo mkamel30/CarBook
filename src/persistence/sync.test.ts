@@ -63,6 +63,34 @@ describe('sync contract', () => {
     expect(p.pulled.vehicles?.upsert.find(v => v.id === 'v1')).toBeTruthy();
   });
 
+  it('accepts a vehicle and its logs in one request', async () => {
+    await seedUser('u1', 'u1@test.com');
+    const r = await runSync('u1', {
+      deviceId: 'd1', since: 0,
+      pushed: { vehicles: { upsert: [veh('v1', 1000)] }, fuel_logs: { upsert: [fuel('f1', 'v1', 1000)] } },
+    }, { dbPath });
+
+    // The child's parent is only accepted in this same call, so the ownership check
+    // has to consider the request, not just what is already on disk.
+    expect(r.rejected).toEqual([]);
+    expect(r.pulled.fuel_logs?.upsert.find(f => f.id === 'f1')).toBeTruthy();
+  });
+
+  it('still rejects a child attached to a vehicle owned by someone else', async () => {
+    await seedUser('u1', 'u1@test.com');
+    await seedUser('u2', 'u2@test.com');
+    await runSync('u1', { deviceId: 'dA', since: 0, pushed: { vehicles: { upsert: [veh('v1', 1000)] } } }, { dbPath });
+
+    const r = await runSync('u2', {
+      deviceId: 'dB', since: 0,
+      pushed: { fuel_logs: { upsert: [fuel('fX', 'v1', 1000)] } },
+    }, { dbPath });
+
+    expect(r.rejected).toContainEqual({ table: 'fuel_logs', id: 'fX', reason: 'forbidden' });
+    const check = await runSync('u2', { deviceId: 'dC', since: 0 }, { dbPath });
+    expect(check.pulled.fuel_logs).toBeUndefined();
+  });
+
   it('ignores an older push (last-write-wins)', async () => {
     await seedUser('u1', 'u1@test.com');
     await runSync('u1', { deviceId: 'd1', since: 0, pushed: { vehicles: { upsert: [veh('v1', 1000, { name: 'Car' })] } } }, { dbPath });
