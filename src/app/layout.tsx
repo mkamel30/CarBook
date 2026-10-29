@@ -10,8 +10,8 @@ const cairo = Cairo({
 });
 
 export const metadata: Metadata = {
-  title: "Car Maintenance Followup | متابعة صيانة واستهلاك السيارة",
-  description: "نظام بسيط لتسجيل ومتابعة صيانة وبنزين السيارات مع التنبيهات الذكية والتقارير",
+  title: "CarBook | دفتر ومتابعة صيانة واستهلاك السيارة",
+  description: "CarBook - نظام ذكي وبسيط لتسجيل ومتابعة صيانة وبنزين السيارات مع التنبيهات الدورية والتقارير",
 };
 
 export default function RootLayout({

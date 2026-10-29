@@ -528,8 +528,8 @@ export default function WorkbenchPage() {
             <div className="flex items-center gap-2">
               <Car className="text-amber-500 w-6 h-6" />
               <div>
-                <h1 className="font-bold text-sm tracking-wide">Car Followup</h1>
-                <p className="text-xs text-slate-400">متابعة صيانة وبنزين السيارات</p>
+                <h1 className="font-bold text-sm tracking-wide">CarBook</h1>
+                <p className="text-xs text-slate-400">دفتر ومتابعة صيانة واستهلاك السيارة</p>
               </div>
             </div>
           </div>
