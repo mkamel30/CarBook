@@ -11,6 +11,8 @@ dist/
 .env.local
 .env*.local
 coverage/
+*.apk
+*.aab
 *.tsbuildinfo
 .DS_Store
 *.log
