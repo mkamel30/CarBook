@@ -117,6 +117,7 @@ export default function WorkbenchPage() {
     ],
   });
   const [settingsMsg, setSettingsMsg] = useState('');
+  const [showFabMenu, setShowFabMenu] = useState(false);
 
   // Fetch Vehicles
   const loadVehicles = async () => {
@@ -529,8 +530,8 @@ export default function WorkbenchPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100">
-      {/* Sidebar / Navigation */}
-      <aside className={`w-64 bg-slate-950 flex flex-col justify-between shrink-0 ${dir === 'rtl' ? 'border-l' : 'border-r'} border-slate-800`}>
+      {/* Sidebar / Navigation (Desktop & Tablet) */}
+      <aside className={`hidden md:flex w-64 lg:w-72 bg-slate-950 flex-col justify-between shrink-0 ${dir === 'rtl' ? 'border-l' : 'border-r'} border-slate-800`}>
         <div>
           {/* App Branding */}
           <div className="p-4 border-b border-slate-800 flex items-center justify-between">
@@ -666,8 +667,70 @@ export default function WorkbenchPage() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-y-auto">
-        {/* Top Header */}
-        <header className="h-14 border-b border-slate-800 bg-slate-950/60 px-6 flex items-center justify-between shrink-0">
+        {/* Mobile M3 Top App Bar */}
+        <header className="md:hidden sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 px-3.5 py-2.5 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-500 shrink-0">
+              <Car className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-bold text-xs tracking-wide">CarBook</h1>
+                {selectedVehicle && (
+                  <span className="text-[10px] bg-amber-500/15 text-amber-400 font-mono font-bold px-1.5 py-0.5 rounded">
+                    {selectedVehicle.currentOdometer?.toLocaleString()} {t('unit_km')}
+                  </span>
+                )}
+              </div>
+              {selectedVehicle ? (
+                <span className="text-[11px] text-slate-300 font-medium truncate block">
+                  {selectedVehicle.name} • {selectedVehicle.licensePlate || `${selectedVehicle.make} ${selectedVehicle.model}`}
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-400">{t('app_select_prompt')}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {vehicles.length > 1 && (
+              <select
+                className="bg-slate-900 border border-slate-700 text-[11px] rounded-full px-2 py-1 text-slate-200 outline-none max-w-[95px] truncate"
+                value={selectedVehicle?.id || ''}
+                onChange={e => {
+                  const v = vehicles.find(item => item.id === e.target.value);
+                  setSelectedVehicle(v || null);
+                }}
+              >
+                {vehicles.map(v => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900 text-slate-200 text-[10px] font-bold active:scale-95 transition"
+              title="Change Language"
+            >
+              <Globe className="w-3 h-3 text-amber-400" />
+              <span>{lang === 'ar' ? 'EN' : 'عربي'}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`p-1.5 rounded-full border transition active:scale-95 ${
+                activeTab === 'settings'
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                  : 'bg-slate-900 border-slate-700 text-slate-300'
+              }`}
+              title={t('nav_settings')}
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </header>
+
+        {/* Desktop Top Header */}
+        <header className="hidden md:flex h-14 border-b border-slate-800 bg-slate-950/60 px-6 items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             {selectedVehicle ? (
               <div className="flex items-center gap-3">
@@ -721,7 +784,7 @@ export default function WorkbenchPage() {
         </header>
 
         {/* Tab Body */}
-        <div className="p-6">
+        <div className="p-4 md:p-6 pb-36 md:pb-6">
           {!selectedVehicle && activeTab !== 'settings' ? (
             <div className="max-w-md mx-auto my-20 text-center bg-slate-950 p-8 rounded-xl border border-slate-800">
               <Car className="w-12 h-12 text-amber-500 mx-auto mb-4" />
@@ -886,29 +949,103 @@ export default function WorkbenchPage() {
               {/* Fuel Logs Tab */}
               {activeTab === 'fuel' && (
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center">
+                  {/* Tab Header (Responsive) */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-sm font-semibold text-slate-200">{t('fuel_title')}</h2>
-                      <p className="text-xs text-slate-400 mt-0.5">{t('fuel_desc')}</p>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base sm:text-lg font-bold text-slate-100">{t('fuel_title')}</h2>
+                        <span className="text-[11px] font-mono bg-amber-500/15 text-amber-400 px-2 py-0.5 rounded-full font-bold">
+                          {fuelLogs.length}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5 hidden sm:block">{t('fuel_desc')}</p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => exportFuelToExcel(selectedVehicle, fuelLogs, lang)}
-                        className="bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition"
+                        className="bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
                         title={t('rep_btn_excel_fuel')}
                       >
-                        <FileSpreadsheet className="w-3.5 h-3.5" /> {t('rep_btn_excel_fuel')}
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">{t('rep_btn_excel_fuel')}</span>
+                        <span className="sm:hidden">Excel</span>
                       </button>
                       <button
                         onClick={openAddFuelModal}
-                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition"
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-sm"
                       >
                         <PlusCircle className="w-3.5 h-3.5" /> {t('fuel_btn_new')}
                       </button>
                     </div>
                   </div>
 
-                  <div className="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+                  {/* Mobile View: Material You (M3) Cards Feed */}
+                  <div className="md:hidden space-y-3">
+                    {fuelLogs.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-900/40 rounded-2xl border border-slate-800 text-xs text-slate-500">
+                        {t('fuel_empty_state')}
+                      </div>
+                    ) : (
+                      fuelLogs.map((log, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-4 space-y-3 shadow-sm active:border-slate-700 transition"
+                        >
+                          {/* Top: Date & Odometer Chip */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-400 font-mono">{log.fillDate}</span>
+                            <span className="text-xs font-mono font-bold bg-amber-500/15 text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/25">
+                              {log.odometer?.toLocaleString()} {t('unit_km')}
+                            </span>
+                          </div>
+
+                          {/* Middle: Big Cost & Liters */}
+                          <div className="flex items-baseline justify-between border-b border-slate-800/80 pb-2.5">
+                            <div>
+                              <span className="text-xl font-bold font-mono text-slate-100">{log.totalCost}</span>
+                              <span className="text-xs text-slate-400 mx-1">{t('unit_currency')}</span>
+                            </div>
+                            <div className="text-xs text-slate-300 font-mono">
+                              <span className="font-semibold text-amber-400">{log.liters}</span> {t('unit_liter')} @ {log.pricePerLiter} {t('unit_currency')}
+                            </div>
+                          </div>
+
+                          {/* Bottom: Consumption Pill, Badge & Actions */}
+                          <div className="flex items-center justify-between text-xs pt-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {log.litersPer100Km ? (
+                                <span className="inline-flex items-center text-[11px] font-bold font-mono bg-emerald-500/15 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                  ⚡ {log.litersPer100Km} {t('unit_l_per_100km')}
+                                </span>
+                              ) : null}
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${log.isFullTank ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/50' : 'bg-slate-800 text-slate-400'}`}>
+                                {log.isFullTank ? t('fuel_full_badge') : t('fuel_partial_badge')}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => openEditFuelModal(log)}
+                                className="p-1.5 rounded-full text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
+                                title={t('btn_edit')}
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFuel(log.id)}
+                                className="p-1.5 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                                title={t('btn_delete')}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Desktop View: Full Grid Table */}
+                  <div className="hidden md:block bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
                     <table className="w-full text-start text-xs">
                       <thead className="bg-slate-900 border-b border-slate-800 text-slate-400">
                         <tr>
@@ -993,29 +1130,123 @@ export default function WorkbenchPage() {
               {/* Maintenance Logs Tab */}
               {activeTab === 'maintenance' && (
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center">
+                  {/* Tab Header (Responsive) */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-sm font-semibold text-slate-200">{t('maint_title')}</h2>
-                      <p className="text-xs text-slate-400 mt-0.5">{t('maint_desc')}</p>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base sm:text-lg font-bold text-slate-100">{t('maint_title')}</h2>
+                        <span className="text-[11px] font-mono bg-amber-500/15 text-amber-400 px-2 py-0.5 rounded-full font-bold">
+                          {maintenanceLogs.length}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5 hidden sm:block">{t('maint_desc')}</p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => exportMaintenanceToExcel(selectedVehicle, maintenanceLogs, lang)}
-                        className="bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition"
+                        className="bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
                         title={t('rep_btn_excel_maint')}
                       >
-                        <FileSpreadsheet className="w-3.5 h-3.5" /> {t('rep_btn_excel_maint')}
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">{t('rep_btn_excel_maint')}</span>
+                        <span className="sm:hidden">Excel</span>
                       </button>
                       <button
                         onClick={openAddMaintenanceModal}
-                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition"
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-sm"
                       >
                         <PlusCircle className="w-3.5 h-3.5" /> {t('maint_btn_new')}
                       </button>
                     </div>
                   </div>
 
-                  <div className="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+                  {/* Mobile View: Material You (M3) Service Cards Feed */}
+                  <div className="md:hidden space-y-3">
+                    {maintenanceLogs.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-900/40 rounded-2xl border border-slate-800 text-xs text-slate-500">
+                        {t('maint_empty_state')}
+                      </div>
+                    ) : (
+                      maintenanceLogs.map((log, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-4 space-y-3 shadow-sm active:border-slate-700 transition"
+                        >
+                          {/* Top: Date & Odometer Chip */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-400 font-mono">{log.serviceDate}</span>
+                            <span className="text-xs font-mono font-bold bg-amber-500/15 text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/25">
+                              {log.odometer?.toLocaleString()} {t('unit_km')}
+                            </span>
+                          </div>
+
+                          {/* Service Title */}
+                          <div className="text-sm font-bold text-slate-100 leading-snug">
+                            {log.title}
+                          </div>
+
+                          {/* Parts Breakdown Chips */}
+                          {log.partsList && log.partsList.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pt-0.5">
+                              {log.partsList.map((p: any, pIdx: number) => (
+                                <span
+                                  key={pIdx}
+                                  className="text-[11px] bg-slate-800/90 px-2.5 py-1 rounded-xl border border-slate-700/80 text-slate-200 flex items-center gap-1.5"
+                                >
+                                  <span className="font-medium">{p.name}</span>
+                                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold ${p.condition === 'new' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                                    {p.condition === 'new' ? t('maint_cond_new') : t('maint_cond_used')}
+                                  </span>
+                                  <span className="font-mono text-amber-400 font-bold">{p.cost} {t('unit_currency')}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Workshop or Notes if present */}
+                          {(log.workshop || log.notes) && (
+                            <div className="text-[11px] text-slate-400 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/70 flex items-center justify-between gap-2">
+                              {log.workshop && <span className="font-medium text-slate-300">📍 {log.workshop}</span>}
+                              {log.notes && <span className="text-slate-400 truncate text-[10px]">{log.notes}</span>}
+                            </div>
+                          )}
+
+                          {/* Bottom: Cost Summary & Actions */}
+                          <div className="flex items-center justify-between border-t border-slate-800/80 pt-2.5 text-xs">
+                            <div>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-[11px] text-slate-400">{t('maint_th_total')}:</span>
+                                <span className="text-base font-bold font-mono text-amber-400">{log.totalCost}</span>
+                                <span className="text-[10px] text-slate-400">{t('unit_currency')}</span>
+                              </div>
+                              <span className="text-[10px] text-slate-500 block">
+                                ({log.partsCost} {t('maint_parts_count')} + {log.laborCost} {t('maint_labor')})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => openEditMaintenanceModal(log)}
+                                className="p-2 rounded-full text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
+                                title={t('btn_edit')}
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMaintenance(log.id)}
+                                className="p-2 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                                title={t('btn_delete')}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Desktop View: Full Grid Table */}
+                  <div className="hidden md:block bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
                     <table className="w-full text-start text-xs">
                       <thead className="bg-slate-900 border-b border-slate-800 text-slate-400">
                         <tr>
@@ -1807,10 +2038,12 @@ export default function WorkbenchPage() {
         </div>
       </main>
 
-      {/* Add Vehicle Modal */}
+      {/* Add Vehicle Modal (M3 Bottom Sheet on Mobile / Centered Dialog on Desktop) */}
       {showAddVehicleModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-950 border border-slate-800 rounded-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-slate-950 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 space-y-4 max-h-[92vh] sm:max-h-[85vh] overflow-y-auto shadow-2xl">
+            {/* M3 Drag Handle for mobile */}
+            <div className="sm:hidden m3-drag-handle" />
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
                 <Car className="w-4 h-4 text-amber-500" /> {t('modal_car_add_title')}
@@ -1959,10 +2192,12 @@ export default function WorkbenchPage() {
         </div>
       )}
 
-      {/* Fuel Log Modal */}
+      {/* Fuel Log Modal (M3 Bottom Sheet on Mobile / Centered Dialog on Desktop) */}
       {showFuelModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-950 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-slate-950 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 space-y-4 max-h-[92vh] sm:max-h-[85vh] overflow-y-auto shadow-2xl">
+            {/* M3 Drag Handle for mobile */}
+            <div className="sm:hidden m3-drag-handle" />
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
                 <Fuel className="w-4 h-4 text-amber-500" />
@@ -2138,10 +2373,12 @@ export default function WorkbenchPage() {
         </div>
       )}
 
-      {/* Maintenance Log Modal */}
+      {/* Maintenance Log Modal (M3 Bottom Sheet on Mobile / Centered Dialog on Desktop) */}
       {showMaintenanceModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-950 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-slate-950 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 space-y-4 max-h-[92vh] sm:max-h-[85vh] overflow-y-auto shadow-2xl">
+            {/* M3 Drag Handle for mobile */}
+            <div className="sm:hidden m3-drag-handle" />
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
                 <Wrench className="w-4 h-4 text-amber-500" />
@@ -2418,6 +2655,122 @@ export default function WorkbenchPage() {
           </div>
         </div>
       )}
+
+      {/* Material You (M3) Floating Action Button (FAB) on Mobile */}
+      {selectedVehicle && (
+        <div
+          className="md:hidden fixed bottom-20 z-40 transition-all print:hidden"
+          style={{ [dir === 'rtl' ? 'left' : 'right']: '1.25rem' }}
+        >
+          {showFabMenu && (
+            <div className="mb-3 space-y-2 flex flex-col items-end animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <button
+                onClick={() => {
+                  setShowFabMenu(false);
+                  openAddFuelModal();
+                }}
+                className="flex items-center gap-2 bg-slate-900 text-amber-400 border border-amber-500/40 px-4 py-2.5 rounded-full text-xs font-bold shadow-2xl active:scale-95 transition"
+              >
+                <Fuel className="w-4 h-4" /> {t('btn_add_fuel')}
+              </button>
+              <button
+                onClick={() => {
+                  setShowFabMenu(false);
+                  openAddMaintenanceModal();
+                }}
+                className="flex items-center gap-2 bg-slate-900 text-slate-100 border border-slate-700 px-4 py-2.5 rounded-full text-xs font-bold shadow-2xl active:scale-95 transition"
+              >
+                <Wrench className="w-4 h-4" /> {t('btn_add_maintenance')}
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => setShowFabMenu(!showFabMenu)}
+            className="m3-fab w-13 h-13 rounded-2xl flex items-center justify-center font-bold text-slate-950 shadow-2xl active:scale-95 transition p-3"
+            aria-label="Add entry"
+          >
+            <PlusCircle className={`w-6 h-6 transition-transform duration-200 ${showFabMenu ? 'rotate-45' : ''}`} />
+          </button>
+        </div>
+      )}
+
+      {/* Material You (M3) Bottom Navigation Bar on Mobile */}
+      <nav className="m3-bottom-nav md:hidden fixed bottom-0 inset-x-0 bg-slate-950/95 backdrop-blur-lg border-t border-slate-800 z-30 flex items-center justify-around px-2 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] shadow-2xl print:hidden">
+        {/* Destination 1: Overview */}
+        <button
+          onClick={() => setActiveTab('overview')}
+          className="flex flex-col items-center gap-0.5 flex-1 py-1 active:scale-95 transition"
+        >
+          <div className={`w-14 h-8 rounded-full flex items-center justify-center transition-all ${
+            activeTab === 'overview' ? 'bg-amber-500/20 text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+          }`}>
+            <Gauge className="w-4 h-4" />
+          </div>
+          <span className={`text-[10px] font-medium ${activeTab === 'overview' ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
+            {t('nav_overview')}
+          </span>
+        </button>
+
+        {/* Destination 2: Fuel */}
+        <button
+          onClick={() => setActiveTab('fuel')}
+          className="flex flex-col items-center gap-0.5 flex-1 py-1 active:scale-95 transition"
+        >
+          <div className={`w-14 h-8 rounded-full flex items-center justify-center transition-all ${
+            activeTab === 'fuel' ? 'bg-amber-500/20 text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+          }`}>
+            <Fuel className="w-4 h-4" />
+          </div>
+          <span className={`text-[10px] font-medium ${activeTab === 'fuel' ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
+            {t('nav_fuel')}
+          </span>
+        </button>
+
+        {/* Destination 3: Maintenance */}
+        <button
+          onClick={() => setActiveTab('maintenance')}
+          className="flex flex-col items-center gap-0.5 flex-1 py-1 active:scale-95 transition"
+        >
+          <div className={`w-14 h-8 rounded-full flex items-center justify-center transition-all ${
+            activeTab === 'maintenance' ? 'bg-amber-500/20 text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+          }`}>
+            <Wrench className="w-4 h-4" />
+          </div>
+          <span className={`text-[10px] font-medium ${activeTab === 'maintenance' ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
+            {t('nav_maintenance')}
+          </span>
+        </button>
+
+        {/* Destination 4: AI Doctor */}
+        <button
+          onClick={() => setActiveTab('doctor')}
+          className="flex flex-col items-center gap-0.5 flex-1 py-1 active:scale-95 transition"
+        >
+          <div className={`w-14 h-8 rounded-full flex items-center justify-center transition-all ${
+            activeTab === 'doctor' ? 'bg-amber-500/20 text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+          }`}>
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <span className={`text-[10px] font-medium ${activeTab === 'doctor' ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
+            {t('nav_doctor')}
+          </span>
+        </button>
+
+        {/* Destination 5: Report */}
+        <button
+          onClick={() => setActiveTab('report')}
+          className="flex flex-col items-center gap-0.5 flex-1 py-1 active:scale-95 transition"
+        >
+          <div className={`w-14 h-8 rounded-full flex items-center justify-center transition-all ${
+            activeTab === 'report' ? 'bg-amber-500/20 text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+          }`}>
+            <FileText className="w-4 h-4" />
+          </div>
+          <span className={`text-[10px] font-medium ${activeTab === 'report' ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
+            {t('nav_report')}
+          </span>
+        </button>
+      </nav>
     </div>
   );
 }

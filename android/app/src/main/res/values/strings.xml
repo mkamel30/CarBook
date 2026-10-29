@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CarBook</string>
+    <string name="title_activity_main">CarBook</string>
+    <string name="package_name">com.mkamel.carbook</string>
+    <string name="custom_url_scheme">com.mkamel.carbook</string>
+</resources>
