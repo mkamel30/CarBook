@@ -19,6 +19,7 @@ export type VehicleSpecs = z.infer<typeof vehicleSpecsSchema>;
 
 export const vehicleSchema = z.object({
   id: z.string().uuid().optional(),
+  userId: z.string().optional().nullable(),
   name: z.string().min(1, 'Vehicle name is required'),
   make: z.string().min(1, 'Make is required'),
   model: z.string().min(1, 'Model is required'),

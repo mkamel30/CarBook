@@ -1,7 +1,17 @@
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 
+export const usersTable = sqliteTable('users', {
+  id: text('id').primaryKey(), // Google sub
+  email: text('email').notNull().unique(),
+  name: text('name').notNull(),
+  picture: text('picture'),
+  createdAt: text('created_at').notNull(),
+  lastLoginAt: text('last_login_at').notNull(),
+});
+
 export const vehiclesTable = sqliteTable('vehicles', {
   id: text('id').primaryKey(),
+  userId: text('user_id').references(() => usersTable.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   make: text('make').notNull(),
   model: text('model').notNull(),

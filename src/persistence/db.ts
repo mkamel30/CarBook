@@ -23,8 +23,17 @@ export async function getDatabase(dbFilePath?: string) {
 
   // Initialize schema tables
   await client.batch([
+    `CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      picture TEXT,
+      created_at TEXT NOT NULL,
+      last_login_at TEXT NOT NULL
+    );`,
     `CREATE TABLE IF NOT EXISTS vehicles (
       id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       make TEXT NOT NULL,
       model TEXT NOT NULL,
@@ -113,6 +122,14 @@ export async function getDatabase(dbFilePath?: string) {
   } catch (e) {
     // Column already exists or table was just created
   }
+  try {
+    await client.execute('ALTER TABLE vehicles ADD COLUMN user_id TEXT;');
+  } catch (e) {
+    // Column already exists or table was just created
+  }
+  try {
+    await client.execute('CREATE INDEX IF NOT EXISTS idx_vehicles_user_id ON vehicles(user_id);');
+  } catch (e) {}
 
   if (!dbFilePath) {
     _db = db;

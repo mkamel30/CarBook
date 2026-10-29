@@ -24,20 +24,88 @@ export class StorageRepository {
     return await this.dbPromise;
   }
 
+  // Users & Multi-Tenancy
+  async findOrCreateUser(profile: { id: string; email: string; name: string; picture?: string }): Promise<{
+    id: string;
+    email: string;
+    name: string;
+    picture: string | null;
+  }> {
+    const { client } = await this.getHandles();
+    const now = new Date().toISOString();
+
+    const existing = await client.execute({
+      sql: `SELECT id, email, name, picture FROM users WHERE id = ? OR email = ? LIMIT 1`,
+      args: [profile.id, profile.email],
+    });
+
+    if (existing.rows.length > 0) {
+      const user = existing.rows[0];
+      await client.execute({
+        sql: `UPDATE users SET last_login_at = ?, name = ?, picture = COALESCE(?, picture) WHERE id = ?`,
+        args: [now, profile.name, profile.picture || null, user.id as string],
+      });
+      return {
+        id: user.id as string,
+        email: user.email as string,
+        name: profile.name || (user.name as string),
+        picture: profile.picture || (user.picture as string | null),
+      };
+    }
+
+    // Insert new user
+    await client.execute({
+      sql: `INSERT INTO users (id, email, name, picture, created_at, last_login_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [profile.id, profile.email, profile.name, profile.picture || null, now, now],
+    });
+
+    // Automatic migration: If there are legacy vehicles with user_id IS NULL, assign them to this first user!
+    await client.execute({
+      sql: `UPDATE vehicles SET user_id = ? WHERE user_id IS NULL`,
+      args: [profile.id],
+    });
+
+    return {
+      id: profile.id,
+      email: profile.email,
+      name: profile.name,
+      picture: profile.picture || null,
+    };
+  }
+
+  async getUserById(id: string): Promise<{ id: string; email: string; name: string; picture: string | null } | null> {
+    const { client } = await this.getHandles();
+    const res = await client.execute({
+      sql: `SELECT id, email, name, picture FROM users WHERE id = ? LIMIT 1`,
+      args: [id],
+    });
+    if (res.rows.length === 0) return null;
+    const r = res.rows[0];
+    return {
+      id: r.id as string,
+      email: r.email as string,
+      name: r.name as string,
+      picture: (r.picture as string) || null,
+    };
+  }
+
   // Vehicles
-  async createVehicle(data: Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt'>): Promise<Vehicle> {
+  async createVehicle(data: Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt'>, userId?: string): Promise<Vehicle> {
     const { db } = await this.getHandles();
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const validated = vehicleSchema.parse({
       ...data,
       id,
+      userId: userId || data.userId || null,
       createdAt: now,
       updatedAt: now,
     });
 
     await db.insert(schema.vehiclesTable).values({
       id: validated.id!,
+      userId: validated.userId || null,
       name: validated.name,
       make: validated.make,
       model: validated.model,
@@ -63,11 +131,20 @@ export class StorageRepository {
     });
   }
 
-  async getVehicleById(id: string): Promise<Vehicle | null> {
-    const { db } = await this.getHandles();
-    const records = await db.select().from(schema.vehiclesTable).where(eq(schema.vehiclesTable.id, id));
-    if (records.length === 0) return null;
-    const r = records[0];
+  async getVehicleById(id: string, userId?: string): Promise<Vehicle | null> {
+    const { client } = await this.getHandles();
+    let query = `SELECT * FROM vehicles WHERE id = ?`;
+    const args: any[] = [id];
+
+    if (userId) {
+      query += ` AND (user_id = ? OR user_id IS NULL)`;
+      args.push(userId);
+    }
+
+    const res = await client.execute({ sql: query, args });
+    if (res.rows.length === 0) return null;
+    const r = res.rows[0] as any;
+
     let specs = null;
     if (r.specs) {
       try {
@@ -76,24 +153,35 @@ export class StorageRepository {
     }
     return vehicleSchema.parse({
       id: r.id,
+      userId: r.user_id || null,
       name: r.name,
       make: r.make,
       model: r.model,
-      year: r.year,
-      licensePlate: r.licensePlate,
-      initialOdometer: r.initialOdometer,
-      currentOdometer: r.currentOdometer,
-      recommendedOil: r.recommendedOil,
+      year: Number(r.year),
+      licensePlate: r.license_plate,
+      initialOdometer: Number(r.initial_odometer),
+      currentOdometer: Number(r.current_odometer),
+      recommendedOil: r.recommended_oil,
       specs,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
     });
   }
 
-  async getAllVehicles(): Promise<Vehicle[]> {
-    const { db } = await this.getHandles();
-    const records = await db.select().from(schema.vehiclesTable);
-    return records.map(r => {
+  async getAllVehicles(userId?: string): Promise<Vehicle[]> {
+    const { client } = await this.getHandles();
+    let query = `SELECT * FROM vehicles`;
+    const args: any[] = [];
+
+    if (userId) {
+      query += ` WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC`;
+      args.push(userId);
+    } else {
+      query += ` ORDER BY created_at DESC`;
+    }
+
+    const res = await client.execute({ sql: query, args });
+    return res.rows.map((r: any) => {
       let specs = null;
       if (r.specs) {
         try {
@@ -102,17 +190,18 @@ export class StorageRepository {
       }
       return vehicleSchema.parse({
         id: r.id,
+        userId: r.user_id || null,
         name: r.name,
         make: r.make,
         model: r.model,
-        year: r.year,
-        licensePlate: r.licensePlate,
-        initialOdometer: r.initialOdometer,
-        currentOdometer: r.currentOdometer,
-        recommendedOil: r.recommendedOil,
+        year: Number(r.year),
+        licensePlate: r.license_plate,
+        initialOdometer: Number(r.initial_odometer),
+        currentOdometer: Number(r.current_odometer),
+        recommendedOil: r.recommended_oil,
         specs,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
       });
     });
   }
