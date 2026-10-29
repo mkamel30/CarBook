@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, Check, Fuel, PlusCircle, Trash2, Settings, Bell, BellRing, UserCheck, LogOut, Palette } from 'lucide-react';
+import { Globe, Check, Fuel, PlusCircle, Trash2, Settings, Bell, BellRing, UserCheck, LogOut, Palette, DatabaseBackup, Download, Upload } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 import { useTheme } from '@/theme/context';
 import {
@@ -25,7 +25,21 @@ export interface SettingsTabProps {
   currentUser?: { id: string; email: string; name: string; picture: string | null } | null;
   onLoginGoogle?: () => void;
   onLogout?: () => void;
+  onDataRestored?: () => void;
 }
+
+interface BackupPreview {
+  exportedAt: string;
+  counts: Record<string, number>;
+  file: unknown;
+}
+
+const BACKUP_TABLES: Array<[string, Record<string, string>]> = [
+  ['vehicles', { ar: 'سيارات', en: 'vehicles', pl: 'pojazdy' }],
+  ['maintenance_schedules', { ar: 'مواعيد صيانة', en: 'schedules', pl: 'harmonogramy' }],
+  ['maintenance_logs', { ar: 'سجل صيانة', en: 'service logs', pl: 'serwisy' }],
+  ['fuel_logs', { ar: 'سجل وقود', en: 'fuel logs', pl: 'paliwo' }],
+];
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
   settings,
@@ -35,6 +49,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   currentUser,
   onLoginGoogle,
   onLogout,
+  onDataRestored,
 }) => {
   const { t, lang, setLang, languages } = useTranslation();
   const { theme, setTheme, themes } = useTheme();
@@ -43,6 +58,79 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     permission: 'default',
   });
   const [testSent, setTestSent] = useState(false);
+  const [backupBusy, setBackupBusy] = useState<'export' | 'restore' | null>(null);
+  const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(null);
+  const [backupMsg, setBackupMsg] = useState('');
+  const [backupError, setBackupError] = useState('');
+  const [restoreMode, setRestoreMode] = useState<'merge' | 'replace'>('merge');
+  const [replaceArmed, setReplaceArmed] = useState(false);
+
+  const handleExportBackup = async () => {
+    setBackupBusy('export');
+    setBackupError('');
+    try {
+      const res = await fetch('/api/backup');
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `carbook-backup-${stamp}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setBackupError(e.message);
+    } finally {
+      setBackupBusy(null);
+    }
+  };
+
+  const handlePickBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const [file] = e.target.files ?? [];
+    setBackupPreview(null);
+    setBackupMsg('');
+    setBackupError('');
+    setRestoreMode('merge');
+    setReplaceArmed(false);
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (parsed?.kind !== 'carbook-backup') throw new Error(lang === 'ar' ? 'ملف غير معروف.' : 'Unrecognised file.');
+      const counts: Record<string, number> = {};
+      for (const [key] of BACKUP_TABLES) {
+        counts[key] = Array.isArray(parsed.tables?.[key]) ? parsed.tables[key].length : 0;
+      }
+      setBackupPreview({ exportedAt: String(parsed.exportedAt ?? ''), counts, file: parsed });
+    } catch (err: any) {
+      setBackupError(err.message);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (!backupPreview) return;
+    setBackupBusy('restore');
+    setBackupError('');
+    try {
+      const res = await fetch('/api/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: backupPreview.file, mode: restoreMode }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
+      const inserted = Object.values(json.data.tables as Record<string, { inserted: number }>)
+        .reduce((n, s) => n + s.inserted, 0);
+      setBackupMsg(lang === 'ar' ? `تمت الاستعادة: ${inserted} سجل.` : `Restored: ${inserted} rows.`);
+      setBackupPreview(null);
+      setReplaceArmed(false);
+      onDataRestored?.();
+    } catch (e: any) {
+      setBackupError(e.message);
+    } finally {
+      setBackupBusy(null);
+    }
+  };
 
   useEffect(() => {
     setNotifStatus(checkNotificationSupport());
@@ -160,6 +248,134 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <GoogleIcon />
               <span>{lang === 'ar' ? 'تسجيل الدخول بحساب Google' : lang === 'pl' ? 'Zaloguj się przez Google' : 'Sign in with Google'}</span>
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* Data Backup & Restore Card */}
+      <div className="bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-4">
+        <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+          <DatabaseBackup className="w-5 h-5 text-amber-500" />
+          <h2 className="text-sm font-bold text-slate-100">
+            {lang === 'ar' ? 'النسخة الاحتياطية واستعادة البيانات' : lang === 'pl' ? 'Kopia zapasowa i przywracanie' : 'Backup & Restore'}
+          </h2>
+        </div>
+        <p className="text-xs text-slate-400 leading-relaxed">
+          {lang === 'ar'
+            ? 'نزّل نسخة كاملة من سياراتك وسجلاتها كملف JSON واحد. استعِده على أي جهاز أو بعد إعادة تثبيت التطبيق.'
+            : lang === 'pl'
+            ? 'Pobierz pełną kopię pojazdów i historii jako jeden plik JSON. Przywróć go na dowolnym urządzeniu.'
+            : 'Download every vehicle and log as a single JSON file, and restore it on any device or after a reinstall.'}
+        </p>
+
+        <button
+          type="button"
+          disabled={!currentUser || backupBusy === 'export'}
+          onClick={handleExportBackup}
+          className="bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:hover:bg-amber-500 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition active:scale-95"
+        >
+          <Download className="w-4 h-4" />
+          <span>{lang === 'ar' ? 'تنزيل نسخة احتياطية' : lang === 'pl' ? 'Pobierz kopię' : 'Download backup'}</span>
+        </button>
+
+        {!currentUser && (
+          <p className="text-[11px] text-slate-500">
+            {lang === 'ar' ? 'سجّل الدخول أولاً لاستخدام النسخ الاحتياطي.' : lang === 'pl' ? 'Zaloguj się, aby używać kopii zapasowych.' : 'Sign in first to use backup and restore.'}
+          </p>
+        )}
+
+        {currentUser && (
+          <div className="space-y-3 pt-1 border-t border-slate-800">
+            <label className="block text-xs font-medium text-slate-300">
+              {lang === 'ar' ? 'استعادة من ملف' : lang === 'pl' ? 'Przywróć z pliku' : 'Restore from file'}
+            </label>
+            <input
+              type="file"
+              accept="application/json,.json"
+              onChange={handlePickBackupFile}
+              className="block w-full text-xs text-slate-400 file:mr-3 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700"
+            />
+
+            {backupPreview && (
+              <div className="space-y-3 bg-slate-900/70 border border-slate-800 p-3 rounded-lg">
+                <div className="text-[11px] text-slate-400 font-mono">
+                  {backupPreview.exportedAt ? backupPreview.exportedAt.slice(0, 10) : '—'} ·{' '}
+                  {BACKUP_TABLES.map(([key, label]) => `${label[lang]}: ${backupPreview.counts[key] ?? 0}`).join(' · ')}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(['merge', 'replace'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setRestoreMode(m)}
+                      aria-pressed={restoreMode === m}
+                      className={`p-2.5 rounded-lg border text-right transition ${
+                        restoreMode === m
+                          ? 'bg-amber-500/10 border-amber-500'
+                          : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className={`block text-xs font-bold ${restoreMode === m ? 'text-amber-400' : 'text-slate-200'}`}>
+                        {m === 'merge'
+                          ? (lang === 'ar' ? 'دمج (آمن)' : lang === 'pl' ? 'Scal (bezpieczne)' : 'Merge (safe)')
+                          : (lang === 'ar' ? 'استبدال كامل' : lang === 'pl' ? 'Zastąp wszystko' : 'Full replace')}
+                      </span>
+                      <span className="block text-[11px] text-slate-400 leading-snug mt-0.5">
+                        {m === 'merge'
+                          ? (lang === 'ar'
+                              ? 'يضيف ما فقدته فقط ويترك كل ما هو موجود حالياً كما هو.'
+                              : lang === 'pl'
+                              ? 'Dopełnia brakujące wiersze, niczego nie nadpisuje.'
+                              : 'Adds back only what is missing; never overwrites anything you already have.')
+                          : (lang === 'ar'
+                              ? 'يحذف بياناتك الحالية ويستبدلها بمحتوى الملف. لا يمكن التراجع.'
+                              : lang === 'pl'
+                              ? 'Usuwa bieżące dane i zastępuje je zawartością pliku. Nieodwracalne.'
+                              : 'Deletes your current data and puts the file in its place. Cannot be undone.')}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {restoreMode === 'replace' && (
+                  <label className="flex items-start gap-2 text-[11px] text-rose-300 leading-snug">
+                    <input
+                      type="checkbox"
+                      checked={replaceArmed}
+                      onChange={(e) => setReplaceArmed(e.target.checked)}
+                      className="mt-0.5 accent-rose-500"
+                    />
+                    <span>
+                      {lang === 'ar'
+                        ? 'أفهم أن الاستبدال الكامل سيمسح سجلاتي الحالية على هذا الحساب.'
+                        : lang === 'pl'
+                        ? 'Rozumiem, że zastąpienie usunie moją bieżącą historię.'
+                        : 'I understand that a full replace wipes the history on this account.'}
+                    </span>
+                  </label>
+                )}
+
+                {backupError && <div className="text-[11px] text-rose-400">{backupError}</div>}
+
+                <button
+                  type="button"
+                  disabled={backupBusy === 'restore' || (restoreMode === 'replace' && !replaceArmed)}
+                  onClick={handleRestoreBackup}
+                  className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-100 border border-slate-700 px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition active:scale-95"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>{lang === 'ar' ? 'استعادة الآن' : lang === 'pl' ? 'Przywróć teraz' : 'Restore now'}</span>
+                </button>
+              </div>
+            )}
+
+            {backupMsg && (
+              <div className="p-2.5 text-xs bg-emerald-950/80 border border-emerald-800 text-emerald-300 rounded-lg flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{backupMsg}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

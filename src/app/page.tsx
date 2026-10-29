@@ -747,6 +747,10 @@ export default function WorkbenchPage() {
                   currentUser={currentUser}
                   onLoginGoogle={handleLoginGoogle}
                   onLogout={handleLogout}
+                  onDataRestored={() => {
+                    loadVehicles();
+                    if (selectedVehicle) loadVehicleDetails(selectedVehicle.id);
+                  }}
                 />
               )}
             </>
