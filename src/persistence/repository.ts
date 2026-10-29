@@ -69,12 +69,6 @@ export class StorageRepository {
       args: [profile.id, profile.email, profile.name, profile.picture || null, now, now],
     });
 
-    // Automatic migration: If logging in is mkamel30@gmail.com or first user, claim any unassigned legacy vehicles
-    await client.execute({
-      sql: `UPDATE vehicles SET user_id = ? WHERE user_id IS NULL OR user_id = 'default'`,
-      args: [profile.id],
-    });
-
     return {
       id: profile.id,
       email: profile.email,

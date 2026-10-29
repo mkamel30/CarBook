@@ -8,7 +8,14 @@ export interface AuthSessionUser {
   picture: string | null;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'carbook_jwt_default_secret_key_2026';
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET must be set in production');
+  }
+  return 'carbook_jwt_dev_only_secret';
+}
 
 function base64UrlEncode(str: string): string {
   return Buffer.from(str)
@@ -37,7 +44,7 @@ export function signSessionToken(user: AuthSessionUser, expiresInDays = 30): str
   const encodedHeader = base64UrlEncode(JSON.stringify(header));
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   const signature = crypto
-    .createHmac('sha256', JWT_SECRET)
+    .createHmac('sha256', getJwtSecret())
     .update(`${encodedHeader}.${encodedPayload}`)
     .digest('base64')
     .replace(/=/g, '')
@@ -57,7 +64,7 @@ export function verifySessionToken(token: string): AuthSessionUser | null {
 
     const [encodedHeader, encodedPayload, signature] = parts;
     const expectedSignature = crypto
-      .createHmac('sha256', JWT_SECRET)
+      .createHmac('sha256', getJwtSecret())
       .update(`${encodedHeader}.${encodedPayload}`)
       .digest('base64')
       .replace(/=/g, '')
@@ -95,7 +102,10 @@ export function getAuthenticatedUser(req: NextRequest): AuthSessionUser | null {
  * Get dynamic OAuth Redirect URI based on request host
  */
 export function getGoogleRedirectUri(req: NextRequest): string {
+  if (process.env.GOOGLE_REDIRECT_URI) {
+    return process.env.GOOGLE_REDIRECT_URI;
+  }
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3070';
-  const proto = req.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'http');
+  const proto = req.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
   return `${proto}://${host}/api/auth/callback/google`;
 }

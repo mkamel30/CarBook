@@ -7,7 +7,8 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get('code');
   const error = searchParams.get('error');
 
-  const origin = req.nextUrl.origin;
+  const origin = process.env.APP_ORIGIN
+    || `${req.headers.get('x-forwarded-proto') || 'https'}://${req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3070'}`;
 
   if (error || !code) {
     return NextResponse.redirect(`${origin}/?auth_error=${encodeURIComponent(error || 'missing_code')}`);
@@ -72,10 +73,10 @@ export async function GET(req: NextRequest) {
     const response = NextResponse.redirect(`${origin}/`);
     response.cookies.set('carbook_session', sessionToken, {
       httpOnly: true,
-      secure: false, // works on both http and https
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      maxAge: 30 * 24 * 60 * 60,
     });
 
     return response;
