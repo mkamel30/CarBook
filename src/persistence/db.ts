@@ -82,7 +82,22 @@ export async function getDatabase(dbFilePath?: string) {
       value TEXT NOT NULL,
       is_encrypted INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
-    );`
+    );`,
+    `CREATE TABLE IF NOT EXISTS global_vehicle_specs_cache (
+      id TEXT PRIMARY KEY,
+      make_normalized TEXT NOT NULL,
+      model_normalized TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      specs_json TEXT NOT NULL,
+      schedules_json TEXT,
+      recommended_oil TEXT,
+      source TEXT NOT NULL DEFAULT 'server_gemini',
+      created_at TEXT NOT NULL,
+      hit_count INTEGER NOT NULL DEFAULT 1,
+      UNIQUE(make_normalized, model_normalized, year)
+    );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_specs_cache_lookup 
+    ON global_vehicle_specs_cache(make_normalized, model_normalized, year);`
   ], 'write');
 
   const db = drizzle(client, { schema });

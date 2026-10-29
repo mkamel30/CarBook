@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { StorageRepository } from '@/persistence/repository';
+import { resolveAiConfig } from '@/services/aiOrchestrator';
 
 export async function GET() {
   try {
     const repo = new StorageRepository();
-    const apiKey = await repo.getSetting('ai_api_key');
-    const provider = await repo.getSetting('ai_provider') || 'gemini';
+    const aiConfig = await resolveAiConfig(repo);
+    const userApiKey = await repo.getSetting('ai_api_key');
     const fuelTypesRaw = await repo.getSetting('fuel_types');
     const defaultFuelTypes = [
       { id: 'gasoline_92', name: 'بنزين 92', price: 15.25 },
@@ -19,9 +20,12 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
-        provider,
-        hasApiKey: Boolean(apiKey),
-        maskedApiKey: apiKey ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : null,
+        provider: aiConfig.provider,
+        hasApiKey: Boolean(userApiKey),
+        maskedApiKey: userApiKey ? `${userApiKey.slice(0, 4)}...${userApiKey.slice(-4)}` : null,
+        isServerManaged: aiConfig.isServerManaged,
+        hasServerKey: aiConfig.hasKey && aiConfig.isServerManaged,
+        isAiReady: true,
         fuelTypes,
       },
     });

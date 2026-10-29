@@ -64,3 +64,17 @@ export const appSettingsTable = sqliteTable('app_settings', {
   isEncrypted: integer('is_encrypted', { mode: 'boolean' }).notNull().default(false),
   updatedAt: text('updated_at').notNull(),
 });
+
+export const globalVehicleSpecsCacheTable = sqliteTable('global_vehicle_specs_cache', {
+  id: text('id').primaryKey(),
+  makeNormalized: text('make_normalized').notNull(),
+  modelNormalized: text('model_normalized').notNull(),
+  year: integer('year').notNull(),
+  specsJson: text('specs_json').notNull(),
+  schedulesJson: text('schedules_json'),
+  recommendedOil: text('recommended_oil'),
+  source: text('source').notNull().default('server_gemini'),
+  createdAt: text('created_at').notNull(),
+  hitCount: integer('hit_count').notNull().default(1),
+});
+

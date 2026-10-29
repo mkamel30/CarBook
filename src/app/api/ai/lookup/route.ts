@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { lookupVehicleScheduleProposal } from '@/services/ai';
+import { getOrFetchVehicleSchedules } from '@/services/aiOrchestrator';
 import { StorageRepository } from '@/persistence/repository';
 
 export async function POST(req: NextRequest) {
@@ -10,23 +10,18 @@ export async function POST(req: NextRequest) {
     }
 
     const repo = new StorageRepository();
-    const apiKey = await repo.getSetting('ai_api_key');
-    const provider = (await repo.getSetting('ai_provider')) as 'gemini' | 'openrouter' || 'gemini';
+    const { proposal, source, fromCache } = await getOrFetchVehicleSchedules(
+      make,
+      model,
+      Number(year),
+      repo
+    );
 
-    if (!apiKey) {
-      return NextResponse.json({
-        success: false,
-        error: 'AI API key is not configured. Please enter your API key in Settings first.',
-        isKeyMissing: true,
-      }, { status: 400 });
-    }
-
-    const proposal = await lookupVehicleScheduleProposal(make, model, Number(year), {
-      apiKey,
-      provider,
+    return NextResponse.json({
+      success: true,
+      data: proposal,
+      meta: { source, fromCache },
     });
-
-    return NextResponse.json({ success: true, data: proposal });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

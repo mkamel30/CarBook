@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { lookupFullVehicleManual } from '@/services/ai';
+import { getOrFetchVehicleManual } from '@/services/aiOrchestrator';
 import { StorageRepository } from '@/persistence/repository';
 
 export async function POST(req: NextRequest) {
@@ -15,26 +15,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Vehicle not found' }, { status: 404 });
     }
 
-    const apiKey = await repo.getSetting('ai_api_key');
-    const provider = (await repo.getSetting('ai_provider')) as 'gemini' | 'openrouter' || 'gemini';
+    const { specs, source, fromCache } = await getOrFetchVehicleManual(
+      vehicle.make,
+      vehicle.model,
+      vehicle.year,
+      repo
+    );
 
-    if (!apiKey) {
-      return NextResponse.json({
-        success: false,
-        error: 'AI API key is not configured. Please enter your API key in Settings first.',
-        isKeyMissing: true,
-      }, { status: 400 });
-    }
-
-    const specs = await lookupFullVehicleManual(vehicle.make, vehicle.model, vehicle.year, {
-      apiKey,
-      provider,
-    });
-
-    // Save permanently in SQLite
+    // Save permanently on the vehicle record as well
     await repo.updateVehicleSpecs(vehicleId, specs);
 
-    return NextResponse.json({ success: true, data: specs });
+    return NextResponse.json({
+      success: true,
+      data: specs,
+      meta: { source, fromCache },
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

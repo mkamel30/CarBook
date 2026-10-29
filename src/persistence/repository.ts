@@ -462,6 +462,87 @@ export class StorageRepository {
     return records.length > 0 ? records[0].value : null;
   }
 
+  // Global Vehicle Specifications & Schedules Cache
+  async getGlobalSpecCache(make: string, model: string, year: number): Promise<{
+    id: string;
+    specs: any;
+    schedules: any | null;
+    recommendedOil: string | null;
+    source: string;
+    hitCount: number;
+  } | null> {
+    const { client } = await this.getHandles();
+    const makeNorm = make.trim().toLowerCase();
+    const modelNorm = model.trim().toLowerCase();
+
+    const result = await client.execute({
+      sql: `SELECT id, specs_json, schedules_json, recommended_oil, source, hit_count 
+            FROM global_vehicle_specs_cache 
+            WHERE make_normalized = ? AND model_normalized = ? AND year = ? 
+            LIMIT 1`,
+      args: [makeNorm, modelNorm, year],
+    });
+
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+
+    // Async increment hit count in background
+    client.execute({
+      sql: `UPDATE global_vehicle_specs_cache SET hit_count = hit_count + 1 WHERE id = ?`,
+      args: [row.id as string],
+    }).catch(() => {});
+
+    let specs = null;
+    let schedules = null;
+    try {
+      specs = JSON.parse(row.specs_json as string);
+    } catch {}
+    if (row.schedules_json) {
+      try {
+        schedules = JSON.parse(row.schedules_json as string);
+      } catch {}
+    }
+
+    return {
+      id: row.id as string,
+      specs,
+      schedules,
+      recommendedOil: (row.recommended_oil as string) || null,
+      source: (row.source as string) || 'server_gemini',
+      hitCount: Number(row.hit_count) || 1,
+    };
+  }
+
+  async saveGlobalSpecCache(
+    make: string,
+    model: string,
+    year: number,
+    specs: any,
+    schedules?: any,
+    recommendedOil?: string,
+    source = 'server_gemini'
+  ): Promise<void> {
+    const { client } = await this.getHandles();
+    const id = crypto.randomUUID();
+    const makeNorm = make.trim().toLowerCase();
+    const modelNorm = model.trim().toLowerCase();
+    const now = new Date().toISOString();
+    const specsJson = typeof specs === 'string' ? specs : JSON.stringify(specs);
+    const schedulesJson = schedules ? (typeof schedules === 'string' ? schedules : JSON.stringify(schedules)) : null;
+
+    await client.execute({
+      sql: `INSERT INTO global_vehicle_specs_cache (
+              id, make_normalized, model_normalized, year, specs_json, schedules_json, recommended_oil, source, created_at, hit_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ON CONFLICT(make_normalized, model_normalized, year) DO UPDATE SET 
+              specs_json = excluded.specs_json,
+              schedules_json = COALESCE(excluded.schedules_json, global_vehicle_specs_cache.schedules_json),
+              recommended_oil = COALESCE(excluded.recommended_oil, global_vehicle_specs_cache.recommended_oil),
+              source = excluded.source`,
+      args: [id, makeNorm, modelNorm, year, specsJson, schedulesJson, recommendedOil || null, source, now],
+    });
+  }
+
   async close() {
     const { client } = await this.getHandles();
     client.close();

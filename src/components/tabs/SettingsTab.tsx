@@ -133,11 +133,21 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* AI Provider Settings */}
       <div className="bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-4">
-        <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-          <Settings className="w-5 h-5 text-amber-500" />
-          <h2 className="text-sm font-bold text-slate-100">{t('set_ai_title')}</h2>
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <Settings className="w-5 h-5 text-amber-500" />
+            <h2 className="text-sm font-bold text-slate-100">{t('set_ai_title')}</h2>
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            {lang === 'ar' ? 'الذكاء الاصطناعي مُدار وجاهز (مجاني 100%)' : 'AI Ready & Server Managed (100% Free)'}
+          </span>
         </div>
-        <p className="text-xs text-slate-400 leading-relaxed">{t('set_ai_desc')}</p>
+        <p className="text-xs text-slate-400 leading-relaxed">
+          {lang === 'ar'
+            ? 'تطبيق CarBook مجهّز بمحرك ذكاء اصطناعي وقاعدة بيانات هندسية مُدارة من السيرفر تعمل مجاناً وتلقائياً. إدخال مفتاح API خاص بك هو خيار إضافي اختياري تماماً.'
+            : 'CarBook is equipped with a server-managed AI engine and automotive knowledge base that operates automatically for free. Providing your own API key is completely optional.'}
+        </p>
 
         {settingsMsg && (
           <div className="p-2 text-xs bg-emerald-950 border border-emerald-800 text-emerald-300 rounded">
@@ -153,14 +163,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               value={settings.provider}
               onChange={(e) => setSettings((prev: any) => ({ ...prev, provider: e.target.value }))}
             >
-              <option value="gemini">Google Gemini API</option>
+              <option value="gemini">Google Gemini API (Default Managed)</option>
               <option value="openrouter">OpenRouter API</option>
             </select>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              {t('set_ai_key_label')}{' '}
+              {lang === 'ar' ? 'مفتاح API الخاص بك (اختياري)' : 'Personal API Key (Optional)'}{' '}
               {settings.hasApiKey && (
                 <span className="text-emerald-400">
                   ({t('set_ai_key_saved')} {settings.maskedApiKey})
@@ -169,7 +179,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <input
               type="password"
-              placeholder={settings.hasApiKey ? t('set_ai_key_placeholder') : 'sk-or-v1-... or AIzaSy...'}
+              placeholder={settings.hasApiKey ? t('set_ai_key_placeholder') : (lang === 'ar' ? 'اتركه فارغاً للاستخدام المجاني التلقائي أو أدخل مفتاحك' : 'Leave empty for automatic free mode, or paste custom key')}
               className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
               value={settings.apiKey}
               onChange={(e) => setSettings((prev: any) => ({ ...prev, apiKey: e.target.value }))}

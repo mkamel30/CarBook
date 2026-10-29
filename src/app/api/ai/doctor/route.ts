@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { askAiCarDoctor } from '@/services/ai';
+import { consultAiDoctor } from '@/services/aiOrchestrator';
 import { StorageRepository } from '@/persistence/repository';
 
 export async function POST(req: NextRequest) {
@@ -15,20 +15,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Vehicle not found' }, { status: 404 });
     }
 
-    const apiKey = await repo.getSetting('ai_api_key');
-    const provider = (await repo.getSetting('ai_provider')) as 'gemini' | 'openrouter' || 'gemini';
-
-    if (!apiKey) {
-      return NextResponse.json({
-        success: false,
-        error: 'AI API key is not configured. Please enter your API key in Settings first.',
-        isKeyMissing: true,
-      }, { status: 400 });
-    }
-
     const maintenanceLogs = await repo.getMaintenanceLogsByVehicle(vehicleId);
 
-    const advice = await askAiCarDoctor(
+    const { advice, source } = await consultAiDoctor(
       {
         make: vehicle.make,
         model: vehicle.model,
@@ -37,10 +26,14 @@ export async function POST(req: NextRequest) {
       },
       query,
       maintenanceLogs,
-      { apiKey, provider }
+      repo
     );
 
-    return NextResponse.json({ success: true, data: { advice } });
+    return NextResponse.json({
+      success: true,
+      data: { advice },
+      meta: { source },
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
