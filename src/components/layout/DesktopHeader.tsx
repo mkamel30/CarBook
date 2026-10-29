@@ -1,5 +1,5 @@
 import React from 'react';
-import { Fuel, Wrench, Globe, LogOut } from 'lucide-react';
+import { Fuel, Wrench, Globe, LogOut, Bell } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 
 export interface DesktopHeaderProps {
@@ -9,6 +9,8 @@ export interface DesktopHeaderProps {
   currentUser?: { id: string; email: string; name: string; picture: string | null } | null;
   onLoginGoogle?: () => void;
   onLogout?: () => void;
+  urgentCount?: number;
+  onSelectTab?: (tab: any) => void;
 }
 
 const GoogleIcon = () => (
@@ -27,6 +29,8 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   currentUser,
   onLoginGoogle,
   onLogout,
+  urgentCount = 0,
+  onSelectTab,
 }) => {
   const { t, lang, setLang, dir } = useTranslation();
 
@@ -61,14 +65,34 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Urgent Alerts Bell */}
+        {onSelectTab && (
+          <button
+            onClick={() => onSelectTab('alerts')}
+            className="relative p-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 transition"
+            title={t('nav_alerts')}
+          >
+            <Bell className="w-3.5 h-3.5 text-amber-400" />
+            {urgentCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+                {urgentCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Language Switcher */}
         <button
-          onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
+          onClick={() => {
+            if (lang === 'ar') setLang('en');
+            else if (lang === 'en') setLang('pl');
+            else setLang('ar');
+          }}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-          title="Change Language / تغيير اللغة"
+          title="Change Language"
         >
           <Globe className="w-3.5 h-3.5 text-amber-400" />
-          <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
+          <span>{lang === 'ar' ? 'English' : lang === 'en' ? 'Polski' : 'العربية'}</span>
         </button>
 
         {selectedVehicle && (

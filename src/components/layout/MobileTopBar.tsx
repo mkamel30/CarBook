@@ -1,5 +1,5 @@
 import React from 'react';
-import { Car, Globe, Settings, LogOut } from 'lucide-react';
+import { Car, Globe, Settings, LogOut, Bell } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 
 export interface MobileTopBarProps {
@@ -11,6 +11,7 @@ export interface MobileTopBarProps {
   currentUser?: { id: string; email: string; name: string; picture: string | null } | null;
   onLoginGoogle?: () => void;
   onLogout?: () => void;
+  urgentCount?: number;
 }
 
 const GoogleIcon = () => (
@@ -31,6 +32,7 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
   currentUser,
   onLoginGoogle,
   onLogout,
+  urgentCount = 0,
 }) => {
   const { t, lang, setLang } = useTranslation();
 
@@ -109,12 +111,32 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
           </select>
         )}
         <button
-          onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
+          onClick={() => {
+            if (lang === 'ar') setLang('en');
+            else if (lang === 'en') setLang('pl');
+            else setLang('ar');
+          }}
           className="flex items-center gap-1 px-2 py-1 rounded-full border border-slate-700 bg-slate-900 text-slate-200 text-[10px] font-bold active:scale-95 transition"
           title="Change Language"
         >
           <Globe className="w-3 h-3 text-amber-400" />
-          <span>{lang === 'ar' ? 'EN' : 'عربي'}</span>
+          <span>{lang === 'ar' ? 'EN' : lang === 'en' ? 'PL' : 'عربي'}</span>
+        </button>
+        <button
+          onClick={() => onSelectTab('alerts')}
+          className={`relative p-1.5 rounded-full border transition active:scale-95 ${
+            activeTab === 'alerts'
+              ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+              : 'bg-slate-900 border-slate-700 text-slate-300'
+          }`}
+          title={t('nav_alerts')}
+        >
+          <Bell className="w-3.5 h-3.5" />
+          {urgentCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+              {urgentCount}
+            </span>
+          )}
         </button>
         <button
           onClick={() => onSelectTab('settings')}

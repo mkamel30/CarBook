@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Car, PlusCircle } from 'lucide-react';
+import { Car, PlusCircle, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { evaluateAndNotifySchedules } from '@/services/notifications';
 
 // Layout Components
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -27,7 +28,7 @@ import { FuelLogModal } from '@/components/modals/FuelLogModal';
 import { MaintenanceLogModal } from '@/components/modals/MaintenanceLogModal';
 
 export default function WorkbenchPage() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<any | null>(null);
@@ -174,7 +175,11 @@ export default function WorkbenchPage() {
 
       if (fuelRes.success) setFuelLogs(fuelRes.data);
       if (maintRes.success) setMaintenanceLogs(maintRes.data);
-      if (schedRes.success) setSchedules(schedRes.data.schedules);
+      if (schedRes.success) {
+        setSchedules(schedRes.data.schedules);
+        const vName = schedRes.data.vehicle?.name || 'السيارة';
+        evaluateAndNotifySchedules(schedRes.data.schedules, vName, lang);
+      }
       if (repRes.success) {
         setReportData(repRes.data);
         if (repRes.data?.vehicle?.specs) {
@@ -558,6 +563,10 @@ export default function WorkbenchPage() {
     }
   };
 
+  const urgentCount = schedules.filter(
+    (s) => s.status === 'overdue' || s.status === 'due_soon'
+  ).length;
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100">
       {/* Desktop & Tablet Sidebar */}
@@ -571,6 +580,7 @@ export default function WorkbenchPage() {
         currentUser={currentUser}
         onLoginGoogle={handleLoginGoogle}
         onLogout={handleLogout}
+        urgentCount={urgentCount}
       />
 
       {/* Main Content Area */}
@@ -585,6 +595,7 @@ export default function WorkbenchPage() {
           currentUser={currentUser}
           onLoginGoogle={handleLoginGoogle}
           onLogout={handleLogout}
+          urgentCount={urgentCount}
         />
 
         {/* Desktop Top Header */}
@@ -595,10 +606,30 @@ export default function WorkbenchPage() {
           currentUser={currentUser}
           onLoginGoogle={handleLoginGoogle}
           onLogout={handleLogout}
+          urgentCount={urgentCount}
+          onSelectTab={setActiveTab}
         />
 
         {/* Tab Body */}
         <div className="p-4 md:p-6 pb-36 md:pb-6">
+          {/* Urgent Maintenance Banner */}
+          {selectedVehicle && urgentCount > 0 && activeTab !== 'alerts' && (
+            <div className="mb-4 bg-rose-950/40 border border-rose-900/80 rounded-xl p-3 sm:p-3.5 flex items-center justify-between gap-3 text-xs text-rose-200 shadow-sm animate-in fade-in">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span className="font-semibold truncate">
+                  {t('notif_urgent_banner')} ({urgentCount})
+                </span>
+              </div>
+              <button
+                onClick={() => setActiveTab('alerts')}
+                className="bg-rose-500 hover:bg-rose-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs shrink-0 transition active:scale-95 shadow-sm"
+              >
+                {t('notif_view_alerts')}
+              </button>
+            </div>
+          )}
+
           {!selectedVehicle && activeTab !== 'settings' ? (
             <div className="max-w-md mx-auto my-20 text-center bg-slate-950 p-8 rounded-xl border border-slate-800">
               <Car className="w-12 h-12 text-amber-500 mx-auto mb-4" />
@@ -665,6 +696,8 @@ export default function WorkbenchPage() {
               {activeTab === 'alerts' && (
                 <SchedulesTab
                   schedules={schedules}
+                  currentOdometer={selectedVehicle?.currentOdometer || 0}
+                  onRefresh={() => selectedVehicle && loadVehicleDetails(selectedVehicle.id)}
                 />
               )}
 
@@ -705,6 +738,9 @@ export default function WorkbenchPage() {
                   setSettings={setSettings}
                   settingsMsg={settingsMsg}
                   onSaveSettings={handleSaveSettings}
+                  currentUser={currentUser}
+                  onLoginGoogle={handleLoginGoogle}
+                  onLogout={handleLogout}
                 />
               )}
             </>

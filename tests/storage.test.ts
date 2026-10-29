@@ -135,4 +135,41 @@ describe('StorageRepository & Domain Schemas (TASK-03)', () => {
     const updatedVal = await repo.getSetting('ai_provider');
     expect(updatedVal).toBe('openrouter');
   });
+
+  it('updates maintenance schedule baseline odometer and date correctly', async () => {
+    const vehicle = await repo.createVehicle({
+      name: 'SUV',
+      make: 'Hyundai',
+      model: 'Tucson',
+      year: 2021,
+      initialOdometer: 60000,
+      currentOdometer: 60000,
+    });
+
+    const schedule = await repo.addMaintenanceSchedule({
+      vehicleId: vehicle.id!,
+      itemCode: 'spark_plugs',
+      titleAr: 'تغيير شمعات الاحتراق (البوجيهات)',
+      titleEn: 'Spark Plugs Replacement',
+      intervalKm: 40000,
+      intervalMonths: 24,
+      lastDoneOdometer: 60000,
+      lastDoneDate: '2026-01-01',
+    });
+
+    expect(schedule.id).toBeDefined();
+
+    // User specifies custom baseline: spark plugs were actually changed at 50,000 km
+    await repo.updateMaintenanceSchedule(schedule.id!, {
+      lastDoneOdometer: 50000,
+      lastDoneDate: '2025-06-15',
+      intervalKm: 35000,
+    });
+
+    const updated = await repo.getSchedulesByVehicle(vehicle.id!);
+    expect(updated.length).toBe(1);
+    expect(updated[0].lastDoneOdometer).toBe(50000);
+    expect(updated[0].lastDoneDate).toBe('2025-06-15');
+    expect(updated[0].intervalKm).toBe(35000);
+  });
 });

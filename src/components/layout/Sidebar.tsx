@@ -24,6 +24,7 @@ export interface SidebarProps {
   currentUser?: { id: string; email: string; name: string; picture: string | null } | null;
   onLoginGoogle?: () => void;
   onLogout?: () => void;
+  urgentCount?: number;
 }
 
 const GoogleIcon = () => (
@@ -45,6 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   onLoginGoogle,
   onLogout,
+  urgentCount = 0,
 }) => {
   const { t, dir } = useTranslation();
 
@@ -135,13 +137,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
           <button
             onClick={() => onSelectTab('alerts')}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded text-xs font-medium transition ${
+            className={`w-full flex items-center justify-between px-3 py-2 rounded text-xs font-medium transition ${
               activeTab === 'alerts'
                 ? `bg-amber-500/10 text-amber-500 ${dir === 'rtl' ? 'border-r-2' : 'border-l-2'} border-amber-500`
                 : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
             }`}
           >
-            <AlertTriangle className="w-4 h-4 shrink-0" /> {t('nav_alerts')}
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{t('nav_alerts')}</span>
+            </div>
+            {urgentCount > 0 && (
+              <span className="bg-rose-500 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full font-mono animate-pulse">
+                {urgentCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => onSelectTab('manual')}

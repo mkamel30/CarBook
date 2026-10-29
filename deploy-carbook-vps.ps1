@@ -10,12 +10,15 @@ $TEMP_KEY = "$env:TEMP\oracle_carbook_deploy.key"
 $TEMP_CODE = "$env:TEMP\carbook_code.tar.gz"
 
 Write-Host "🔑 Setting up SSH key..." -ForegroundColor Cyan
-Copy-Item $ORIG_KEY $TEMP_KEY -Force
-& "$env:SystemRoot\System32\icacls.exe" $TEMP_KEY /inheritance:r /grant:r "$($env:USERNAME):(R)" | Out-Null
+if (-not (Test-Path $TEMP_KEY)) {
+    Copy-Item $ORIG_KEY $TEMP_KEY -Force
+    & "$env:SystemRoot\System32\icacls.exe" $TEMP_KEY /inheritance:r /grant:r "$($env:USERNAME):(R)" | Out-Null
+}
 
-Write-Host "📦 Creating deployment archive..." -ForegroundColor Cyan
+Write-Host "📦 Creating deployment archive (excluding build cache)..." -ForegroundColor Cyan
 if (Test-Path $TEMP_CODE) { Remove-Item $TEMP_CODE -Force }
-& "$env:SystemRoot\System32\tar.exe" -czf $TEMP_CODE .next public package.json pnpm-lock.yaml next.config.js car_maintenance.db
+# Note: car_maintenance.db is NOT included to preserve live database and avoid data loss
+& "$env:SystemRoot\System32\tar.exe" -czf $TEMP_CODE --exclude=".next/cache" .next public package.json next.config.js
 
 Write-Host "🚀 Uploading bundle to VPS ($VPS_HOST)..." -ForegroundColor Cyan
 & "$env:SystemRoot\System32\OpenSSH\scp.exe" -i $TEMP_KEY -o StrictHostKeyChecking=no $TEMP_CODE "${VPS_HOST}:/tmp/carbook_code.tar.gz"
@@ -35,7 +38,7 @@ if ! command -v pnpm &> /dev/null; then
 fi
 
 cd /var/www/carbook
-pnpm install --prod --no-frozen-lockfile
+# node_modules already installed in production environment
 
 # Setup Systemd Service
 sudo bash -c 'cat > /etc/systemd/system/carbook.service << "EOF"

@@ -104,6 +104,15 @@ alerts_interval = Interval:
 alerts_last_done = Last performed at:
 alerts_remaining = Remaining:
 alerts_passed = Overdue by:
+alerts_btn_edit_baseline = Set Baseline
+alerts_btn_mark_done = Mark Done Now
+alerts_modal_edit_title = Set Last Performed Maintenance
+alerts_modal_odo_label = Last Done Odometer (km)
+alerts_modal_date_label = Last Done Date
+alerts_modal_interval_label = Maintenance Interval (km)
+alerts_modal_save = Save
+alerts_modal_cancel = Cancel
+alerts_baseline_tip = No previous service recorded yet
 
 # OEM Manual Tab
 manual_title = Factory OEM Manual Specifications
@@ -173,6 +182,18 @@ rep_th_service = Performed Service
 rep_th_workshop = Workshop / Center
 rep_th_cost = Cost
 rep_th_notes = Notes
+
+# Notifications
+notif_title = Maintenance Device Notifications & Alerts
+notif_desc = Enable real-time device notifications to get notified when vehicle maintenance is approaching or overdue
+notif_status_enabled = Notifications are enabled on this device ✅
+notif_status_disabled = Notifications are disabled 🔕
+notif_status_unsupported = Notifications are not supported by this browser/device
+notif_btn_enable = Enable Device Notifications
+notif_btn_test = Send Test Notification 🔔
+notif_test_sent = Test notification sent successfully!
+notif_urgent_banner = Urgent Maintenance: You have service items due or overdue!
+notif_view_alerts = View Alerts
 
 # Settings Tab
 set_title = System Settings & AI Configuration

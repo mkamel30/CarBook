@@ -49,3 +49,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, lastDoneOdometer, lastDoneDate, intervalKm, intervalMonths } = body;
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
+    }
+
+    const repo = new StorageRepository();
+    await repo.updateMaintenanceSchedule(id, {
+      lastDoneOdometer: lastDoneOdometer !== undefined ? Number(lastDoneOdometer) : undefined,
+      lastDoneDate: lastDoneDate !== undefined ? lastDoneDate : undefined,
+      intervalKm: intervalKm !== undefined ? Number(intervalKm) : undefined,
+      intervalMonths: intervalMonths !== undefined ? Number(intervalMonths) : undefined,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}

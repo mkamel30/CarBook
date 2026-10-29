@@ -104,6 +104,15 @@ alerts_interval = الفاصل الدوري:
 alerts_last_done = آخر إجراء تم عند عداد:
 alerts_remaining = المتبقي:
 alerts_passed = تم التجاوز بـ:
+alerts_btn_edit_baseline = ضبط آخر صيانة
+alerts_btn_mark_done = تمت الصيانة الآن
+alerts_modal_edit_title = ضبط بيانات آخر صيانة
+alerts_modal_odo_label = قراءة العداد عند آخر تغيير (كم)
+alerts_modal_date_label = تاريخ آخر تغيير
+alerts_modal_interval_label = الفاصل الدوري بالكيلومتر
+alerts_modal_save = حفظ التعديل
+alerts_modal_cancel = إلغاء
+alerts_baseline_tip = لم تُسجل صيانة سابقة لهذا البند بعد
 
 # OEM Manual Tab
 manual_title = كتالوج ومواصفات المصنع الأصلية (OEM Specs)
@@ -173,6 +182,18 @@ rep_th_service = الخدمة المنفذة
 rep_th_workshop = الورشة / المركز
 rep_th_cost = التكلفة
 rep_th_notes = ملاحظات
+
+# Notifications
+notif_title = إشعارات وتنبيهات الصيانة على الجهاز
+notif_desc = تفعيل التنبيهات المباشرة على الموبايل أو المتصفح عند اقتراب مواعيد الصيانة الوقائية
+notif_status_enabled = الإشعارات مفعلة على هذا الجهاز ✅
+notif_status_disabled = الإشعارات غير مفعلة 🔕
+notif_status_unsupported = المتصفح أو الجهاز لا يدعم الإشعارات المباشرة
+notif_btn_enable = تفعيل إشعارات الجهاز
+notif_btn_test = إرسال إشعار تجريبي 🔔
+notif_test_sent = تم إرسال الإشعار التجريبي بنجاح!
+notif_urgent_banner = تنبيه صيانة عاجلة: يوجد بنود صيانة مستحقة أو متأخرة لهذه السيارة!
+notif_view_alerts = عرض التنبيهات
 
 # Settings Tab
 set_title = إعدادات النظام وذكاء AI

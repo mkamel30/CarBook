@@ -21,6 +21,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 }) => {
   const { t, lang } = useTranslation();
 
+  // Sort schedules by urgency: Overdue first, Due Soon second, OK last
+  const prioritizedSchedules = [...schedules].sort((a, b) => {
+    const score = (s: any) => (s.status === 'overdue' ? 2 : s.status === 'due_soon' ? 1 : 0);
+    return score(b) - score(a);
+  });
+
   return (
     <div className="space-y-6">
       {/* Key Metrics Cards */}
@@ -69,7 +75,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {schedules.slice(0, 4).map((s, idx) => (
+          {prioritizedSchedules.slice(0, 4).map((s, idx) => (
             <div
               key={idx}
               className={`p-3 rounded border text-xs flex items-center justify-between ${

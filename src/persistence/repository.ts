@@ -236,6 +236,37 @@ export class StorageRepository {
     return records.map(r => maintenanceScheduleSchema.parse(r));
   }
 
+  async updateMaintenanceSchedule(
+    id: string,
+    data: Partial<Pick<MaintenanceSchedule, 'lastDoneOdometer' | 'lastDoneDate' | 'intervalKm' | 'intervalMonths'>>
+  ): Promise<void> {
+    const { client } = await this.getHandles();
+    const sets: string[] = [];
+    const args: any[] = [];
+    if (data.lastDoneOdometer !== undefined) {
+      sets.push('last_done_odometer = ?');
+      args.push(data.lastDoneOdometer);
+    }
+    if (data.lastDoneDate !== undefined) {
+      sets.push('last_done_date = ?');
+      args.push(data.lastDoneDate);
+    }
+    if (data.intervalKm !== undefined) {
+      sets.push('interval_km = ?');
+      args.push(data.intervalKm);
+    }
+    if (data.intervalMonths !== undefined) {
+      sets.push('interval_months = ?');
+      args.push(data.intervalMonths);
+    }
+    if (sets.length === 0) return;
+    args.push(id);
+    await client.execute({
+      sql: `UPDATE maintenance_schedules SET ${sets.join(', ')} WHERE id = ?`,
+      args,
+    });
+  }
+
   // Fuel Logs with Transactional Atomic Odometer Sync
   async addFuelLog(data: Omit<FuelLog, 'id' | 'createdAt'>): Promise<FuelLog> {
     const { client, db } = await this.getHandles();
