@@ -23,3 +23,4 @@ See [README.md](README.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for 
 - [README.ar.md](README.ar.md) — Arabic Documentation
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Technical & System Architecture
 - [docs/API.md](docs/API.md) — REST API Endpoints & Contracts
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Self-hosting runbook, environment reference, backup, roadmap
