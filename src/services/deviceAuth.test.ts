@@ -83,6 +83,22 @@ describe('device sessions', () => {
     const again = await refreshDeviceSession(DEVICE, a.refreshToken, { dbPath });
     expect(again.user.id).toBe(real);
   });
+
+  it('refuses a refresh token presented under a different device id', async () => {
+    const phone = await registerDevice(DEVICE, { dbPath });
+    const desktop = await registerDevice(OTHER, { dbPath });
+
+    // Redeeming the phone's token as the desktop must fail on identity, not fall
+    // through to the reuse detector and revoke the phone's own live session.
+    await expect(refreshDeviceSession(OTHER, phone.refreshToken, { dbPath }))
+      .rejects.toThrow(/does not belong to this device/);
+
+    const rotated = await refreshDeviceSession(DEVICE, phone.refreshToken, { dbPath });
+    expect(verifySessionToken(rotated.accessToken)?.id).toBe(`guest:${DEVICE}`);
+
+    await expect(refreshDeviceSession(DEVICE, desktop.refreshToken, { dbPath }))
+      .rejects.toThrow(/does not belong to this device/);
+  });
 });
 
 describe('guest to account linking', () => {

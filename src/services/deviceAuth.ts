@@ -16,7 +16,6 @@ import { signAccessToken, type AuthSessionUser } from './auth';
  */
 
 const DEVICE_ID = /^[A-Za-z0-9._:-]{8,64}$/;
-const REFRESH_TTL_DAYS = 90;
 
 export interface IssuedSession {
   accessToken: string;
@@ -133,11 +132,14 @@ export async function refreshDeviceSession(
   const { client } = await getDatabase(opts?.dbPath);
 
   const res = await client.execute({
-    sql: 'SELECT user_id, revoked_at FROM device_sessions WHERE refresh_hash = ?',
+    sql: 'SELECT user_id, device_id, revoked_at FROM device_sessions WHERE refresh_hash = ?',
     args: [hashToken(refreshToken)],
   });
   const row = res.rows[0] as any;
   if (!row) throw new Error('Unknown refresh token');
+  // The token carries its device, so a caller cannot redeem someone else's token
+  // under a chosen device id and have the revocation land on the wrong device.
+  if (String(row.device_id) !== deviceId) throw new Error('Refresh token does not belong to this device');
 
   const now = new Date().toISOString();
   if (row.revoked_at) {
@@ -246,8 +248,4 @@ export async function linkGuestToUser(
 
   const session = await issue(client, real, guestDeviceId);
   return { ...session, movedVehicles: vehicleIds.length };
-}
-
-export function refreshTtlDays(): number {
-  return REFRESH_TTL_DAYS;
 }
