@@ -263,13 +263,16 @@ export const PRESEEDED_VEHICLES: PreseededVehicleRecord[] = [
  * Find pre-seeded vehicle specifications if available
  */
 export function findPreseededVehicle(make: string, model: string, year: number): PreseededVehicleRecord | null {
-  const mNorm = make.trim().toLowerCase();
-  const modNorm = model.trim().toLowerCase();
+  const mNorm = normalize(make);
+  const modNorm = normalize(model);
+  if (!mNorm || !modNorm) return null;
 
   for (const item of PRESEEDED_VEHICLES) {
+    // Exact match only: a substring test hands "Corolla Cross" the plain
+    // Corolla's oil capacity, and an empty model matches every record.
     if (
-      item.make.toLowerCase() === mNorm &&
-      (modNorm.includes(item.model.toLowerCase()) || item.model.toLowerCase().includes(modNorm)) &&
+      normalize(item.make) === mNorm &&
+      normalize(item.model) === modNorm &&
       year >= item.yearRange[0] &&
       year <= item.yearRange[1]
     ) {
@@ -277,6 +280,10 @@ export function findPreseededVehicle(make: string, model: string, year: number):
     }
   }
   return null;
+}
+
+function normalize(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 /**
