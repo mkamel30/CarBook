@@ -13,6 +13,16 @@ import {
 } from '../domain/schemas';
 import crypto from 'crypto';
 
+/** Tables that can be resolved to the owning user, directly or through their vehicle. */
+export type OwnedTable = 'vehicles' | 'fuel_logs' | 'maintenance_logs' | 'maintenance_schedules';
+
+const OWNED_TABLES: ReadonlySet<string> = new Set<OwnedTable>([
+  'vehicles',
+  'fuel_logs',
+  'maintenance_logs',
+  'maintenance_schedules',
+]);
+
 export class StorageRepository {
   private dbPromise: ReturnType<typeof getDatabase>;
 
@@ -134,19 +144,36 @@ export class StorageRepository {
     });
   }
 
-  async getVehicleById(id: string, userId?: string): Promise<Vehicle | null> {
+  // Ownership
+  /**
+   * The user id that owns a record: directly for a vehicle, through its parent
+   * vehicle otherwise. Rows that belong to nobody (un-claimed legacy data) and
+   * unknown ids both resolve to null, so callers fail closed.
+   */
+  async ownerOf(table: OwnedTable, id: string): Promise<string | null> {
+    if (!id || !OWNED_TABLES.has(table)) return null;
     const { client } = await this.getHandles();
-    let query = `SELECT * FROM vehicles WHERE id = ?`;
-    const args: any[] = [id];
+    const res =
+      table === 'vehicles'
+        ? await client.execute({ sql: 'SELECT user_id FROM vehicles WHERE id = ?', args: [id] })
+        : await client.execute({
+            sql: `SELECT v.user_id AS user_id FROM ${table} t JOIN vehicles v ON v.id = t.vehicle_id WHERE t.id = ?`,
+            args: [id],
+          });
+    const row = res.rows[0] as any;
+    if (!row) return null;
+    return row.user_id === null || row.user_id === undefined ? null : String(row.user_id);
+  }
 
-    if (userId) {
-      query += ` AND user_id = ?`;
-      args.push(userId);
-    } else {
-      query += ` AND user_id IS NULL`;
-    }
-
-    const res = await client.execute({ sql: query, args });
+  async getVehicleById(id: string, userId?: string): Promise<Vehicle | null> {
+    // An absent caller identity means "anonymous", never "match the unassigned rows":
+    // otherwise any request could read a legacy vehicle and all of its logs.
+    if (!userId) return null;
+    const { client } = await this.getHandles();
+    const res = await client.execute({
+      sql: `SELECT * FROM vehicles WHERE id = ? AND user_id = ?`,
+      args: [id, userId],
+    });
     if (res.rows.length === 0) return null;
     const r = res.rows[0] as any;
 
@@ -618,6 +645,9 @@ export class StorageRepository {
     try {
       specs = JSON.parse(row.specs_json as string);
     } catch {}
+    // A schedule-only write has no specs to store; treat the empty object as
+    // absent so a later manual lookup regenerates instead of serving nothing.
+    if (specs && typeof specs === 'object' && Object.keys(specs).length === 0) specs = null;
     if (row.schedules_json) {
       try {
         schedules = JSON.parse(row.schedules_json as string);

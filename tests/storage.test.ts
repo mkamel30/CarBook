@@ -4,14 +4,23 @@ import fs from 'fs';
 import path from 'path';
 
 describe('StorageRepository & Domain Schemas (TASK-03)', () => {
-  const testDbPath = path.resolve(process.cwd(), 'test_car_maintenance.db');
+  // Unique per run: a fixed name loses a race against the closing file handle on Windows.
+  const testDbPath = path.resolve(
+    process.cwd(),
+    `test_storage_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
+  );
+  const OWNER = 'owner-1';
+  const OTHER = 'owner-2';
   let repo: StorageRepository;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     if (fs.existsSync(testDbPath)) {
       try { fs.unlinkSync(testDbPath); } catch {}
     }
     repo = new StorageRepository(testDbPath);
+    // vehicles.user_id is a foreign key, so the tenants have to exist first.
+    await repo.findOrCreateUser({ id: OWNER, email: 'owner@example.com', name: 'Owner' });
+    await repo.findOrCreateUser({ id: OTHER, email: 'other@example.com', name: 'Other' });
   });
 
   afterEach(async () => {
@@ -33,16 +42,21 @@ describe('StorageRepository & Domain Schemas (TASK-03)', () => {
       initialOdometer: 50000,
       currentOdometer: 50000,
       recommendedOil: '5W-30',
-    });
+    }, OWNER);
 
     expect(vehicle.id).toBeDefined();
     expect(vehicle.make).toBe('Toyota');
     expect(vehicle.currentOdometer).toBe(50000);
 
-    const fetched = await repo.getVehicleById(vehicle.id!);
+    const fetched = await repo.getVehicleById(vehicle.id!, OWNER);
     expect(fetched).not.toBeNull();
     expect(fetched?.name).toBe('My Daily Car');
     expect(fetched?.licensePlate).toBe('س ق ر 123'); // Arabic license plate integrity
+
+    // Another tenant, and an anonymous caller, both see nothing.
+    expect(await repo.getVehicleById(vehicle.id!, OTHER)).toBeNull();
+    expect(await repo.getVehicleById(vehicle.id!)).toBeNull();
+    expect(await repo.getAllVehicles()).toEqual([]);
   });
 
   it('rejects invalid domain data via Zod validation', async () => {
@@ -66,7 +80,7 @@ describe('StorageRepository & Domain Schemas (TASK-03)', () => {
       year: 2023,
       initialOdometer: 10000,
       currentOdometer: 10000,
-    });
+    }, OWNER);
 
     const fuelLog = await repo.addFuelLog({
       vehicleId: vehicle.id!,
@@ -82,7 +96,7 @@ describe('StorageRepository & Domain Schemas (TASK-03)', () => {
     expect(fuelLog.id).toBeDefined();
 
     // Verify vehicle current odometer was automatically and atomically updated
-    const updatedVehicle = await repo.getVehicleById(vehicle.id!);
+    const updatedVehicle = await repo.getVehicleById(vehicle.id!, OWNER);
     expect(updatedVehicle?.currentOdometer).toBe(10550);
 
     const logs = await repo.getFuelLogsByVehicle(vehicle.id!);
@@ -98,7 +112,7 @@ describe('StorageRepository & Domain Schemas (TASK-03)', () => {
       year: 2020,
       initialOdometer: 80000,
       currentOdometer: 80000,
-    });
+    }, OWNER);
 
     const maintenanceLog = await repo.addMaintenanceLog({
       vehicleId: vehicle.id!,
@@ -117,7 +131,7 @@ describe('StorageRepository & Domain Schemas (TASK-03)', () => {
 
     expect(maintenanceLog.id).toBeDefined();
 
-    const updatedVehicle = await repo.getVehicleById(vehicle.id!);
+    const updatedVehicle = await repo.getVehicleById(vehicle.id!, OWNER);
     expect(updatedVehicle?.currentOdometer).toBe(82000);
 
     const logs = await repo.getMaintenanceLogsByVehicle(vehicle.id!);
@@ -144,7 +158,7 @@ describe('StorageRepository & Domain Schemas (TASK-03)', () => {
       year: 2021,
       initialOdometer: 60000,
       currentOdometer: 60000,
-    });
+    }, OWNER);
 
     const schedule = await repo.addMaintenanceSchedule({
       vehicleId: vehicle.id!,
@@ -171,5 +185,65 @@ describe('StorageRepository & Domain Schemas (TASK-03)', () => {
     expect(updated[0].lastDoneOdometer).toBe(50000);
     expect(updated[0].lastDoneDate).toBe('2025-06-15');
     expect(updated[0].intervalKm).toBe(35000);
+  });
+
+  it('resolves the owning user for a record and refuses unknown or unassigned rows', async () => {
+    const vehicle = await repo.createVehicle({
+      name: 'Owner Probe',
+      make: 'Toyota',
+      model: 'Corolla',
+      year: 2022,
+      initialOdometer: 1000,
+      currentOdometer: 1000,
+    }, OWNER);
+
+    const fuel = await repo.addFuelLog({
+      vehicleId: vehicle.id!,
+      fillDate: '2026-10-01',
+      odometer: 1200,
+      liters: 30,
+      pricePerLiter: 15,
+      totalCost: 450,
+      isFullTank: true,
+    });
+    const maint = await repo.addMaintenanceLog({
+      vehicleId: vehicle.id!,
+      serviceDate: '2026-10-02',
+      odometer: 1300,
+      serviceType: 'oil_change',
+      title: 'زيت',
+      partsCost: 0,
+      laborCost: 0,
+      totalCost: 100,
+    });
+    const schedule = await repo.addMaintenanceSchedule({
+      vehicleId: vehicle.id!,
+      itemCode: 'engine_oil',
+      titleAr: 'زيت',
+      titleEn: 'Oil',
+      intervalKm: 10000,
+      lastDoneOdometer: 1000,
+      lastDoneDate: '2026-01-01',
+    });
+
+    // The primitive the write routes authorize with: child rows inherit the vehicle owner.
+    expect(await repo.ownerOf('vehicles', vehicle.id!)).toBe(OWNER);
+    expect(await repo.ownerOf('fuel_logs', fuel.id!)).toBe(OWNER);
+    expect(await repo.ownerOf('maintenance_logs', maint.id!)).toBe(OWNER);
+    expect(await repo.ownerOf('maintenance_schedules', schedule.id!)).toBe(OWNER);
+
+    expect(await repo.ownerOf('fuel_logs', 'missing-row')).toBeNull();
+    expect(await repo.ownerOf('fuel_logs', '')).toBeNull();
+
+    // A row created without an owner is nobody's: it must not become a public row.
+    const orphan = await repo.createVehicle({
+      name: 'Orphan',
+      make: 'Toyota',
+      model: 'Corolla',
+      year: 2022,
+      initialOdometer: 0,
+      currentOdometer: 0,
+    });
+    expect(await repo.ownerOf('vehicles', orphan.id!)).toBeNull();
   });
 });
