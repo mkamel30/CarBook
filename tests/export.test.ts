@@ -167,3 +167,74 @@ describe('Excel Export Service', () => {
     expect((fuelJson[0] as any)['معدل الاستهلاك (لتر/100كم)']).toBe('7.50');
   });
 });
+
+// A workshop note that happens to begin with =, + or - has to reach the sheet as
+// data. In OOXML that is structural rather than defensive: text cells are written
+// with no <f> element, so there is nothing for Excel to evaluate and therefore no
+// reason to prefix the user's text with a quote and corrupt what they read back.
+describe('Excel export cell typing', () => {
+  const vehicle = {
+    id: 'v1',
+    name: '=HYPERLINK("http://evil","car")',
+    make: 'Toyota',
+    model: 'Corolla',
+    year: 2020,
+    currentOdometer: 100,
+  };
+
+  const maintenance = [{
+    serviceDate: '2026-10-15',
+    odometer: 100,
+    title: '=cmd|/C calc!A0',
+    serviceType: 'oil_change',
+    partsList: [{ name: 'filter', condition: 'new', cost: 1 }],
+    partsCost: 1,
+    laborCost: 1,
+    totalCost: 2,
+    workshop: '+96500000000',
+    notes: '- checked the belts first',
+  }];
+
+  const fuel = [{
+    fillDate: '2026-10-20',
+    odometer: 600,
+    liters: 45,
+    pricePerLiter: 15,
+    totalCost: 675,
+    isFullTank: true,
+    notes: '@SUM(1,1)',
+  }];
+
+  function allCells(wb: XLSX.WorkBook) {
+    const out: Array<{ sheet: string; addr: string; cell: XLSX.CellObject }> = [];
+    for (const sheet of wb.SheetNames) {
+      for (const addr of Object.keys(wb.Sheets[sheet])) {
+        if (addr.startsWith('!')) continue;
+        out.push({ sheet, addr, cell: wb.Sheets[sheet][addr] as XLSX.CellObject });
+      }
+    }
+    return out;
+  }
+
+  it('emits no formula cell for any sheet', () => {
+    const { wb } = buildVehicleDossierWorkbook(vehicle, maintenance, fuel, 'en');
+    const cells = allCells(wb);
+    expect(cells.length).toBeGreaterThan(20);
+    for (const { sheet, addr, cell } of cells) {
+      expect(cell.f, `${sheet}!${addr}`).toBeUndefined();
+      expect(cell.t, `${sheet}!${addr}`).not.toBe('f');
+    }
+  });
+
+  it('keeps leading-operator text exactly as the user wrote it', () => {
+    const { wb } = buildVehicleDossierWorkbook(vehicle, maintenance, fuel, 'en');
+    const values = allCells(wb).map((c) => c.cell.v);
+
+    expect(values).toContain('- checked the belts first');
+    expect(values).toContain('+96500000000');
+    expect(values).toContain('=cmd|/C calc!A0');
+    expect(values).toContain('@SUM(1,1)');
+    expect(values).toContain('=HYPERLINK("http://evil","car")');
+    expect(values.filter((v) => typeof v === 'string' && v.startsWith("'"))).toEqual([]);
+  });
+});
