@@ -20,6 +20,8 @@ export interface AddVehicleModalProps {
   aiError: string | null;
   onAiLookup: () => void;
   onSaveVehicle: (e: React.FormEvent) => void;
+  /** Blocks a second submit while the first is still in flight. */
+  saving?: boolean;
 }
 
 export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
@@ -31,7 +33,7 @@ export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
   aiProposal,
   aiError,
   onAiLookup,
-  onSaveVehicle,
+  onSaveVehicle, saving,
 }) => {
   const { t } = useTranslation();
 
@@ -183,7 +185,8 @@ export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
             </button>
             <button
               type="submit"
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition"
+              disabled={saving}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {t('modal_car_btn_save')}
             </button>

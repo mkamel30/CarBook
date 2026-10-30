@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Car, PlusCircle, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 import { evaluateAndNotifySchedules } from '@/services/notifications';
@@ -26,6 +26,30 @@ import { SettingsTab } from '@/components/tabs/SettingsTab';
 import { AddVehicleModal } from '@/components/modals/AddVehicleModal';
 import { FuelLogModal } from '@/components/modals/FuelLogModal';
 import { MaintenanceLogModal } from '@/components/modals/MaintenanceLogModal';
+
+type Envelope = { success: true; data?: any } | { success: false; error: string };
+
+/**
+ * Read an API response as an envelope. A reverse proxy answering a 502 with HTML
+ * would otherwise make `res.json()` throw inside the handler, leaving the modal
+ * open with no message even though the write may already have landed.
+ */
+async function readEnvelope(res: Response): Promise<Envelope> {
+  const httpFailure = `Request failed (${res.status})`;
+  if (res.status === 401) return { success: false, error: 'Session expired — please sign in again' };
+
+  let body: any = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+  if (!body || typeof body !== 'object' || !('success' in body)) {
+    return { success: false, error: httpFailure };
+  }
+  if (body.success) return { success: true, data: body.data };
+  return { success: false, error: typeof body.error === 'string' && body.error ? body.error : httpFailure };
+}
 
 export default function WorkbenchPage() {
   const { t, lang } = useTranslation();
@@ -89,6 +113,10 @@ export default function WorkbenchPage() {
   const [maintenanceLogs, setMaintenanceLogs] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<any[]>([]);
   const [reportData, setReportData] = useState<any | null>(null);
+  const detailsSeq = useRef(0);
+  const [savingVehicle, setSavingVehicle] = useState(false);
+  const [savingFuel, setSavingFuel] = useState(false);
+  const [savingMaintenance, setSavingMaintenance] = useState(false);
 
   // AI Manual & Doctor State
   const [manualLoading, setManualLoading] = useState(false);
@@ -119,14 +147,18 @@ export default function WorkbenchPage() {
     try {
       setLoading(true);
       const res = await fetch('/api/vehicles');
-      const data = await res.json();
+      const data = await readEnvelope(res);
       if (data.success) {
         setVehicles(data.data);
         if (data.data.length > 0) {
           setSelectedVehicle((prev: any) => {
-            if (!prev) return data.data[0];
-            const match = data.data.find((v: any) => v.id === prev.id);
-            return match || data.data[0];
+            const next = !prev ? data.data[0] : (data.data.find((v: any) => v.id === prev.id) || data.data[0]);
+            // Keep the same object when nothing meaningful changed, otherwise every
+            // save hands down a new reference and the details effect loads twice.
+            if (prev && next && prev.id === next.id && prev.currentOdometer === next.currentOdometer) {
+              return prev;
+            }
+            return next;
           });
         } else {
           setSelectedVehicle(null);
@@ -136,6 +168,8 @@ export default function WorkbenchPage() {
           setReportData(null);
         }
       }
+    } catch (e) {
+      console.error('Failed to load vehicles', e);
     } finally {
       setLoading(false);
     }
@@ -171,19 +205,25 @@ export default function WorkbenchPage() {
 
   // Fetch Vehicle Specific Data
   const loadVehicleDetails = async (vehicleId: string) => {
+    // Only the newest request may write: switching A -> B must not let a slow
+    // reply for A land after B's and paint A's logs under B's header.
+    const my = ++detailsSeq.current;
+    const stale = () => my !== detailsSeq.current;
+
     try {
       const [fuelRes, maintRes, schedRes, repRes] = await Promise.all([
-        fetch(`/api/fuel?vehicleId=${vehicleId}`).then(r => r.json()),
-        fetch(`/api/maintenance?vehicleId=${vehicleId}`).then(r => r.json()),
-        fetch(`/api/schedules?vehicleId=${vehicleId}`).then(r => r.json()),
-        fetch(`/api/reports?vehicleId=${vehicleId}`).then(r => r.json()),
+        fetch(`/api/fuel?vehicleId=${vehicleId}`).then(readEnvelope),
+        fetch(`/api/maintenance?vehicleId=${vehicleId}`).then(readEnvelope),
+        fetch(`/api/schedules?vehicleId=${vehicleId}`).then(readEnvelope),
+        fetch(`/api/reports?vehicleId=${vehicleId}`).then(readEnvelope),
       ]);
+      if (stale()) return;
 
       if (fuelRes.success) setFuelLogs(fuelRes.data);
       if (maintRes.success) setMaintenanceLogs(maintRes.data);
       if (schedRes.success) {
         setSchedules(schedRes.data.schedules);
-        const vName = schedRes.data.vehicle?.name || 'السيارة';
+        const vName = schedRes.data.vehicle?.name || selectedVehicle?.name || '';
         evaluateAndNotifySchedules(schedRes.data.schedules, vName, lang);
       }
       if (repRes.success) {
@@ -210,18 +250,28 @@ export default function WorkbenchPage() {
     }
   }, [selectedVehicle]);
 
+  // Keyed on the id alone, so a different car drops the previous one's
+  // consultations while a save that only bumps the odometer does not.
+  useEffect(() => {
+    setDoctorHistory([]);
+  }, [selectedVehicle?.id]);
+
   // Load Settings
   const loadSettings = async () => {
-    const res = await fetch('/api/settings');
-    const data = await res.json();
-    if (data.success) {
-      setSettings(prev => ({
-        ...prev,
-        provider: data.data.provider,
-        hasApiKey: data.data.hasApiKey,
-        maskedApiKey: data.data.maskedApiKey || '',
-        fuelTypes: data.data.fuelTypes || prev.fuelTypes,
-      }));
+    try {
+      const res = await fetch('/api/settings');
+      const data = await readEnvelope(res);
+      if (data.success) {
+        setSettings(prev => ({
+          ...prev,
+          provider: data.data.provider,
+          hasApiKey: data.data.hasApiKey,
+          maskedApiKey: data.data.maskedApiKey || '',
+          fuelTypes: data.data.fuelTypes || prev.fuelTypes,
+        }));
+      }
+    } catch (e) {
+      console.error('Failed to load settings', e);
     }
   };
 
@@ -234,40 +284,48 @@ export default function WorkbenchPage() {
   // Handle Add Vehicle
   const handleSaveVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/vehicles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...vehicleForm,
-        initialOdometer: Number(vehicleForm.initialOdometer),
-        currentOdometer: Number(vehicleForm.initialOdometer),
-        year: Number(vehicleForm.year),
-      }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setShowAddVehicleModal(false);
-      setVehicleForm({
-        name: '',
-        make: '',
-        model: '',
-        year: new Date().getFullYear(),
-        licensePlate: '',
-        initialOdometer: 0,
-        recommendedOil: '',
+    if (savingVehicle) return;
+    setSavingVehicle(true);
+    try {
+      const res = await fetch('/api/vehicles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...vehicleForm,
+          initialOdometer: Number(vehicleForm.initialOdometer),
+          currentOdometer: Number(vehicleForm.initialOdometer),
+          year: Number(vehicleForm.year),
+        }),
       });
-      setAiProposal(null);
-      await loadVehicles();
-      setSelectedVehicle(data.data);
-    } else {
-      alert(data.error);
+      const data = await readEnvelope(res);
+      if (data.success) {
+        setShowAddVehicleModal(false);
+        setVehicleForm({
+          name: '',
+          make: '',
+          model: '',
+          year: new Date().getFullYear(),
+          licensePlate: '',
+          initialOdometer: 0,
+          recommendedOil: '',
+        });
+        setAiProposal(null);
+        await loadVehicles();
+        setSelectedVehicle(data.data);
+      } else {
+        alert(data.error);
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Request failed');
+    } finally {
+      setSavingVehicle(false);
     }
   };
 
   // Trigger AI Schedule & Oil Lookup
   const handleAiLookup = async () => {
     if (!vehicleForm.make || !vehicleForm.model) {
-      alert('يرجى إدخال الماركة والموديل أولاً');
+      alert(t('modal_make_model_required'));
       return;
     }
     setAiLoading(true);
@@ -282,7 +340,7 @@ export default function WorkbenchPage() {
           year: vehicleForm.year,
         }),
       });
-      const data = await res.json();
+      const data = await readEnvelope(res);
       if (data.success) {
         setAiProposal(data.data);
         if (data.data.recommendedOil) {
@@ -349,7 +407,7 @@ export default function WorkbenchPage() {
   const handleDeleteFuel = async (id: string) => {
     if (!confirm(t('confirm_delete_fuel'))) return;
     const res = await fetch(`/api/fuel?id=${id}`, { method: 'DELETE' });
-    const data = await res.json();
+    const data = await readEnvelope(res);
     if (data.success) {
       if (selectedVehicle) {
         loadVehicleDetails(selectedVehicle.id);
@@ -363,7 +421,8 @@ export default function WorkbenchPage() {
   // Handle Fuel Submit (Create or Update)
   const handleSaveFuel = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedVehicle) return;
+    if (!selectedVehicle || savingFuel) return;
+    setSavingFuel(true);
 
     const url = '/api/fuel';
     const method = editingFuelId ? 'PUT' : 'POST';
@@ -377,19 +436,25 @@ export default function WorkbenchPage() {
       totalCost: Number(fuelForm.totalCost),
     };
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setShowFuelModal(false);
-      setEditingFuelId(null);
-      loadVehicleDetails(selectedVehicle.id);
-      loadVehicles();
-    } else {
-      alert(data.error);
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await readEnvelope(res);
+      if (data.success) {
+        setShowFuelModal(false);
+        setEditingFuelId(null);
+        loadVehicleDetails(selectedVehicle.id);
+        loadVehicles();
+      } else {
+        alert(data.error);
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Request failed');
+    } finally {
+      setSavingFuel(false);
     }
   };
 
@@ -441,7 +506,7 @@ export default function WorkbenchPage() {
   const handleDeleteMaintenance = async (id: string) => {
     if (!confirm(t('confirm_delete_maint'))) return;
     const res = await fetch(`/api/maintenance?id=${id}`, { method: 'DELETE' });
-    const data = await res.json();
+    const data = await readEnvelope(res);
     if (data.success) {
       if (selectedVehicle) {
         loadVehicleDetails(selectedVehicle.id);
@@ -455,7 +520,8 @@ export default function WorkbenchPage() {
   // Handle Maintenance Submit
   const handleSaveMaintenance = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedVehicle) return;
+    if (!selectedVehicle || savingMaintenance) return;
+    setSavingMaintenance(true);
 
     const url = '/api/maintenance';
     const method = editingMaintenanceId ? 'PUT' : 'POST';
@@ -475,20 +541,26 @@ export default function WorkbenchPage() {
       nextDueOdometer: maintenanceForm.nextDueOdometer ? Number(maintenanceForm.nextDueOdometer) : undefined,
     };
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setShowMaintenanceModal(false);
-      setEditingMaintenanceId(null);
-      setPartsList([]);
-      loadVehicleDetails(selectedVehicle.id);
-      loadVehicles();
-    } else {
-      alert(data.error);
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await readEnvelope(res);
+      if (data.success) {
+        setShowMaintenanceModal(false);
+        setEditingMaintenanceId(null);
+        setPartsList([]);
+        loadVehicleDetails(selectedVehicle.id);
+        loadVehicles();
+      } else {
+        alert(data.error);
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Request failed');
+    } finally {
+      setSavingMaintenance(false);
     }
   };
 
@@ -503,7 +575,7 @@ export default function WorkbenchPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vehicleId: selectedVehicle.id }),
       });
-      const data = await res.json();
+      const data = await readEnvelope(res);
       if (data.success) {
         setSelectedVehicle({ ...selectedVehicle, specs: data.data });
         loadVehicles();
@@ -532,7 +604,7 @@ export default function WorkbenchPage() {
           query: queryText,
         }),
       });
-      const data = await res.json();
+      const data = await readEnvelope(res);
       if (data.success) {
         setDoctorHistory(prev => [
           { query: queryText, advice: data.data.advice },
@@ -552,19 +624,26 @@ export default function WorkbenchPage() {
   // Handle Settings Save
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: settings.provider,
-        apiKey: settings.apiKey || undefined,
-        fuelTypes: settings.fuelTypes,
-      }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setSettingsMsg('تم حفظ الإعدادات بنجاح');
-      loadSettings();
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: settings.provider,
+          apiKey: settings.apiKey || undefined,
+          fuelTypes: settings.fuelTypes,
+        }),
+      });
+      const data = await readEnvelope(res);
+      if (data.success) {
+        setSettingsMsg(t('set_save_success'));
+        loadSettings();
+      } else {
+        setSettingsMsg(data.error || 'Request failed');
+      }
+    } catch (err: any) {
+      setSettingsMsg(err?.message || 'Request failed');
+    } finally {
       setTimeout(() => setSettingsMsg(''), 3000);
     }
   };
@@ -768,6 +847,7 @@ export default function WorkbenchPage() {
           aiError={aiError}
           onAiLookup={handleAiLookup}
           onSaveVehicle={handleSaveVehicle}
+          saving={savingVehicle}
         />
 
         <FuelLogModal
@@ -780,6 +860,8 @@ export default function WorkbenchPage() {
           setSelectedFuelType={setSelectedFuelType}
           settings={settings}
           onSaveFuel={handleSaveFuel}
+          saving={savingFuel}
+          minOdometer={editingFuelId ? 0 : selectedVehicle?.currentOdometer ?? 0}
         />
 
         <MaintenanceLogModal
@@ -791,6 +873,8 @@ export default function WorkbenchPage() {
           partsList={partsList}
           setPartsList={setPartsList}
           onSaveMaintenance={handleSaveMaintenance}
+          saving={savingMaintenance}
+          minOdometer={editingMaintenanceId ? 0 : selectedVehicle?.currentOdometer ?? 0}
         />
 
         {/* Mobile Material You Floating Action Button (FAB) */}

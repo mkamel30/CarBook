@@ -88,10 +88,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             >
               <div>
                 <div className="font-semibold">
-                  {lang === 'en' ? s.schedule.titleEn || s.schedule.titleAr : s.schedule.titleAr}
+                  {lang !== 'ar' ? s.schedule.titleEn || s.schedule.titleAr : s.schedule.titleAr}
                 </div>
                 <div className="text-[11px] opacity-80">
-                  {lang === 'en'
+                  {lang !== 'ar'
                     ? s.status === 'overdue'
                       ? `Overdue by ${Math.abs(s.remainingKm || 0).toLocaleString()} km`
                       : s.status === 'due_soon'

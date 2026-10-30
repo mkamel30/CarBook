@@ -266,6 +266,7 @@ btn_edit = Edytuj
 btn_delete = Usuń
 confirm_delete_fuel = Czy na pewno chcesz usunąć ten wpis tankowania?
 confirm_delete_maint = Czy na pewno chcesz usunąć ten wpis serwisowy?
+modal_make_model_required = Najpierw podaj markę i model
 `;
 
 export default plRaw;

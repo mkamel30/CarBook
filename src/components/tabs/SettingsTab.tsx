@@ -141,10 +141,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     setNotifStatus(checkNotificationSupport());
     if (granted) {
       sendLocalNotification(
-        lang === 'en' ? '🚗 CarBook Notifications Activated' : '🚗 تم تفعيل إشعارات CarBook',
+        lang !== 'ar' ? '🚗 CarBook Notifications Activated' : '🚗 تم تفعيل إشعارات CarBook',
         {
           body:
-            lang === 'en'
+            lang !== 'ar'
               ? 'You will now receive alerts when maintenance service is approaching.'
               : 'ستصلك الآن تنبيهات دورية عند اقتراب مواعيد الصيانة وتغيير الزيوت.',
         }
@@ -154,10 +154,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   const handleTestNotification = () => {
     const sent = sendLocalNotification(
-      lang === 'en' ? '🔔 CarBook Service Reminder' : '🔔 تذكير صيانة من CarBook',
+      lang !== 'ar' ? '🔔 CarBook Service Reminder' : '🔔 تذكير صيانة من CarBook',
       {
         body:
-          lang === 'en'
+          lang !== 'ar'
             ? 'Test Alert: Engine oil change recommended soon!'
             : 'إشعار تجريبي: اقترب موعد تغيير زيت المحرك وفحص الفلاتر!',
       }
@@ -167,7 +167,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       setTimeout(() => setTestSent(false), 3500);
     } else {
       alert(
-        lang === 'en'
+        lang !== 'ar'
           ? 'Please enable notification permissions in your browser or device first.'
           : 'يرجى السماح بالإشعارات من إعدادات المتصفح أو الجهاز أولاً.'
       );
@@ -534,7 +534,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   ...settings.fuelTypes,
                   {
                     id: newId,
-                    name: lang === 'en' ? 'New Fuel Grade' : 'نوع وقود جديد',
+                    name: lang !== 'ar' ? 'New Fuel Grade' : 'نوع وقود جديد',
                     price: 15.0,
                   },
                 ],

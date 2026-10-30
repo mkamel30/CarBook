@@ -20,6 +20,10 @@ export interface FuelLogModalProps {
   setSelectedFuelType: (typeId: string) => void;
   settings: any;
   onSaveFuel: (e: React.FormEvent) => void;
+  /** Lower bound for a brand new record: the odometer cannot run backwards. */
+  minOdometer?: number;
+  /** Blocks a second submit while the first is still in flight. */
+  saving?: boolean;
 }
 
 export const FuelLogModal: React.FC<FuelLogModalProps> = ({
@@ -31,7 +35,7 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
   selectedFuelType,
   setSelectedFuelType,
   settings,
-  onSaveFuel,
+  onSaveFuel, saving, minOdometer,
 }) => {
   const { t, lang } = useTranslation();
 
@@ -78,7 +82,7 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
                 }}
               >
                 <option value="custom" disabled={Boolean(selectedFuelType && selectedFuelType !== 'custom')}>
-                  {lang === 'en' ? 'Select fuel grade...' : 'اختر نوع الوقود...'}
+                  {lang !== 'ar' ? 'Select fuel grade...' : 'اختر نوع الوقود...'}
                 </option>
                 {settings.fuelTypes.map((ft: any) => (
                   <option key={ft.id} value={ft.id}>
@@ -86,7 +90,7 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
                   </option>
                 ))}
                 <option value="custom">
-                  {lang === 'en' ? 'Custom price / other' : 'سعر مخصص / نوع آخر'}
+                  {lang !== 'ar' ? 'Custom price / other' : 'سعر مخصص / نوع آخر'}
                 </option>
               </select>
             </div>
@@ -110,7 +114,7 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
               <input
                 required
                 type="number"
-                min="0"
+                min={minOdometer ?? 0}
                 className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                 value={fuelForm.odometer}
                 onChange={(e) => setFuelForm({ ...fuelForm, odometer: Number(e.target.value) })}
@@ -216,7 +220,8 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
             </button>
             <button
               type="submit"
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition"
+              disabled={saving}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {editingFuelId ? t('modal_fuel_btn_update') : t('modal_fuel_btn_save')}
             </button>

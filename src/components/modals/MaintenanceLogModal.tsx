@@ -32,6 +32,10 @@ export interface MaintenanceLogModalProps {
   partsList: MaintenancePartItem[];
   setPartsList: React.Dispatch<React.SetStateAction<MaintenancePartItem[]>>;
   onSaveMaintenance: (e: React.FormEvent) => void;
+  /** Lower bound for a brand new record: the odometer cannot run backwards. */
+  minOdometer?: number;
+  /** Blocks a second submit while the first is still in flight. */
+  saving?: boolean;
 }
 
 export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
@@ -42,7 +46,7 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
   setMaintenanceForm,
   partsList,
   setPartsList,
-  onSaveMaintenance,
+  onSaveMaintenance, saving, minOdometer,
 }) => {
   const { t, lang } = useTranslation();
 
@@ -80,7 +84,7 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
               <input
                 required
                 type="number"
-                min="0"
+                min={minOdometer ?? 0}
                 className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
                 value={maintenanceForm.odometer}
                 onChange={e => setMaintenanceForm({ ...maintenanceForm, odometer: Number(e.target.value) })}
@@ -101,18 +105,18 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs text-slate-300 mb-1">{lang === 'en' ? 'Service Type' : 'نوع الخدمة'}</label>
+            <label className="block text-xs text-slate-300 mb-1">{lang !== 'ar' ? 'Service Type' : 'نوع الخدمة'}</label>
             <select
               className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
               value={maintenanceForm.serviceType}
               onChange={e => setMaintenanceForm({ ...maintenanceForm, serviceType: e.target.value })}
             >
-              <option value="oil_change">{lang === 'en' ? 'Oil & Filters Change' : 'تغيير زيت وفلاتر'}</option>
-              <option value="periodic">{lang === 'en' ? 'Periodic Maintenance' : 'صيانة دورية'}</option>
-              <option value="brakes">{lang === 'en' ? 'Brakes & Pads' : 'فرامل وتيل'}</option>
-              <option value="tires">{lang === 'en' ? 'Tires & Alignment' : 'إطارات وضبط زوايا'}</option>
-              <option value="repair">{lang === 'en' ? 'Mechanical Repair' : 'إصلاح عطل'}</option>
-              <option value="other">{lang === 'en' ? 'Other' : 'أخرى'}</option>
+              <option value="oil_change">{lang !== 'ar' ? 'Oil & Filters Change' : 'تغيير زيت وفلاتر'}</option>
+              <option value="periodic">{lang !== 'ar' ? 'Periodic Maintenance' : 'صيانة دورية'}</option>
+              <option value="brakes">{lang !== 'ar' ? 'Brakes & Pads' : 'فرامل وتيل'}</option>
+              <option value="tires">{lang !== 'ar' ? 'Tires & Alignment' : 'إطارات وضبط زوايا'}</option>
+              <option value="repair">{lang !== 'ar' ? 'Mechanical Repair' : 'إصلاح عطل'}</option>
+              <option value="other">{lang !== 'ar' ? 'Other' : 'أخرى'}</option>
             </select>
           </div>
 
@@ -136,7 +140,7 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
 
             {partsList.length === 0 ? (
               <div className="text-[11px] text-slate-400 text-center py-2 border border-dashed border-slate-800 rounded">
-                {lang === 'en'
+                {lang !== 'ar'
                   ? 'No spare parts added yet. Click "Add Spare Part" to detail components (New or OEM Import).'
                   : 'لم تتم إضافة قطع غيار بعد. اضغط "إضافة قطعة غيار" لتفصيل القطع (جديدة أو استيراد).'}
               </div>
@@ -320,7 +324,8 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
             </button>
             <button
               type="submit"
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition"
+              disabled={saving}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {editingMaintenanceId ? t('modal_maint_btn_update') : t('modal_maint_btn_save')}
             </button>

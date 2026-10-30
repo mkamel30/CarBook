@@ -65,8 +65,8 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
     const today = new Date().toISOString().split('T')[0];
     const targetOdo = currentOdometer > 0 ? currentOdometer : (item.schedule.lastDoneOdometer || 0);
 
-    const title = lang === 'en' ? item.schedule.titleEn : item.schedule.titleAr;
-    const confirmMsg = lang === 'en'
+    const title = lang !== 'ar' ? item.schedule.titleEn : item.schedule.titleAr;
+    const confirmMsg = lang !== 'ar'
       ? `Mark "${title}" as completed at ${targetOdo.toLocaleString()} km today?`
       : `هل تود تأكيد إتمام صيـانة "${title}" الآن عند قراءة العداد: ${targetOdo.toLocaleString()} كم؟`;
 
@@ -135,7 +135,7 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
                 <div className="flex justify-between items-start mb-1.5 gap-2">
                   <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
                     <Wrench className={`w-4 h-4 shrink-0 ${isOverdue ? 'text-rose-400' : isDueSoon ? 'text-amber-400' : 'text-slate-400'}`} />
-                    <span>{lang === 'en' ? item.schedule.titleEn || item.schedule.titleAr : item.schedule.titleAr}</span>
+                    <span>{lang !== 'ar' ? item.schedule.titleEn || item.schedule.titleAr : item.schedule.titleAr}</span>
                   </h3>
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold shrink-0 shadow-sm ${
@@ -155,7 +155,7 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
                 </div>
 
                 <div className="text-[11px] text-slate-400 mb-3 pl-6">
-                  {lang === 'en' ? item.schedule.titleAr : item.schedule.titleEn}
+                  {lang !== 'ar' ? item.schedule.titleAr : item.schedule.titleEn}
                 </div>
 
                 {/* Metrics */}
@@ -186,7 +186,7 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
 
               {/* Status Message */}
               <div className="pt-2 border-t border-slate-800/80 mb-3 font-medium">
-                {lang === 'en'
+                {lang !== 'ar'
                   ? isOverdue
                     ? `⚠️ Overdue by ${Math.abs(item.remainingKm || 0).toLocaleString()} km!`
                     : isDueSoon
@@ -244,7 +244,7 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
                   <span>{t('alerts_modal_edit_title')}</span>
                 </h3>
                 <p className="text-xs text-amber-400/90 font-medium mt-0.5">
-                  {lang === 'en'
+                  {lang !== 'ar'
                     ? editingSchedule.schedule.titleEn || editingSchedule.schedule.titleAr
                     : editingSchedule.schedule.titleAr}
                 </p>
@@ -273,7 +273,7 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
                   <span className="absolute right-3 top-2.5 text-xs text-slate-500">{t('unit_km')}</span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  {lang === 'en'
+                  {lang !== 'ar'
                     ? 'Enter the car odometer reading when this service was last performed.'
                     : 'أدخل قراءة عداد السيارة عند آخر مرة قمت فيها بعمل هذه الصيانة.'}
                 </p>

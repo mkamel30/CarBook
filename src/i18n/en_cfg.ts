@@ -266,6 +266,7 @@ btn_edit = Edit
 btn_delete = Delete
 confirm_delete_fuel = Are you sure you want to delete this fuel fill?
 confirm_delete_maint = Are you sure you want to delete this maintenance record?
+modal_make_model_required = Please enter the make and model first
 `;
 
 export default enRaw;

@@ -266,6 +266,7 @@ btn_edit = تعديل
 btn_delete = حذف
 confirm_delete_fuel = هل أنت متأكد من حذف هذه التفويلة؟
 confirm_delete_maint = هل أنت متأكد من حذف هذا السجل؟
+modal_make_model_required = يرجى إدخال الماركة والموديل أولاً
 `;
 
 export default arRaw;
