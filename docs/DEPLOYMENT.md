@@ -296,34 +296,16 @@ Migrations run automatically at startup and are additive, so an existing databas
 
 ---
 
-## 12. Reference deployment status
+## 12. Notes from the reference deployment
 
-The instance this guide was written against:
+This guide was written against a live Oracle Cloud instance running Ubuntu 24.04 behind nginx. Host addresses, credentials and account identifiers are deliberately kept out of the repository — the operator's deploy scripts live outside the checkout and are untracked, because they embed host IPs, key paths and email addresses.
 
-| | |
-| :--- | :--- |
-| Host | Oracle Cloud Infrastructure, instance `MK_CS` |
-| Region | `me-jeddah-1` |
-| Image | `Canonical-Ubuntu-24.04-Minimal-2026.07.17-0`, launched 2026-08-24 |
-| Path | `/var/www/carbook` |
-| Public name | `carbook.141.147.136.170.sslip.io` |
-| Reverse proxy | nginx → `127.0.0.1:3070` |
+Four things that instance taught, generalised:
 
-**What is confirmed working there:** the app serves over plain HTTP, the systemd unit and nginx vhost are in place, and the database holds real data. Both the `http://` and `https://` callback URIs are registered on the Google OAuth client, so the `redirect_uri_mismatch` is resolved.
-
-**What is not done:**
-
-- **HTTPS has not been verified as issued.** The certbot step is written and untested on this host. Until it succeeds, Google sign-in cannot work, because the production session cookie is `secure`.
-- **Twenty commits are not deployed.** The fixes that make sign-in land on the right origin, bind refresh tokens to their device, and enforce ownership on every route exist in the repository and are tested, but the build running on the host predates them. The visible symptom is that the OAuth callback still redirects the browser to `localhost:3070`.
-- **The database still lives inside the checkout** at `/var/www/carbook/car_maintenance.db`. It survives the current redeploy script, but it should move to `/var/lib/carbook` and `CARBOOK_DB_PATH` should be set.
-- **There is no scheduled backup.** No cron entry, no off-host copy, on a database that cannot be reconstructed.
-- **The account email is unreconciled.** The deploy tooling hardcodes `mkamel30@gmail.com` for the legacy-vehicle claim; the account that actually signs in is `m.kamel.smart@gmail.com`. The claim query matches zero rows until those agree, and only the owner can say which is correct.
-- **Vehicles created before the account system have `user_id IS NULL`** and are therefore invisible. The claim step is what assigns them, and it has never run successfully.
-
-The two PowerShell deploy scripts (`deploy-carbook-vps.ps1`, `fix-vps-deploy.ps1`) live outside the repository and are deliberately untracked — they embed host IPs, key paths and an email address. Treat them as operator tooling, not as part of the product.
-
-**Access note:** the authorized SSH private key is on a different machine. From a workstation that does not hold it, every deployment step is blocked at `Permission denied (publickey)`. Oracle's Ubuntu images reject ed25519 keys from Cloud Shell because it runs in FIPS mode — generate RSA with `ssh-keygen -t rsa -b 4096` if you need a new key from there.
-
+- **A deploy script that preserves the database is not the same as one that cannot destroy it.** Excluding the DB file from the artifact bundle relies on the exclusion staying correct through every edit. `CARBOOK_DB_PATH` pointing outside the checkout removes the reliance.
+- **Fixes in the repository are not fixes on the host.** The gap between "committed and tested" and "running in production" is where most of the confusion lives. Record which commit the host is on, and verify behaviour against the host rather than against the source tree.
+- **An unclaimed legacy database looks exactly like an empty one.** Rows written before the account system have `user_id IS NULL` and are invisible to every authenticated caller. The claim step is what assigns them; until it runs, the owner sees nothing and reasonably concludes the data is gone. It is not.
+- **Cloud SSH access is a separate problem from deployment.** Confirm the authorized key is on the machine you are working from *before* starting, or the whole session stalls at `Permission denied (publickey)` with nothing to show for it. Where a cloud shell is involved, check its cryptographic policy — FIPS-mode shells reject ed25519 and require `ssh-keygen -t rsa -b 4096`.
 
 ---
 
@@ -334,10 +316,10 @@ Ordered by what unblocks what.
 1. **HTTPS on the host.** Blocks Google sign-in, blocks the device client, blocks the `secure` cookie. Everything below waits on it.
 2. **Move the database out of the checkout** and set `CARBOOK_DB_PATH`. Small, safe, and it removes the worst possible redeploy failure.
 3. **Scheduled backups.** A `cron` entry plus an off-host destination.
-4. **Reconcile the account email**, then run the legacy-vehicle claim so pre-auth rows become visible to their owner.
+4. **Claim the legacy rows.** Assign the `user_id IS NULL` vehicles to the owner's account so pre-auth history becomes visible. Verify the account email matches the one that actually signs in before running it — a mismatch makes the claim a silent no-op.
 5. **OAuth → device handoff.** `PUT /api/auth/device` needs a real account bearer token, and nothing currently delivers one to a phone after browser sign-in. The missing piece is a one-time-code redirect: browser completes sign-in, mints a short-lived code, the device redeems it.
 6. **Flip the Capacitor shell** from `server.url` to a bundled `webDir`. Until then the phone loads the remote site and the offline data layer never runs on a device.
 7. **Reuse the web UI inside the mobile shell**, or accept two UIs. The device data layer is done; the screens are not.
 8. **Vehicle edit and delete in the web UI.** `/api/vehicles` exposes `GET` and `POST` only.
-9. **Remove the unused `better-sqlite3` dependency.** Declared, never imported.
+9. **Remove the unused `better-sqlite3` dependency** and the dead `@sync` alias in `mobile/`.
 10. **Add a `LICENSE` file.** Both READMEs state MIT; the file itself is absent.
