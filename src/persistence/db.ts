@@ -12,7 +12,10 @@ export async function getDatabase(dbFilePath?: string) {
     return { db: _db, client: _client! };
   }
 
-  const resolvedPath = dbFilePath || path.resolve(process.cwd(), 'car_maintenance.db');
+  // CARBOOK_DB_PATH lets a deployment point the store at its own data directory
+  // (and lets the route tests run against a throwaway file).
+  const resolvedPath =
+    dbFilePath || process.env.CARBOOK_DB_PATH || path.resolve(process.cwd(), 'car_maintenance.db');
   const dir = path.dirname(resolvedPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });

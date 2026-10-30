@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { StorageRepository } from '@/persistence/repository';
 import { evaluateMaintenanceStatus, enrichFuelMetrics } from '@/services/calculator';
-import { getAuthenticatedUser } from '@/services/auth';
+import { authErrorResponse, requireUser } from '@/services/authz';
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,9 +11,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'vehicleId is required' }, { status: 400 });
     }
 
-    const user = getAuthenticatedUser(req);
+    const user = requireUser(req);
     const repo = new StorageRepository();
-    const vehicle = await repo.getVehicleById(vehicleId, user?.id);
+    const vehicle = await repo.getVehicleById(vehicleId, user.id);
     if (!vehicle) {
       return NextResponse.json({ success: false, error: 'Vehicle not found or unauthorized' }, { status: 404 });
     }
@@ -58,6 +58,8 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err: any) {
+    const auth = authErrorResponse(err);
+    if (auth) return auth;
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { StorageRepository } from '@/persistence/repository';
 import { resolveAiConfig } from '@/services/aiOrchestrator';
+import { authErrorResponse, requireUser } from '@/services/authz';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    requireUser(req);
     const repo = new StorageRepository();
     const aiConfig = await resolveAiConfig(repo);
     const userApiKey = await repo.getSetting('ai_api_key');
@@ -30,12 +32,15 @@ export async function GET() {
       },
     });
   } catch (err: any) {
+    const auth = authErrorResponse(err);
+    if (auth) return auth;
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
+    requireUser(req);
     const { provider, apiKey, fuelTypes } = await req.json();
     const repo = new StorageRepository();
 
@@ -51,6 +56,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: 'Settings saved successfully' });
   } catch (err: any) {
+    const auth = authErrorResponse(err);
+    if (auth) return auth;
     return NextResponse.json({ success: false, error: err.message }, { status: 400 });
   }
 }
