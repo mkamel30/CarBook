@@ -1,165 +1,163 @@
 <div align="center">
 
-# 🚗 CarBook
+# CarBook
 
-### Modern Local-First Vehicle Maintenance & Fuel Efficiency Companion
+### The service logbook your car actually deserves
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-15.1-black?logo=next.js)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15.5-black?logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-LibSQL-003B57?logo=sqlite)](https://libsql.org/)
-[![Tests](https://img.shields.io/badge/Tests-14%20Passing-brightgreen?logo=vitest)](https://vitest.dev/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-114%20passing-brightgreen?logo=vitest)](https://vitest.dev/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
-**[English](README.md)** • **[العربية](README.ar.md)**
+**[English](README.md)** • **[العربية](README.ar.md)** • **[Architecture](docs/ARCHITECTURE.md)** • **[API](docs/API.md)** • **[Deployment](docs/DEPLOYMENT.md)**
 
 </div>
 
 ---
 
-## 🌟 Overview
+## What CarBook is
 
-**CarBook** is a high-precision, offline-first personal vehicle tracking application. Built with **Next.js 15**, **React 19**, and **SQLite (LibSQL)**, it empowers car owners to track fuel consumption metrics ($L/100\text{km}$ and cost per km), log detailed maintenance invoices with spare parts breakdown, receive smart preventive service alerts, and consult an **AI Car Doctor** grounded in their car's actual service records and factory OEM manuals.
+CarBook is a personal vehicle logbook. It tracks what you put in the tank, what the workshop did to the car, and what is due next — then tells you the truth about the numbers instead of rounding them away.
 
-CarBook features native **bilingual support (Arabic / English)** with dynamic **RTL / LTR** switching powered by a human-friendly **`.cfg` localization engine**.
+It is written for one owner with real data, not for a fleet dashboard. Everything runs on a single SQLite file, there is no third-party backend service, and no analytics of any kind.
 
----
+What you can do with it:
 
-## 🚀 Key Features
+- **Log fuel with exact figures.** Liters and total cost calculate each other from the price per liter, and decimal fractions are kept as entered (`40.584 L` stays `40.584 L`).
+- **Read real consumption.** Distance, L/100 km, km/L and cost per km are derived between *full-tank* fills only. A partial top-up is stored, but it is not shown as a consumption figure, because dividing by an unknown distance produces a number that looks precise and is not.
+- **Itemise maintenance invoices.** Multiple spare parts per service, each marked new/OEM or imported/used, with parts and labor summed automatically.
+- **Get schedule alerts.** Oil, filters, plugs, brakes, coolant and transmission fluid are evaluated against both mileage and elapsed time, and shown as *ok*, *due soon* or *overdue*. You can set the baseline yourself — if the plugs were actually changed at 50,000 km, say so, and the countdown starts there.
+- **Keep factory specifications on hand.** Oil viscosity and capacity, ATF/CVT fluid, coolant and brake fluid standards, cold tire pressures, tank capacity, recommended octane, plug type and battery rating — looked up once and cached in the database.
+- **Ask the AI car doctor.** It answers with your make, model, year, current odometer and last five services in the prompt, so the advice is about your car rather than cars in general.
+- **Export and print.** Multi-sheet Excel workbooks (maintenance, fuel, specs) and an A4-styled inspection report for a buyer or an inspector.
+- **Back up your records.** A JSON export of every vehicle, fill, invoice and schedule, and a restore that defaults to *merge* — it re-adds missing records and never overwrites what is already there. Preferences (fuel prices, theme, language) are not part of that file.
 
-### ⛽ 1. Precision Fuel Logging & Efficiency Analytics
-- **Bidirectional Auto-Calculation:** Entering fuel quantity automatically computes total cost from the chosen fuel price, and vice-versa. Supports exact decimal fractions (e.g. `40.584 L`).
-- **Consecutive Fill Analytics:** Automatically calculates distance traveled, fuel consumption ($L/100\text{km}$, $\text{km}/L$), and operational cost per kilometer between full tank fills.
-- **Dynamic History Editing:** Edit or delete past fills with automatic cascading metric re-evaluations.
-- **Custom Fuel Pricing in Settings:** Store fuel grades and prices (e.g., Gasoline 92, Gasoline 95, Diesel, CNG) to automatically populate new logs.
-
-### 🔧 2. Comprehensive Maintenance & Parts Invoice Log
-- **Itemized Spare Parts:** Log multiple parts per invoice with condition classification (**New / OEM** vs. **Import / Good Used**).
-- **Automated Cost Summaries:** Automatic sum of spare parts + labor cost = grand total.
-- **Service Center Tracking:** Document workshop names and future target odometers.
-
-### ⚠️ 3. Smart Odometer & Schedule Alerts
-- **Real-Time Evaluation:** Color-coded badges evaluate whether scheduled services (Engine Oil, Transmission Fluid, Spark Plugs, Brakes) are **Good Condition**, **Due Soon**, or **Overdue**.
-- **Distance & Time-Based:** Triggers alerts based on both mileage intervals and elapsed months.
-
-### 📖 4. Factory OEM Digital Manual (AI-Assisted)
-- **Offline-First Technical Specs:** Fetch official manufacturer specifications with one click and store them locally in SQLite:
-  - Engine oil viscosity (e.g. `0W-20`, `5W-30`) & capacity with filter.
-  - Transmission fluid specifications (ATF, CVT Fluid FE).
-  - Coolant & brake fluid standards (Super Long Life Coolant, DOT 4).
-  - Cold tire pressures for front and rear wheels (PSI / Bar).
-  - Fuel tank capacity and minimum recommended octane rating.
-  - Spark plug types and battery ratings.
-
-### 👨‍🔧 5. AI Car Doctor Consultation
-- **Context-Grounded Diagnostics:** Consult an AI automotive technician about strange noises, performance dips, or OBD-II trouble codes (e.g. `P0420`, `P0300`).
-- Unlike generic chatbots, the AI Doctor analyzes your car's **make**, **model**, **year**, **current odometer reading**, and **recent maintenance invoices** to deliver a tailored technical diagnosis.
-
-### 📄 6. Certified Inspection & Resale Report
-- **Printable Buyer Report:** Generate a clean, verifiable PDF or printed certificate summarizing confirmed mileage, lifetime maintenance history, and parts replacements for prospective buyers.
-
-### 🌐 7. Extensible `.cfg` Multilingual Engine (i18n)
-- **Zero-Coding Translation:** All languages are stored in simple `.cfg` (key-value) files under [`src/locales/`](src/locales/):
-  - [`ar.cfg`](src/locales/ar.cfg): Full Arabic translation (`dir = rtl`, Cairo font).
-  - [`en.cfg`](src/locales/en.cfg): Full English translation (`dir = ltr`).
-- **Effortless Community Translations:** To add Spanish, French, or German, simply copy `en.cfg` to `fr.cfg` or `de.cfg` and edit the lines in any text editor!
+Three languages are built in: **Arabic** (RTL, Cairo font), **English**, and **Polish**. Four themes ship with it — Material 3 Expressive (default), Glassmorphism, Light Minimal and Terminal.
 
 ---
 
-## 🏗️ Architecture & Technology Stack
+## How it is built
 
-| Layer | Technologies |
+| Layer | Technology |
 | :--- | :--- |
-| **Framework** | [Next.js 15 (App Router)](https://nextjs.org/) & [React 19](https://react.dev/) |
-| **Styling & UI** | [Tailwind CSS 3.4](https://tailwindcss.com/), [Lucide React](https://lucide.dev/), Google Cairo font |
-| **Database** | [SQLite](https://www.sqlite.org/) via [@libsql/client](https://libsql.org/) & [Drizzle ORM](https://orm.drizzle.team/) |
-| **Validation** | [Zod 3.24](https://zod.dev/) |
-| **Testing** | [Vitest 3.0](https://vitest.dev/) |
-| **AI Integration** | Google Gemini API & OpenRouter API (Server-Side Isolated) |
+| Web app & API | Next.js 15.5 (App Router), React 19.3, TypeScript 5.7 |
+| Styling | Tailwind CSS 3.4, CSS-variable themes, Lucide icons, Google Cairo |
+| Database | SQLite via `@libsql/client`, Drizzle ORM for reads, parameterised SQL for the sync engine |
+| Validation | Zod 3.24 (domain schemas on every write) |
+| Spreadsheets | `xlsx` (SheetJS) |
+| Device shell | Capacitor 8.6 + a separate Vite/React app in [`mobile/`](mobile/) with WatermelonDB 0.28 |
+| Tests | Vitest 3 — 114 tests across 18 files |
 
-For comprehensive technical specifications, review [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The repository has two applications in it:
 
----
-
-## 🛠️ Getting Started
-
-### Prerequisites
-- **Node.js** $\ge 18.18$ (Tested on Node.js v20 & v24)
-- **pnpm** (recommended), **npm**, or **yarn**
-
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/mkamel30/CarBook.git
-   cd CarBook
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pnpm install
-   ```
-
-3. **Start the local development server:**
-   ```bash
-   pnpm dev
-   ```
-
-4. **Open in your browser:**
-   Navigate to [http://localhost:3070](http://localhost:3070).
-
----
-
-## 🧪 Testing & Verification
-
-Run the automated test suite with Vitest:
-
-```bash
-# Run all unit and integration tests
-pnpm test
-
-# Run TypeScript type safety check
-pnpm typecheck
+```
+src/            Next.js web app: UI, API routes, services, persistence
+  app/api/        16 route handlers (vehicles, fuel, maintenance, schedules,
+                  reports, settings, backup, sync, auth/*, ai/*)
+  domain/         Zod schemas — the single definition of valid data
+  persistence/    db.ts (connection + migrations), repository.ts, sync.ts
+  services/       calculator, ai, aiOrchestrator, automotiveDatabase,
+                  exportExcel, backup, auth, authz, deviceAuth
+  i18n/           .cfg parser + ar/en/pl dictionaries
+  theme/          theme context and token definitions
+mobile/         Vite + React + WatermelonDB offline client (Capacitor target)
+docs/           ARCHITECTURE.md, API.md, DEPLOYMENT.md
+tests/          server-side suite
 ```
 
-CarBook maintains **100% passing test coverage** across calculations, database persistence, SSRF security guards, and the `.cfg` localization engine.
+Full detail lives in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
-## 🌍 Adding New Languages (`.cfg`)
+## Accounts, tenancy and offline
 
-Adding a new language takes less than 2 minutes:
+CarBook started as a single-user local tool and grew an account system, so it is worth being precise about where it stands.
 
-1. Copy [`src/locales/en.cfg`](src/locales/en.cfg) to `src/locales/<lang_code>.cfg` (e.g. `fr.cfg`).
-2. Set metadata:
-   ```ini
-   lang_code = fr
-   lang_name = Français
-   dir = ltr
-   ```
-3. Translate the strings in any text editor.
-4. The system automatically handles fallback to English or Arabic if any key is missing.
+**Every row belongs to someone.** `vehicles.user_id` owns a car; fuel logs, maintenance logs and schedules inherit ownership through their vehicle. Each API handler resolves the caller first and checks record ownership second. A record you do not own and a record that does not exist both answer `404`, so ids cannot be probed to learn which is which. Anonymous callers get an empty list, never the unassigned legacy rows.
 
----
+**Guest mode is a real account, not a null.** A device that has not signed in registers as `guest:<deviceId>` with `is_guest = 1`. Guest data is scoped, readable and syncable with no special cases, and linking to a real account reassigns the vehicles and their logs in one transaction, re-stamping the sync sequence so the account's other devices pull the merged history.
 
-## 🔒 Security & Privacy
+**Sync is a cursor, not a diff.** Each row carries `rev` (per-row version), `seq` (global monotonic counter) and `deleted` (tombstone); `sync_ts` decides last-write-wins. A device asks for everything with `seq > since`, pushes its dirty rows, applies the answer, then advances the cursor — and only clears a dirty flag for the exact revision the server accepted, so an edit made while the request was in flight is never lost.
 
-- **100% Local Data:** Your vehicle logs and records are saved locally in `local.db` (SQLite) on your machine.
-- **No Telemetry Tracking:** CarBook collects zero user analytics or tracking telemetry.
-- **Protected Secrets:** AI API keys are stored in encrypted local application settings and are never shipped in client bundles or public repositories.
-- **SSRF Protection:** AI endpoints strictly enforce HTTPS and reject loopback and private intranet addresses.
+**Honest status of the offline work.** The sync contract, the device data layer and the guest/linking flow are implemented and tested end to end in-process. What is *not* finished:
+
+- The Capacitor shell still points at the remote site (`server.url`) instead of a bundled `webDir`, so no on-device code runs yet and true offline is not reachable on a phone.
+- The OAuth → device handoff does not exist. `PUT /api/auth/device` needs a real account bearer token, and there is no one-time-code redirect back into the app after browser sign-in.
+- HTTPS on the host is a prerequisite for both of the above and is not configured.
+
+See the roadmap section in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 
-## 📚 Documentation
+## Getting started
 
-- [System Architecture](docs/ARCHITECTURE.md)
-- [REST API Reference](docs/API.md)
-- [Arabic Documentation (العربية)](README.ar.md)
+Prerequisites: Node.js ≥ 18.18 (developed on v24).
+
+```bash
+git clone https://github.com/mkamel30/CarBook.git
+cd CarBook
+npm install          # or: pnpm install
+cp .env.example .env.local
+npm run dev          # http://localhost:3070
+```
+
+The database is created on first run at `car_maintenance.db` in the project root. Point it somewhere else with `CARBOOK_DB_PATH` — that is how a deployment keeps data outside the checkout, and how the test suite avoids touching it.
+
+Google sign-in needs real `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` values and a registered redirect URI; with placeholders left in place Google answers `401 invalid_client`. Everything else in the app works without signing in.
+
+```bash
+npm test             # 114 tests, includes the mobile suite
+npm run typecheck    # tsc --noEmit, strict
+npm run build        # production build
+```
+
+The mobile client is a separate project:
+
+```bash
+cd mobile
+npm install
+npm test             # 18 tests: device store semantics + device<->server e2e sync
+npm run build
+```
 
 ---
 
-## 📄 License
+## Security
 
-Distributed under the MIT License. See `LICENSE` for details.
+What is actually enforced, and what is not:
+
+- **Authorization on every route.** `requireUser` for the session, `requireOwnership` for the record, both in [`src/services/authz.ts`](src/services/authz.ts). Table names reaching SQL come from an allowlist, never from the request. Values are always parameterised.
+- **Session handling.** A 30-day `httpOnly` `carbook_session` cookie for the browser, a 15-minute bearer token for the device shell. `JWT_SECRET` must stay stable across restarts or every session drops. In production the cookie is `secure`, which is why HTTPS is not optional.
+- **Device tokens.** Only the SHA-256 of a refresh token is stored. Tokens rotate on use; replaying an old one is treated as theft and revokes the device's sessions. A token is bound to the device that minted it.
+- **AI requests.** Outgoing calls require plain HTTPS, refuse credentials embedded in the URL, and reject loopback, RFC 1918, CGNAT, link-local, IPv6 local/multicast and cloud-metadata addresses in every `inet_aton` spelling (dotted quad, decimal, octal, hex, abbreviated). Redirects are not followed, because following one would replay the bearer key to the redirect target. Every request carries a deadline. Retries are bounded at three, and a permanent failure (bad credentials, rejected URL) escapes the loop on the first attempt instead of burning quota three times.
+  - *Known limit:* this validates the URL text. A hostname that resolves to a private address — DNS rebinding — needs resolve-then-dial at a layer that can hold a socket, which this one does not.
+- **Secrets.** AI keys live in `app_settings` or the environment, are never bundled into client JavaScript, and `/api/settings` only ever returns a masked form.
+- **No telemetry.** There is no analytics, no tracking, no third-party call except the AI provider you configure.
+
+---
+
+## Adding a language
+
+The runtime dictionaries are TypeScript modules in [`src/i18n/`](src/i18n/) (`ar_cfg.ts`, `en_cfg.ts`, `pl_cfg.ts`), parsed from `.cfg` key-value text at load. `src/locales/` holds the editable originals for Arabic and English; Polish currently exists only as its TS dictionary.
+
+To add a language: copy an existing dictionary, register it in `SUPPORTED_LANGUAGES` in [`src/i18n/config.ts`](src/i18n/config.ts), and translate. Missing keys fall back English → Arabic → the literal key, so a half-finished translation still renders.
+
+Content strings should branch on `lang !== 'ar'` (Arabic versus the English fallback), not on `lang === 'en'` — the latter silently shows English to every other locale.
+
+---
+
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layers, data model, sync protocol, security model, test map
+- [docs/API.md](docs/API.md) — every endpoint, its contract and its auth requirement
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — self-hosting runbook, environment reference, backup, roadmap
+- [README.ar.md](README.ar.md) — Arabic documentation
+
+---
+
+## License
+
+MIT.
