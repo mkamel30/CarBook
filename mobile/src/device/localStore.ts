@@ -49,6 +49,9 @@ function rawMapFromPulled(table: string, row: SyncRow, updatedAt: number): RawFi
  */
 export class WMDBLocalStore implements LocalStore {
   private since = 0;
+  // What collectDirty() handed to the transport, so markSynced() only clears rows
+  // that are still exactly as they were when pushed.
+  private pending: Array<{ table: string; id: string; at: number }> = [];
 
   constructor(
     private db: Database,
@@ -61,8 +64,34 @@ export class WMDBLocalStore implements LocalStore {
     return this.since;
   }
 
+  // Local revision (`updated_at_sync`) of every dirty row, keyed by id.
+  private async dirtyState(table: string): Promise<Map<string, number>> {
+    const c = this.db.collections.get(table as any);
+    const dirty = await c.query(Q.where('_dirty', Q.oneOf(DIRTY_UNSYNCED))).fetch();
+    const byId = new Map<string, number>();
+    for (const rec of dirty as any[]) {
+      byId.set(String(rec.id), Number((rec as any)._raw.updated_at_sync) || 0);
+    }
+    return byId;
+  }
+
+  /**
+   * True when the local row holds an edit the server has never seen. A row stays
+   * dirty until markSynced() clears it, so dirtiness alone says nothing: only a
+   * local revision that no longer matches the one collectDirty() pushed is unsent.
+   * Overwriting one with the server's copy would discard it with nothing left to
+   * retry; a row still exactly as pushed is safe to replace, which is what resolves
+   * a lost last-write-wins race back to the server's authoritative value.
+   */
+  private isUnsent(table: string, id: string, localAt: number | undefined): boolean {
+    if (localAt === undefined) return false;
+    const pushedAt = this.pending.find((p) => p.table === table && p.id === id)?.at;
+    return pushedAt !== localAt;
+  }
+
   async collectDirty(): Promise<PushPayload> {
     const pushed: PushPayload = {};
+    this.pending = [];
     for (const table of SYNC_TABLE_NAMES) {
       const c = this.db.collections.get(table as any);
       const dirty = await c.query(Q.where('_dirty', Q.oneOf(DIRTY_UNSYNCED))).fetch();
@@ -73,6 +102,7 @@ export class WMDBLocalStore implements LocalStore {
         const raw = (rec as any)._raw || {};
         const status = raw._dirty;
         const updatedAt = Number(raw.updated_at_sync) || Date.now();
+        this.pending.push({ table, id: String(rec.id), at: updatedAt });
         if (status === 'deleted') {
           del.push({ id: rec.id, updatedAt });
         } else {
@@ -92,8 +122,10 @@ export class WMDBLocalStore implements LocalStore {
         const bucket = pulled[table];
         if (!bucket) continue;
         const c = this.db.collections.get(table as any);
+        const dirtyAt = await this.dirtyState(table);
 
         for (const row of bucket.upsert || []) {
+          if (this.isUnsent(table, String(row.id), dirtyAt.get(String(row.id)))) continue;
           const updatedAt = Number(row.updatedAt ?? 0);
           const raw = rawMapFromPulled(table, row, updatedAt);
           let existing: any;
@@ -121,6 +153,7 @@ export class WMDBLocalStore implements LocalStore {
         }
 
         for (const id of bucket.deleted || []) {
+          if (this.isUnsent(table, String(id), dirtyAt.get(String(id)))) continue;
           try {
             const rec = await c.find(id);
             ops.push(rec.prepareDestroyPermanently());
@@ -134,17 +167,25 @@ export class WMDBLocalStore implements LocalStore {
   }
 
   async markSynced(serverSeq: number): Promise<void> {
+    const pushed = this.pending;
+    this.pending = [];
     await this.db.write(async () => {
       const ops: any[] = [];
       for (const table of SYNC_TABLE_NAMES) {
+        const wanted = new Map(pushed.filter((p) => p.table === table).map((p) => [p.id, p.at]));
+        if (!wanted.size) continue;
         const c = this.db.collections.get(table as any);
-        const dirty = await c.query(Q.where('_dirty', Q.oneOf(['created', 'updated']))).fetch();
+        const dirty = await c.query(Q.where('_dirty', Q.oneOf(DIRTY_UNSYNCED))).fetch();
         for (const rec of dirty as any[]) {
-          ops.push(rec.prepareUpdate((r: any) => { r._raw._dirty = ''; }));
-        }
-        const deleted = await c.query(Q.where('_dirty', 'deleted')).fetch();
-        for (const rec of deleted as any[]) {
-          ops.push(rec.prepareDestroyPermanently());
+          const at = wanted.get(String(rec.id));
+          // Only retire the exact revision the server accepted; anything written
+          // while the request was in flight keeps its dirty flag for the next sync.
+          if (at === undefined || Number((rec as any)._raw.updated_at_sync) !== at) continue;
+          if ((rec as any)._raw._dirty === 'deleted') {
+            ops.push(rec.prepareDestroyPermanently());
+          } else {
+            ops.push(rec.prepareUpdate((r: any) => { r._raw._dirty = ''; }));
+          }
         }
       }
       await this.db.batch(...ops);
