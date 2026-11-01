@@ -42,6 +42,7 @@ export async function getDatabase(dbFilePath?: string) {
       make TEXT NOT NULL,
       model TEXT NOT NULL,
       year INTEGER NOT NULL,
+      engine_cc TEXT,
       license_plate TEXT,
       initial_odometer REAL NOT NULL DEFAULT 0,
       current_odometer REAL NOT NULL DEFAULT 0,
@@ -165,9 +166,10 @@ export async function getDatabase(dbFilePath?: string) {
   }
   try {
     await client.execute('ALTER TABLE vehicles ADD COLUMN specs TEXT;');
-  } catch (e) {
-    // Column already exists or table was just created
-  }
+  } catch (e) {}
+  try {
+    await client.execute('ALTER TABLE vehicles ADD COLUMN engine_cc TEXT;');
+  } catch (e) {}
   try {
     await client.execute('ALTER TABLE vehicles ADD COLUMN user_id TEXT;');
   } catch (e) {

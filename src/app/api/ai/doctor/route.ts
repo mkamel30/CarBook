@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
         make: vehicle.make,
         model: vehicle.model,
         year: vehicle.year,
+        engineCc: vehicle.engineCc,
         currentOdometer: vehicle.currentOdometer,
       },
       query,

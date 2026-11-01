@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Fuel, Wrench } from 'lucide-react';
+import { AlertTriangle, Fuel, Wrench, Pencil, Trash2, Car } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 
 export interface OverviewTabProps {
@@ -9,6 +9,8 @@ export interface OverviewTabProps {
   fuelLogs: any[];
   maintenanceLogs: any[];
   onSelectTab: (tab: any) => void;
+  onEditVehicle?: (vehicle: any) => void;
+  onDeleteVehicle?: (vehicle: any) => void;
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
@@ -18,6 +20,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   fuelLogs,
   maintenanceLogs,
   onSelectTab,
+  onEditVehicle,
+  onDeleteVehicle,
 }) => {
   const { t, lang } = useTranslation();
 
@@ -29,6 +33,59 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Vehicle Info & Action Header */}
+      <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+            <Car className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base font-bold text-slate-100">{selectedVehicle.name}</h2>
+              <span className="text-xs text-slate-400 font-medium">
+                ({selectedVehicle.make} {selectedVehicle.model} - {selectedVehicle.year})
+              </span>
+              {selectedVehicle.engineCc && (
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                  {selectedVehicle.engineCc}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-slate-400 flex items-center gap-3 mt-1">
+              {selectedVehicle.licensePlate && (
+                <span>{t('modal_car_plate')}: <strong className="text-slate-300 font-mono">{selectedVehicle.licensePlate}</strong></span>
+              )}
+              {selectedVehicle.recommendedOil && (
+                <span>{t('modal_car_oil_label')}: <strong className="text-amber-400/90">{selectedVehicle.recommendedOil}</strong></span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onEditVehicle && (
+            <button
+              onClick={() => onEditVehicle(selectedVehicle)}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-medium flex items-center gap-1.5 transition"
+              title={t('btn_edit_vehicle')}
+            >
+              <Pencil className="w-3.5 h-3.5 text-amber-400" />
+              <span>{t('btn_edit_vehicle')}</span>
+            </button>
+          )}
+          {onDeleteVehicle && (
+            <button
+              onClick={() => onDeleteVehicle(selectedVehicle)}
+              className="px-3 py-1.5 rounded-lg bg-rose-950/20 hover:bg-rose-950/40 text-rose-300 border border-rose-900/40 hover:border-rose-900/60 text-xs font-medium flex items-center gap-1.5 transition"
+              title={t('btn_delete_vehicle')}
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>{t('btn_delete_vehicle')}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Key Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-slate-950 border border-slate-800 p-4 rounded-lg">

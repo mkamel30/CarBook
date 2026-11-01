@@ -226,6 +226,16 @@ modal_car_ai_oil = Sugerowany olej:
 modal_car_ai_note = Harmonogram przeglądów zostanie automatycznie wygenerowany.
 modal_car_oil_label = Zalecany olej silnikowy
 modal_car_btn_save = Zapisz pojazd
+modal_car_edit_title = Edytuj dane pojazdu
+modal_car_btn_update = Zaktualizuj pojazd
+modal_car_engine_cc = Pojemność silnika (CC / Litry)
+modal_car_engine_cc_placeholder = np. 1600cc, 1.5 Turbo lub 2.0L
+btn_edit_vehicle = Edytuj pojazd
+btn_delete_vehicle = Usuń pojazd
+confirm_delete_vehicle = Czy na pewno chcesz usunąć ten pojazd? Wszystkie powiązane wpisy paliwa i serwisu zostaną trwale usunięte.
+detect_fuel_prices_btn = Wykryj ceny paliw według lokalizacji
+detect_fuel_prices_success = Ceny paliw zaktualizowane pomyślnie dla Twojego regionu
+country_select_label = Kraj / Region dla cen paliw
 
 # Modals - Fuel Modal
 modal_fuel_new_title = Zarejestruj tankowanie

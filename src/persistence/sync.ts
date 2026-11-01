@@ -57,7 +57,7 @@ interface TableDef {
 export const SYNC_TABLES: Record<string, TableDef> = {
   vehicles: {
     columns: [
-      'name', 'make', 'model', 'year', 'license_plate', 'initial_odometer',
+      'name', 'make', 'model', 'year', 'engine_cc', 'license_plate', 'initial_odometer',
       'current_odometer', 'recommended_oil', 'specs', 'created_at', 'updated_at',
     ],
     owner: 'user',

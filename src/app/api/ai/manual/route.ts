@@ -5,7 +5,7 @@ import { authErrorResponse, requireUser } from '@/services/authz';
 
 export async function POST(req: NextRequest) {
   try {
-    const { vehicleId } = await req.json();
+    const { vehicleId, forceRefresh } = await req.json();
     if (!vehicleId) {
       return NextResponse.json({ success: false, error: 'vehicleId is required' }, { status: 400 });
     }
@@ -21,7 +21,9 @@ export async function POST(req: NextRequest) {
       vehicle.make,
       vehicle.model,
       vehicle.year,
-      repo
+      repo,
+      vehicle.engineCc,
+      Boolean(forceRefresh)
     );
 
     // Save permanently on the vehicle record as well

@@ -226,6 +226,16 @@ modal_car_ai_oil = الزيت المقترح:
 modal_car_ai_note = سيتم تهيئة جدول الصيانة الدوري تلقائياً بناءً على مواصفات الموديل.
 modal_car_oil_label = نوع الزيت الموصى به
 modal_car_btn_save = حفظ السيارة
+modal_car_edit_title = تعديل بيانات السيارة
+modal_car_btn_update = تحديث بيانات السيارة
+modal_car_engine_cc = سعة المحرك (CC / لتر)
+modal_car_engine_cc_placeholder = مثال: 1600cc أو 1.5 Turbo أو 2.0L
+btn_edit_vehicle = تعديل السيارة
+btn_delete_vehicle = حذف السيارة
+confirm_delete_vehicle = هل أنت متأكد من حذف هذه السيارة؟ سيتم حذف جميع سجلات الوقود والصيانة الخاصة بها نهائياً.
+detect_fuel_prices_btn = تحديد أسعار الوقود تلقائياً حسب موقعي
+detect_fuel_prices_success = تم تحديث أسعار الوقود بنجاح وفقاً لموقعك
+country_select_label = الدولة / المنطقة لأسعار الوقود
 
 # Modals - Fuel Modal
 modal_fuel_new_title = تسجيل تفويلة بنزين

@@ -226,6 +226,16 @@ modal_car_ai_oil = Suggested Oil:
 modal_car_ai_note = Preventive maintenance intervals will be automatically generated.
 modal_car_oil_label = Recommended Engine Oil
 modal_car_btn_save = Save Vehicle
+modal_car_edit_title = Edit Vehicle Details
+modal_car_btn_update = Update Vehicle
+modal_car_engine_cc = Engine Displacement (CC / Liters)
+modal_car_engine_cc_placeholder = e.g. 1600cc, 1.5 Turbo, or 2.0L
+btn_edit_vehicle = Edit Vehicle
+btn_delete_vehicle = Delete Vehicle
+confirm_delete_vehicle = Are you sure you want to delete this vehicle? All of its fuel and maintenance records will be deleted permanently.
+detect_fuel_prices_btn = Auto-detect fuel prices by location
+detect_fuel_prices_success = Fuel prices updated successfully for your region
+country_select_label = Country / Region for Fuel Pricing
 
 # Modals - Fuel Modal
 modal_fuel_new_title = Log Fuel Fill

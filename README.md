@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-LibSQL-003B57?logo=sqlite)](https://libsql.org/)
-[![Tests](https://img.shields.io/badge/Tests-119%20passing-brightgreen?logo=vitest)](https://vitest.dev/)
+[![Tests](https://img.shields.io/badge/Tests-123%20passing-brightgreen?logo=vitest)](https://vitest.dev/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
 **[English](README.md)** • **[العربية](README.ar.md)** • **[Architecture](docs/ARCHITECTURE.md)** • **[API](docs/API.md)** • **[Deployment](docs/DEPLOYMENT.md)**
@@ -49,7 +49,7 @@ Three languages are built in: **Arabic** (RTL, Cairo font), **English**, and **P
 | Validation | Zod 3.24 (domain schemas on every write) |
 | Spreadsheets | `xlsx` (SheetJS) |
 | Device shell | Capacitor 8.6 + a separate Vite/React app in [`mobile/`](mobile/) with WatermelonDB 0.28 |
-| Tests | Vitest 3 — 119 tests across 19 files |
+| Tests | Vitest 3 — 123 tests across 19 files |
 
 The repository has two applications in it:
 
@@ -109,7 +109,7 @@ The database is created on first run at `car_maintenance.db` in the project root
 Google sign-in needs real `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` values and a registered redirect URI; with placeholders left in place Google answers `401 invalid_client`. Everything else in the app works without signing in.
 
 ```bash
-npm test             # 114 tests, includes the mobile suite
+npm test             # 123 tests, includes the mobile suite
 npm run typecheck    # tsc --noEmit, strict
 npm run build        # production build
 ```

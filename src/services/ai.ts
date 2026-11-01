@@ -270,10 +270,11 @@ export async function lookupFullVehicleManual(
   model: string,
   year: number,
   config: AILookupConfig,
-  fetchFn = fetch
+  fetchFn = fetch,
+  engineCc?: string | null
 ): Promise<VehicleManualSpecs> {
   const prompt = `You are a certified master automotive engineer with access to official OEM factory service manuals.
-For a ${year} ${make} ${model}, provide exact factory technical specifications and fluid capacities.
+For a ${year} ${make} ${model}${engineCc ? ` (Engine / Motor CC: ${engineCc})` : ''}, provide exact factory technical specifications and fluid capacities.
 
 Respond with ONLY valid JSON with no markdown and no backticks:
 {
@@ -322,11 +323,12 @@ Respond with ONLY valid JSON with no markdown and no backticks:
  * AI Car Doctor Diagnosis & Consultation
  */
 export async function askAiCarDoctor(
-  vehicle: { make: string; model: string; year: number; currentOdometer: number },
+  vehicle: { make: string; model: string; year: number; engineCc?: string | null; currentOdometer: number },
   userQuery: string,
   recentMaintenance: any[] = [],
   config: AILookupConfig,
-  fetchFn = fetch
+  fetchFn = fetch,
+  engineCc?: string | null
 ): Promise<string> {
   const maintSummary = (recentMaintenance || []).slice(0, 5).map(m =>
     `- ${m.serviceDate}: ${m.title} عند عداد ${m.odometer} كم`
@@ -334,7 +336,7 @@ export async function askAiCarDoctor(
 
   const prompt = `أنت مهندس وخبير صيانة سيارات معتمد ومستشار فني شخصي.
 بيانات سيارة المستخدم الحالية:
-- الماركة والموديل: ${vehicle.make} ${vehicle.model} (${vehicle.year})
+- الماركة والموديل: ${vehicle.make} ${vehicle.model} (${vehicle.year})${vehicle.engineCc ? ` - سعة المحرك: ${vehicle.engineCc}` : ''}
 - قراءة العداد الحالية: ${vehicle.currentOdometer.toLocaleString()} كم
 - أحدث الصيانات المنفذة في السجل:
 ${maintSummary}
@@ -395,9 +397,10 @@ export async function lookupVehicleScheduleProposal(
   model: string,
   year: number,
   config: AILookupConfig,
-  fetchFn = fetch
+  fetchFn = fetch,
+  engineCc?: string | null
 ): Promise<AILookupResponse> {
-  const prompt = `You are a vehicle maintenance expert. For a ${year} ${make} ${model}, provide:
+  const prompt = `You are a vehicle maintenance expert. For a ${year} ${make} ${model}${engineCc ? ` (Engine / Motor CC: ${engineCc})` : ''}, provide:
 1. Recommended engine oil type/viscosity (e.g. 5W-30 Full Synthetic).
 2. Standard recommended periodic maintenance schedule items with intervals in kilometers.
 

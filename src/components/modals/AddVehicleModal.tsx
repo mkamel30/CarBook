@@ -5,11 +5,13 @@ import { useTranslation } from '@/i18n/context';
 export interface AddVehicleModalProps {
   isOpen: boolean;
   onClose: () => void;
+  isEdit?: boolean;
   vehicleForm: {
     name: string;
     make: string;
     model: string;
     year: number;
+    engineCc?: string;
     licensePlate: string;
     initialOdometer: number;
     recommendedOil: string;
@@ -27,13 +29,15 @@ export interface AddVehicleModalProps {
 export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
   isOpen,
   onClose,
+  isEdit,
   vehicleForm,
   setVehicleForm,
   aiLoading,
   aiProposal,
   aiError,
   onAiLookup,
-  onSaveVehicle, saving,
+  onSaveVehicle,
+  saving,
 }) => {
   const { t } = useTranslation();
 
@@ -46,7 +50,8 @@ export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
         <div className="sm:hidden m3-drag-handle" />
         <div className="flex justify-between items-center border-b border-slate-800 pb-3">
           <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
-            <Car className="w-4 h-4 text-amber-500" /> {t('modal_car_add_title')}
+            <Car className="w-4 h-4 text-amber-500" />{' '}
+            {isEdit ? t('modal_car_edit_title') : t('modal_car_add_title')}
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-xs">
             {t('btn_cancel')}
@@ -103,6 +108,19 @@ export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
               />
             </div>
             <div>
+              <label className="block text-xs text-slate-300 mb-1">{t('modal_car_engine_cc')}</label>
+              <input
+                type="text"
+                placeholder={t('modal_car_engine_cc_placeholder')}
+                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                value={vehicleForm.engineCc || ''}
+                onChange={(e) => setVehicleForm({ ...vehicleForm, engineCc: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
               <label className="block text-xs text-slate-300 mb-1">{t('modal_car_plate')}</label>
               <input
                 type="text"
@@ -112,20 +130,20 @@ export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
                 onChange={(e) => setVehicleForm({ ...vehicleForm, licensePlate: e.target.value })}
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-xs text-slate-300 mb-1">{t('modal_car_init_odo')}</label>
-            <input
-              required
-              type="number"
-              min="0"
-              className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
-              value={vehicleForm.initialOdometer}
-              onChange={(e) =>
-                setVehicleForm({ ...vehicleForm, initialOdometer: Number(e.target.value) })
-              }
-            />
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">{t('modal_car_init_odo')}</label>
+              <input
+                required
+                type="number"
+                min="0"
+                disabled={isEdit}
+                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono disabled:opacity-60"
+                value={vehicleForm.initialOdometer}
+                onChange={(e) =>
+                  setVehicleForm({ ...vehicleForm, initialOdometer: Number(e.target.value) })
+                }
+              />
+            </div>
           </div>
 
           {/* AI Auto-fetch Button */}
@@ -188,7 +206,7 @@ export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
               disabled={saving}
               className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-1.5 rounded text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {t('modal_car_btn_save')}
+              {isEdit ? t('modal_car_btn_update') : t('modal_car_btn_save')}
             </button>
           </div>
         </form>

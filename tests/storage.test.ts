@@ -246,4 +246,95 @@ describe('StorageRepository & Domain Schemas (TASK-03)', () => {
     });
     expect(await repo.ownerOf('vehicles', orphan.id!)).toBeNull();
   });
+
+  it('creates, persists, and updates a vehicle with engineCc', async () => {
+    const vehicle = await repo.createVehicle({
+      name: 'Family Sedan',
+      make: 'Hyundai',
+      model: 'Elantra',
+      year: 2023,
+      engineCc: '1600cc Turbo',
+      licensePlate: 'ABC 456',
+      initialOdometer: 10000,
+      currentOdometer: 10000,
+      recommendedOil: '5W-30',
+    }, OWNER);
+
+    expect(vehicle.engineCc).toBe('1600cc Turbo');
+
+    const fetched = await repo.getVehicleById(vehicle.id!, OWNER);
+    expect(fetched).not.toBeNull();
+    expect(fetched?.engineCc).toBe('1600cc Turbo');
+
+    const updated = await repo.updateVehicle(vehicle.id!, {
+      name: 'Family Sedan Updated',
+      engineCc: '1.6T SmartStream',
+      currentOdometer: 12500,
+      recommendedOil: '0W-20',
+    }, OWNER);
+
+    expect(updated.name).toBe('Family Sedan Updated');
+    expect(updated.engineCc).toBe('1.6T SmartStream');
+    expect(updated.currentOdometer).toBe(12500);
+    expect(updated.recommendedOil).toBe('0W-20');
+
+    const refetched = await repo.getVehicleById(vehicle.id!, OWNER);
+    expect(refetched?.engineCc).toBe('1.6T SmartStream');
+    expect(refetched?.currentOdometer).toBe(12500);
+  });
+
+  it('supports multiple vehicles for the same user cleanly', async () => {
+    const v1 = await repo.createVehicle({
+      name: 'Primary Car',
+      make: 'Toyota',
+      model: 'Yaris',
+      year: 2020,
+      engineCc: '1500cc',
+      initialOdometer: 40000,
+      currentOdometer: 40000,
+    }, OWNER);
+
+    const v2 = await repo.createVehicle({
+      name: 'Secondary Car',
+      make: 'Nissan',
+      model: 'Sunny',
+      year: 2021,
+      engineCc: '1500cc',
+      initialOdometer: 30000,
+      currentOdometer: 30000,
+    }, OWNER);
+
+    const all = await repo.getAllVehicles(OWNER);
+    expect(all.length).toBeGreaterThanOrEqual(2);
+    expect(all.some(v => v.id === v1.id)).toBe(true);
+    expect(all.some(v => v.id === v2.id)).toBe(true);
+  });
+
+  it('deletes a vehicle and marks tombstones on vehicle and child records', async () => {
+    const vehicle = await repo.createVehicle({
+      name: 'Car To Delete',
+      make: 'Renault',
+      model: 'Megane',
+      year: 2019,
+      engineCc: '1200cc Turbo',
+      initialOdometer: 60000,
+      currentOdometer: 60000,
+    }, OWNER);
+
+    await repo.addFuelLog({
+      vehicleId: vehicle.id!,
+      fillDate: '2026-10-01',
+      odometer: 60500,
+      liters: 45,
+      pricePerLiter: 15.25,
+      totalCost: 686.25,
+      isFullTank: true,
+    });
+
+    await repo.deleteVehicle(vehicle.id!, OWNER);
+
+    expect(await repo.getVehicleById(vehicle.id!, OWNER)).toBeNull();
+    const remaining = await repo.getAllVehicles(OWNER);
+    expect(remaining.some(v => v.id === vehicle.id)).toBe(false);
+  });
 });

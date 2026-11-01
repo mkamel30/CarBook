@@ -11,6 +11,8 @@ import {
   BookOpen,
   HelpCircle,
   LogOut,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 
@@ -25,6 +27,8 @@ export interface SidebarProps {
   onLoginGoogle?: () => void;
   onLogout?: () => void;
   urgentCount?: number;
+  onEditVehicle?: (v: any) => void;
+  onDeleteVehicle?: (v: any) => void;
 }
 
 const GoogleIcon = () => (
@@ -47,6 +51,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLoginGoogle,
   onLogout,
   urgentCount = 0,
+  onEditVehicle,
+  onDeleteVehicle,
 }) => {
   const { t, dir } = useTranslation();
 
@@ -86,20 +92,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {t('app_no_vehicles')}
             </div>
           ) : (
-            <select
-              className="w-full bg-slate-900 border border-slate-700 text-xs rounded p-2 text-slate-200 outline-none focus:border-amber-500"
-              value={selectedVehicle?.id || ''}
-              onChange={(e) => {
-                const v = vehicles.find((item) => item.id === e.target.value);
-                onSelectVehicle(v || null);
-              }}
-            >
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name} ({v.make} {v.model})
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5">
+              <select
+                className="flex-1 min-w-0 bg-slate-900 border border-slate-700 text-xs rounded p-2 text-slate-200 outline-none focus:border-amber-500"
+                value={selectedVehicle?.id || ''}
+                onChange={(e) => {
+                  const v = vehicles.find((item) => item.id === e.target.value);
+                  onSelectVehicle(v || null);
+                }}
+              >
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({v.make} {v.model}{v.engineCc ? ` - ${v.engineCc}` : ''})
+                  </option>
+                ))}
+              </select>
+              {onEditVehicle && selectedVehicle && (
+                <button
+                  type="button"
+                  onClick={() => onEditVehicle(selectedVehicle)}
+                  title={t('btn_edit_vehicle')}
+                  className="p-2 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-700 rounded transition shrink-0"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {onDeleteVehicle && selectedVehicle && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteVehicle(selectedVehicle)}
+                  title={t('btn_delete_vehicle')}
+                  className="p-2 bg-slate-900 hover:bg-rose-950/40 text-rose-400 border border-slate-700 hover:border-rose-900/50 rounded transition shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           )}
         </div>
 

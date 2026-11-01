@@ -16,6 +16,7 @@ export const vehiclesTable = sqliteTable('vehicles', {
   make: text('make').notNull(),
   model: text('model').notNull(),
   year: integer('year').notNull(),
+  engineCc: text('engine_cc'),
   licensePlate: text('license_plate'),
   initialOdometer: real('initial_odometer').notNull().default(0),
   currentOdometer: real('current_odometer').notNull().default(0),

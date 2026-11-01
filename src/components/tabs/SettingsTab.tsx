@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, Check, Fuel, PlusCircle, Trash2, Settings, Bell, BellRing, UserCheck, LogOut, Palette, DatabaseBackup, Download, Upload } from 'lucide-react';
+import { Globe, Check, Fuel, PlusCircle, Trash2, Settings, Bell, BellRing, UserCheck, LogOut, Palette, DatabaseBackup, Download, Upload, MapPin, Sparkles } from 'lucide-react';
+import { detectCountryFromTimezone, getFuelPresetsByCountry, listSupportedCountries } from '@/services/geoPricing';
 import { useTranslation } from '@/i18n/context';
 import { useTheme } from '@/theme/context';
 import {
@@ -64,6 +65,32 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [backupError, setBackupError] = useState('');
   const [restoreMode, setRestoreMode] = useState<'merge' | 'replace'>('merge');
   const [replaceArmed, setReplaceArmed] = useState(false);
+  const [geoMsg, setGeoMsg] = useState('');
+  const [selectedCountryCode, setSelectedCountryCode] = useState('EG');
+
+  const handleAutoDetectFuel = () => {
+    const tz = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
+    const code = detectCountryFromTimezone(tz);
+    const preset = getFuelPresetsByCountry(code);
+    setSelectedCountryCode(code);
+    setSettings({
+      ...settings,
+      fuelTypes: preset.fuelTypes,
+    });
+    setGeoMsg(`${preset.flag} ${lang === 'ar' ? preset.nameAr : preset.nameEn} (${preset.currencySymbol})`);
+    setTimeout(() => setGeoMsg(''), 4000);
+  };
+
+  const handleSelectCountryPreset = (code: string) => {
+    setSelectedCountryCode(code);
+    const preset = getFuelPresetsByCountry(code);
+    setSettings({
+      ...settings,
+      fuelTypes: preset.fuelTypes,
+    });
+    setGeoMsg(`${preset.flag} ${lang === 'ar' ? preset.nameAr : preset.nameEn} (${preset.currencySymbol})`);
+    setTimeout(() => setGeoMsg(''), 4000);
+  };
 
   const handleExportBackup = async () => {
     setBackupBusy('export');
@@ -474,6 +501,44 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <h2 className="text-sm font-bold text-slate-100">{t('set_fuel_pricing_title')}</h2>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed">{t('set_fuel_pricing_desc')}</p>
+
+        {/* Quick Country Presets & Auto-detection */}
+        <div className="bg-slate-900/60 p-3.5 rounded-lg border border-slate-800 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-amber-400" /> {t('country_select_label')}
+            </span>
+            <button
+              type="button"
+              onClick={handleAutoDetectFuel}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-medium transition"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {t('detect_fuel_prices_btn')}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedCountryCode}
+              onChange={(e) => handleSelectCountryPreset(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-amber-500"
+            >
+              {listSupportedCountries().map((c) => (
+                <option key={c.countryCode} value={c.countryCode}>
+                  {c.flag} {lang === 'ar' ? c.nameAr : c.nameEn} ({c.currencySymbol} - {c.currency})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {geoMsg && (
+            <div className="text-[11px] text-emerald-400 bg-emerald-950/30 p-2 rounded border border-emerald-900/40 flex items-center gap-1.5">
+              <Check className="w-3.5 h-3.5" />
+              <span>{t('detect_fuel_prices_success')}: <strong>{geoMsg}</strong></span>
+            </div>
+          )}
+        </div>
 
         <div className="space-y-3">
           {settings.fuelTypes?.map((ft: any, idx: number) => (

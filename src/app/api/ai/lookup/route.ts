@@ -6,7 +6,7 @@ import { authErrorResponse, requireUser } from '@/services/authz';
 export async function POST(req: NextRequest) {
   try {
     requireUser(req);
-    const { make, model, year } = await req.json();
+    const { make, model, year, engineCc, forceRefresh } = await req.json();
     if (!make || !model || !year) {
       return NextResponse.json({ success: false, error: 'Make, model, and year are required' }, { status: 400 });
     }
@@ -16,7 +16,9 @@ export async function POST(req: NextRequest) {
       make,
       model,
       Number(year),
-      repo
+      repo,
+      engineCc,
+      Boolean(forceRefresh)
     );
 
     return NextResponse.json({

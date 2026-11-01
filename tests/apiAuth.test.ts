@@ -17,7 +17,7 @@ import { POST as postFuel, PUT as putFuel, DELETE as deleteFuel, GET as getFuel 
 import { POST as postMaint, PUT as putMaint, DELETE as deleteMaint } from '@/app/api/maintenance/route';
 import { PATCH as patchSchedule } from '@/app/api/schedules/route';
 import { POST as postSettings, GET as getSettings } from '@/app/api/settings/route';
-import { POST as postVehicle, GET as getVehicles } from '@/app/api/vehicles/route';
+import { POST as postVehicle, GET as getVehicles, PUT as putVehicle, DELETE as deleteVehicle } from '@/app/api/vehicles/route';
 import { POST as aiLookup } from '@/app/api/ai/lookup/route';
 
 const A = { id: 'user-a', email: 'a@example.com', name: 'A', picture: null };
@@ -263,5 +263,43 @@ describe('API route authorization', () => {
     // ...and the orphan is reachable by nobody, not treated as public.
     const probe = await getFuel(makeReq(`/api/fuel?vehicleId=${orphan.id}`, { headers: bearer(tokenA) }));
     expect(probe.status).toBe(404);
+
+  });
+
+  it('allows owner to update and delete vehicle, and blocks unauthorized tenants', async () => {
+    // Foreign user B cannot update vehicle A
+    const foreignEdit = await putVehicle(makeReq('/api/vehicles', {
+      method: 'PUT',
+      headers: bearer(tokenB),
+      body: JSON.stringify({ id: vehicleA, name: 'Hijacked Car', engineCc: '2000cc' }),
+    }));
+    expect(foreignEdit.status).toBe(404);
+
+    // Foreign user B cannot delete vehicle A
+    const foreignDel = await deleteVehicle(makeReq(`/api/vehicles?id=${vehicleA}`, {
+      method: 'DELETE',
+      headers: bearer(tokenB),
+    }));
+    expect(foreignDel.status).toBe(404);
+
+    // Owner A can update vehicle A with engineCc
+    const ownerEdit = await putVehicle(makeReq('/api/vehicles', {
+      method: 'PUT',
+      headers: bearer(tokenA),
+      body: JSON.stringify({ id: vehicleA, name: 'Updated Car A', engineCc: '1600cc Turbo' }),
+    }));
+    expect(ownerEdit.status).toBe(200);
+    const updatedBody = await ownerEdit.json();
+    expect(updatedBody.data.name).toBe('Updated Car A');
+    expect(updatedBody.data.engineCc).toBe('1600cc Turbo');
+
+    // Owner A can delete vehicle A
+    const ownerDel = await deleteVehicle(makeReq(`/api/vehicles?id=${vehicleA}`, {
+      method: 'DELETE',
+      headers: bearer(tokenA),
+    }));
+    expect(ownerDel.status).toBe(200);
+    expect(await repo.getVehicleById(vehicleA, A.id)).toBeNull();
+
   });
 });

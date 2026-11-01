@@ -61,11 +61,13 @@ export default function WorkbenchPage() {
 
   // Vehicle Form State
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [vehicleForm, setVehicleForm] = useState({
     name: '',
     make: '',
     model: '',
     year: new Date().getFullYear(),
+    engineCc: '',
     licensePlate: '',
     initialOdometer: 0,
     recommendedOil: '',
@@ -281,37 +283,117 @@ export default function WorkbenchPage() {
     }
   }, [activeTab]);
 
-  // Handle Add Vehicle
+  const openAddVehicleModal = () => {
+    setEditingVehicleId(null);
+    setVehicleForm({
+      name: '',
+      make: '',
+      model: '',
+      year: new Date().getFullYear(),
+      engineCc: '',
+      licensePlate: '',
+      initialOdometer: 0,
+      recommendedOil: '',
+    });
+    setAiProposal(null);
+    setAiError(null);
+    setShowAddVehicleModal(true);
+  };
+
+  const openEditVehicleModal = (v: any) => {
+    if (!v) return;
+    setEditingVehicleId(v.id);
+    setVehicleForm({
+      name: v.name,
+      make: v.make,
+      model: v.model,
+      year: Number(v.year),
+      engineCc: v.engineCc || '',
+      licensePlate: v.licensePlate || '',
+      initialOdometer: Number(v.initialOdometer || 0),
+      recommendedOil: v.recommendedOil || '',
+    });
+    setAiProposal(null);
+    setAiError(null);
+    setShowAddVehicleModal(true);
+  };
+
+  const handleDeleteVehicle = async (v: any) => {
+    if (!v) return;
+    const ok = window.confirm(t('confirm_delete_vehicle'));
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`/api/vehicles?id=${encodeURIComponent(v.id)}`, {
+        method: 'DELETE',
+      });
+      const data = await readEnvelope(res);
+      if (data.success) {
+        await loadVehicles();
+      } else {
+        alert(data.error);
+      }
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete vehicle');
+    }
+  };
+
+  // Handle Add or Edit Vehicle
   const handleSaveVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (savingVehicle) return;
     setSavingVehicle(true);
     try {
-      const res = await fetch('/api/vehicles', {
-        method: 'POST',
+      const isEdit = Boolean(editingVehicleId);
+      const url = '/api/vehicles';
+      const method = isEdit ? 'PUT' : 'POST';
+      const body = {
+        ...(isEdit ? { id: editingVehicleId } : {}),
+        ...vehicleForm,
+        initialOdometer: Number(vehicleForm.initialOdometer),
+        currentOdometer: isEdit && selectedVehicle ? selectedVehicle.currentOdometer : Number(vehicleForm.initialOdometer),
+        year: Number(vehicleForm.year),
+      };
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...vehicleForm,
-          initialOdometer: Number(vehicleForm.initialOdometer),
-          currentOdometer: Number(vehicleForm.initialOdometer),
-          year: Number(vehicleForm.year),
-        }),
+        body: JSON.stringify(body),
       });
       const data = await readEnvelope(res);
       if (data.success) {
         setShowAddVehicleModal(false);
+        const savedId = data.data.id || editingVehicleId;
         setVehicleForm({
           name: '',
           make: '',
           model: '',
           year: new Date().getFullYear(),
+          engineCc: '',
           licensePlate: '',
           initialOdometer: 0,
           recommendedOil: '',
         });
         setAiProposal(null);
+        setEditingVehicleId(null);
         await loadVehicles();
         setSelectedVehicle(data.data);
+
+        // Auto-refresh specifications if vehicle details or engine changed
+        if (isEdit && savedId) {
+          fetch('/api/ai/manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vehicleId: savedId, forceRefresh: true }),
+          })
+            .then(r => r.json())
+            .then(res => {
+              if (res.success && res.data) {
+                setSelectedVehicle((prev: any) => prev && prev.id === savedId ? { ...prev, specs: res.data } : prev);
+              }
+            })
+            .catch(() => {});
+        }
       } else {
         alert(data.error);
       }
@@ -338,6 +420,7 @@ export default function WorkbenchPage() {
           make: vehicleForm.make,
           model: vehicleForm.model,
           year: vehicleForm.year,
+          engineCc: vehicleForm.engineCc || undefined,
         }),
       });
       const data = await readEnvelope(res);
@@ -661,7 +744,9 @@ export default function WorkbenchPage() {
         onSelectVehicle={setSelectedVehicle}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onOpenAddVehicle={() => setShowAddVehicleModal(true)}
+        onOpenAddVehicle={openAddVehicleModal}
+        onEditVehicle={openEditVehicleModal}
+        onDeleteVehicle={handleDeleteVehicle}
         currentUser={currentUser}
         onLoginGoogle={handleLoginGoogle}
         onLogout={handleLogout}
@@ -724,7 +809,7 @@ export default function WorkbenchPage() {
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <button
-                  onClick={() => setShowAddVehicleModal(true)}
+                  onClick={openAddVehicleModal}
                   className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded text-xs inline-flex items-center justify-center gap-2"
                 >
                   <PlusCircle className="w-4 h-4" /> {t('app_add_first_car')}
@@ -755,6 +840,8 @@ export default function WorkbenchPage() {
                   maintenanceLogs={maintenanceLogs}
                   schedules={schedules}
                   onSelectTab={setActiveTab}
+                  onEditVehicle={openEditVehicleModal}
+                  onDeleteVehicle={handleDeleteVehicle}
                 />
               )}
 
@@ -839,6 +926,7 @@ export default function WorkbenchPage() {
         {/* Modals */}
         <AddVehicleModal
           isOpen={showAddVehicleModal}
+          isEdit={Boolean(editingVehicleId)}
           onClose={() => setShowAddVehicleModal(false)}
           vehicleForm={vehicleForm}
           setVehicleForm={setVehicleForm}

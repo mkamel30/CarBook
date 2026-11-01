@@ -77,11 +77,13 @@ export async function getOrFetchVehicleManual(
   make: string,
   model: string,
   year: number,
-  repo: StorageRepository
+  repo: StorageRepository,
+  engineCc?: string | null,
+  forceRefresh = false
 ): Promise<{ specs: VehicleManualSpecs; source: string; fromCache: boolean }> {
   // 1. Check Global SQLite Cache
   const cached = await repo.getGlobalSpecCache(make, model, year);
-  if (cached && cached.specs) {
+  if (!forceRefresh && cached && cached.specs) {
     return { specs: cached.specs, source: cached.source || 'cache', fromCache: true };
   }
 
@@ -104,7 +106,7 @@ export async function getOrFetchVehicleManual(
   const config = await resolveAiConfig(repo);
   if (config.hasKey && config.apiKey) {
     try {
-      const specs = await lookupFullVehicleManual(make, model, year, config);
+      const specs = await lookupFullVehicleManual(make, model, year, config, fetch, engineCc);
       await repo.saveGlobalSpecCache(
         make,
         model,
@@ -142,11 +144,13 @@ export async function getOrFetchVehicleSchedules(
   make: string,
   model: string,
   year: number,
-  repo: StorageRepository
+  repo: StorageRepository,
+  engineCc?: string | null,
+  forceRefresh = false
 ): Promise<{ proposal: AILookupResponse; source: string; fromCache: boolean }> {
   // 1. Check Global SQLite Cache
   const cached = await repo.getGlobalSpecCache(make, model, year);
-  if (cached && cached.schedules) {
+  if (!forceRefresh && cached && cached.schedules) {
     return { proposal: cached.schedules, source: cached.source || 'cache', fromCache: true };
   }
 
@@ -169,7 +173,7 @@ export async function getOrFetchVehicleSchedules(
   const config = await resolveAiConfig(repo);
   if (config.hasKey && config.apiKey) {
     try {
-      const proposal = await lookupVehicleScheduleProposal(make, model, year, config);
+      const proposal = await lookupVehicleScheduleProposal(make, model, year, config, fetch, engineCc);
       await repo.saveGlobalSpecCache(
         make,
         model,
@@ -204,10 +208,12 @@ export async function getOrFetchVehicleSchedules(
  * Tiers: External AI -> Rule-Based Expert Engine
  */
 export async function consultAiDoctor(
-  vehicle: { make: string; model: string; year: number; currentOdometer: number },
+  vehicle: { make: string; model: string; year: number; engineCc?: string | null; currentOdometer: number },
   userQuery: string,
   recentMaintenance: any[] = [],
-  repo: StorageRepository
+  repo: StorageRepository,
+  engineCc?: string | null,
+  forceRefresh = false
 ): Promise<{ advice: string; source: string }> {
   const config = await resolveAiConfig(repo);
   if (config.hasKey && config.apiKey) {

@@ -123,6 +123,7 @@ export class StorageRepository {
       make: validated.make,
       model: validated.model,
       year: validated.year,
+      engineCc: validated.engineCc || null,
       licensePlate: validated.licensePlate,
       initialOdometer: validated.initialOdometer,
       currentOdometer: validated.currentOdometer,
@@ -171,7 +172,7 @@ export class StorageRepository {
     if (!userId) return null;
     const { client } = await this.getHandles();
     const res = await client.execute({
-      sql: `SELECT * FROM vehicles WHERE id = ? AND user_id = ?`,
+      sql: `SELECT * FROM vehicles WHERE id = ? AND user_id = ? AND (deleted = 0 OR deleted IS NULL)`,
       args: [id, userId],
     });
     if (res.rows.length === 0) return null;
@@ -190,6 +191,7 @@ export class StorageRepository {
       make: r.make,
       model: r.model,
       year: Number(r.year),
+      engineCc: r.engine_cc || null,
       licensePlate: r.license_plate,
       initialOdometer: Number(r.initial_odometer),
       currentOdometer: Number(r.current_odometer),
@@ -207,7 +209,7 @@ export class StorageRepository {
       return [];
     }
 
-    const query = `SELECT * FROM vehicles WHERE user_id = ? ORDER BY created_at DESC`;
+    const query = `SELECT * FROM vehicles WHERE user_id = ? AND (deleted = 0 OR deleted IS NULL) ORDER BY created_at DESC`;
     const res = await client.execute({ sql: query, args: [userId] });
     return res.rows.map((r: any) => {
       let specs = null;
@@ -223,6 +225,7 @@ export class StorageRepository {
         make: r.make,
         model: r.model,
         year: Number(r.year),
+      engineCc: r.engine_cc || null,
         licensePlate: r.license_plate,
         initialOdometer: Number(r.initial_odometer),
         currentOdometer: Number(r.current_odometer),
@@ -232,6 +235,98 @@ export class StorageRepository {
         updatedAt: r.updated_at,
       });
     });
+  }
+
+  async updateVehicle(
+    id: string,
+    data: Partial<Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt'>>,
+    userId?: string
+  ): Promise<Vehicle> {
+    const existing = await this.getVehicleById(id, userId);
+    if (!existing) {
+      throw new Error('Vehicle not found or unauthorized');
+    }
+
+    const { client } = await this.getHandles();
+    const now = new Date().toISOString();
+    const ts = Date.now();
+
+    const merged = {
+      ...existing,
+      ...data,
+      engineCc: data.engineCc !== undefined ? (data.engineCc || null) : existing.engineCc,
+      updatedAt: now,
+    };
+    const validated = vehicleSchema.parse(merged);
+    const specsJson = validated.specs ? JSON.stringify(validated.specs) : null;
+
+    await client.execute({
+      sql: `UPDATE vehicles SET 
+              name = ?, 
+              make = ?, 
+              model = ?, 
+              year = ?, 
+              engine_cc = ?, 
+              license_plate = ?, 
+              initial_odometer = ?,
+              current_odometer = ?, 
+              recommended_oil = ?, 
+              specs = ?, 
+              updated_at = ?,
+              rev = rev + 1,
+              sync_ts = ?
+            WHERE id = ?`,
+      args: [
+        validated.name,
+        validated.make,
+        validated.model,
+        validated.year,
+        validated.engineCc || null,
+        validated.licensePlate || null,
+        validated.initialOdometer,
+        validated.currentOdometer,
+        validated.recommendedOil || null,
+        specsJson,
+        now,
+        ts,
+        id,
+      ],
+    });
+
+    return validated;
+  }
+
+  async deleteVehicle(id: string, userId?: string): Promise<void> {
+    const existing = await this.getVehicleById(id, userId);
+    if (!existing) {
+      throw new Error('Vehicle not found or unauthorized');
+    }
+
+    const { client } = await this.getHandles();
+    const now = new Date().toISOString();
+    const ts = Date.now();
+
+    await client.batch(
+      [
+        {
+          sql: `UPDATE vehicles SET deleted = 1, rev = rev + 1, sync_ts = ?, updated_at = ? WHERE id = ?`,
+          args: [ts, now, id],
+        },
+        {
+          sql: `UPDATE fuel_logs SET deleted = 1, rev = rev + 1, sync_ts = ? WHERE vehicle_id = ?`,
+          args: [ts, id],
+        },
+        {
+          sql: `UPDATE maintenance_logs SET deleted = 1, rev = rev + 1, sync_ts = ? WHERE vehicle_id = ?`,
+          args: [ts, id],
+        },
+        {
+          sql: `UPDATE maintenance_schedules SET deleted = 1, rev = rev + 1, sync_ts = ? WHERE vehicle_id = ?`,
+          args: [ts, id],
+        },
+      ],
+      'write'
+    );
   }
 
   // Maintenance Schedules
