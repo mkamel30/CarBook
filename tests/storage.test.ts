@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { StorageRepository } from '@/persistence/repository';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 describe('StorageRepository & Domain Schemas (TASK-03)', () => {
   // Unique per run: a fixed name loses a race against the closing file handle on Windows.
-  const testDbPath = path.resolve(
-    process.cwd(),
+  const testDbPath = path.join(
+    os.tmpdir(),
     `test_storage_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
   );
   const OWNER = 'owner-1';

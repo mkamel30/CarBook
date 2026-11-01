@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { NextRequest } from 'next/server';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { StorageRepository } from '@/persistence/repository';
 import { signSessionToken, signAccessToken } from '@/services/auth';
 
 // The routes build a default StorageRepository, which resolves the file at
 // construction time, so the env var has to be set before the first handler runs.
-const dbPath = path.resolve(
-  process.cwd(),
+const dbPath = path.join(
+  os.tmpdir(),
   `test_api_auth_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
 );
 process.env.CARBOOK_DB_PATH = dbPath;

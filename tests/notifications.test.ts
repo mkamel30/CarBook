@@ -31,32 +31,45 @@ describe('Notifications & Maintenance Alerts Engine', () => {
       setItem: (k: string, v: string) => { storage[k] = v; },
     };
 
-    const originalWindow = global.window;
-    (global as any).window = {
-      Notification: {
-        permission: 'granted',
-        requestPermission: vi.fn().mockResolvedValue('granted'),
-      },
+    // Capture every global this test mutates so none of them leaks into later
+    // suites (the mock localStorage/window/Notification used to persist).
+    const originalWindow = (global as any).window;
+    const originalLocalStorage = (global as any).localStorage;
+    const originalNotification = (global as any).Notification;
+    const restore = (key: 'window' | 'localStorage' | 'Notification', value: any) => {
+      if (value === undefined) delete (global as any)[key];
+      else (global as any)[key] = value;
     };
-    (global as any).localStorage = mockLocalStorage;
 
-    const notifSpy = vi.fn();
-    (global as any).Notification = notifSpy;
-    (global as any).Notification.permission = 'granted';
+    try {
+      (global as any).window = {
+        Notification: {
+          permission: 'granted',
+          requestPermission: vi.fn().mockResolvedValue('granted'),
+        },
+      };
+      (global as any).localStorage = mockLocalStorage;
 
-    evaluateAndNotifySchedules(mockSchedules, 'Corolla 2022', 'ar');
+      const notifSpy = vi.fn();
+      (global as any).Notification = notifSpy;
+      (global as any).Notification.permission = 'granted';
 
-    expect(notifSpy).toHaveBeenCalled();
-    const callArgs = notifSpy.mock.calls[0];
-    expect(callArgs[0]).toContain('كـاربوك');
-    expect(callArgs[1].body).toContain('متأخر');
+      evaluateAndNotifySchedules(mockSchedules, 'Corolla 2022', 'ar');
 
-    // Second call immediately within 6 hours should be throttled
-    notifSpy.mockClear();
-    evaluateAndNotifySchedules(mockSchedules, 'Corolla 2022', 'ar');
-    expect(notifSpy).not.toHaveBeenCalled();
+      expect(notifSpy).toHaveBeenCalled();
+      const callArgs = notifSpy.mock.calls[0];
+      expect(callArgs[0]).toContain('كـاربوك');
+      expect(callArgs[1].body).toContain('متأخر');
 
-    // Clean up
-    (global as any).window = originalWindow;
+      // Second call immediately within 6 hours should be throttled
+      notifSpy.mockClear();
+      evaluateAndNotifySchedules(mockSchedules, 'Corolla 2022', 'ar');
+      expect(notifSpy).not.toHaveBeenCalled();
+    } finally {
+      // Clean up — window AND the other globals (localStorage, Notification).
+      restore('window', originalWindow);
+      restore('localStorage', originalLocalStorage);
+      restore('Notification', originalNotification);
+    }
   });
 });

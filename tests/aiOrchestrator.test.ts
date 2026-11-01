@@ -7,10 +7,11 @@ import {
 } from '@/services/aiOrchestrator';
 import { findPreseededVehicle, generateHeuristicSpecs } from '@/services/automotiveDatabase';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 describe('Server-Side Managed AI & 4-Tier Hybrid Engine', () => {
-  const testDbPath = path.resolve(process.cwd(), 'test_ai_orchestrator.db');
+  const testDbPath = path.join(os.tmpdir(), `test_ai_orchestrator_${Date.now()}_${Math.random().toString(36).slice(2)}.db`);
   let repo: StorageRepository;
 
   beforeEach(() => {

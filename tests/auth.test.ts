@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { signSessionToken, verifySessionToken } from '@/services/auth';
 import { StorageRepository } from '@/persistence/repository';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 describe('Google Auth & Multi-Tenancy Engine', () => {
@@ -17,7 +18,7 @@ describe('Google Auth & Multi-Tenancy Engine', () => {
   };
 
   beforeEach(() => {
-    testDbPath = path.resolve(process.cwd(), `test_auth_${Date.now()}_${Math.random().toString(36).slice(2)}.db`);
+    testDbPath = path.join(os.tmpdir(), `test_auth_${Date.now()}_${Math.random().toString(36).slice(2)}.db`);
     repo = new StorageRepository(testDbPath);
   });
 
