@@ -134,11 +134,11 @@ export default function WorkbenchPage() {
     hasApiKey: false,
     maskedApiKey: '',
     fuelTypes: [
-      { id: 'gasoline_92', name: 'بنزين 92', price: 15.25 },
-      { id: 'gasoline_95', name: 'بنزين 95', price: 17.00 },
-      { id: 'gasoline_80', name: 'بنزين 80', price: 13.75 },
-      { id: 'diesel', name: 'سولار', price: 13.50 },
-      { id: 'cng', name: 'غاز طبيعي', price: 7.00 },
+      { id: 'gasoline_92', name: 'بنزين 92', price: 22.25 },
+      { id: 'gasoline_95', name: 'بنزين 95', price: 24.00 },
+      { id: 'gasoline_80', name: 'بنزين 80', price: 20.75 },
+      { id: 'diesel', name: 'سولار', price: 20.50 },
+      { id: 'cng', name: 'غاز طبيعي', price: 13.00 },
     ],
   });
   const [settingsMsg, setSettingsMsg] = useState('');
