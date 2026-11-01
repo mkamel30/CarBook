@@ -7,8 +7,13 @@
     "build": "next build",
     "start": "next start -p 3070",
     "lint": "next lint",
+    "gen:locales": "node scripts/gen-locales.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "android:sync": "cap sync android",
+    "android:open": "cap open android",
+    "android:apk:debug": "cd android && .\\gradlew.bat assembleDebug",
+    "android:apk:release": "cd android && .\\gradlew.bat assembleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",

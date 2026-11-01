@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      CarBook production server origin used by the Capacitor WebView (see MainActivity).
+      This is the single source of truth for the host inside the native Android app.
+      Changing the backend host requires ONLY editing the value below and rebuilding
+      the APK (gradlew assembleDebug / assembleRelease). No Java change is needed.
+      Keep this value in sync with CARBOOK_SERVER_URL / server.url in capacitor.config.ts.
+    -->
+    <string name="server_url" translatable="false">https://carbook.141.147.136.170.sslip.io</string>
+</resources>

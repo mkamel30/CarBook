@@ -2,12 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
         android:theme="@style/AppTheme">
 
         <activity
@@ -46,4 +46,13 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!--
+      POST_NOTIFICATIONS (API 33+) is intentionally retained: the served web bundle
+      (src/services/notifications.ts, imported by page.tsx and SettingsTab.tsx) calls
+      Notification.requestPermission() / new Notification(). No Capacitor notification
+      plugin is installed, so this is a web-API path; removing the permission would risk
+      breaking the existing in-app maintenance-alert feature, so it is kept.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- VIBRATE removed: no navigator.vibrate()/haptics usage in the served app. -->
 </manifest>

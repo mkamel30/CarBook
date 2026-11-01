@@ -1,4 +1,35 @@
+import groovy.json.JsonSlurper
+
 apply plugin: 'com.android.application'
+
+// ---------------------------------------------------------------------------
+// Release version is derived from the root package.json "version" field so the
+// Play Store build number stays in step with the JS release cadence.
+//   versionName = the literal semver string (e.g. "1.0.0")
+//   versionCode = major*10000 + minor*100 + patch (must be a positive int)
+// No extra tooling required; Gradle 8.14.3 + JsonSlurper parse it directly.
+// ---------------------------------------------------------------------------
+def rootPackageJson = new JsonSlurper().parse(new File(rootProject.projectDir, "../package.json"))
+def semver = (rootPackageJson.version ?: "1.0.0").toString()
+def semverParts = semver.replaceAll(/[^0-9.].*$/, "").tokenize(".")
+def vMajor = (semverParts.size() > 0 ? semverParts[0].toInteger() : 0)
+def vMinor = (semverParts.size() > 1 ? semverParts[1].toInteger() : 0)
+def vPatch = (semverParts.size() > 2 ? semverParts[2].toInteger() : 0)
+def computedVersionCode = vMajor * 10000 + vMinor * 100 + vPatch
+
+// ---------------------------------------------------------------------------
+// Release signing. Provide android/keystore.properties (git-ignored, see
+// keystore.properties.example) to sign release builds with a real key.
+// When it is absent, release falls back to the debug signing config so local
+// CI/verification builds still succeed. NEVER commit real keystore/credentials.
+// See docs/DEPLOYMENT.md for the signing runbook.
+// ---------------------------------------------------------------------------
+def keystorePropertiesFile = new File(rootProject.projectDir, "keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystore = keystorePropertiesFile.exists()
+if (hasKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
 
 android {
     namespace = "com.mkamel.carbook"
@@ -7,8 +38,8 @@ android {
         applicationId "com.mkamel.carbook"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode computedVersionCode
+        versionName semver
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +47,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig hasKeystore ? signingConfigs.release : signingConfigs.debug
         }
     }
 }
