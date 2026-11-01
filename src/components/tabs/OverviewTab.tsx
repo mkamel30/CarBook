@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AlertTriangle, Fuel, Wrench, Pencil, Trash2, Car, MoreVertical, Plus } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { formatDate } from '@/i18n/util';
 
 export interface OverviewTabProps {
   selectedVehicle: any;
@@ -25,7 +26,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   onDeleteVehicle,
   onOpenAddVehicle,
 }) => {
-  const { t, dir } = useTranslation();
+  const { t, dir, lang } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -86,7 +87,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <button
               type="button"
               onClick={() => setIsMenuOpen((prev) => !prev)}
-              aria-label="خيارات السيارة"
+              aria-label={t('vehicle_actions_aria')}
               className="p-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-amber-400 border border-slate-800 hover:border-slate-700 transition active:scale-95 shadow-sm"
             >
               <MoreVertical className="w-4 h-4" />
@@ -212,10 +213,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 <div className="text-[11px] opacity-80">
                   {lang !== 'ar'
                     ? s.status === 'overdue'
-                      ? `Overdue by ${Math.abs(s.remainingKm || 0).toLocaleString()} km`
+                      ? t('alerts_overdue_by', { km: Math.abs(s.remainingKm || 0).toLocaleString() })
                       : s.status === 'due_soon'
-                      ? `Due soon (${s.remainingKm?.toLocaleString()} km remaining)`
-                      : `Good condition (${s.remainingKm?.toLocaleString()} km remaining)`
+                      ? t('alerts_due_soon_remaining', { km: s.remainingKm?.toLocaleString() ?? 0 })
+                      : t('alerts_good_remaining', { km: s.remainingKm?.toLocaleString() ?? 0 })
                     : s.alertMessageAr}
                 </div>
               </div>
@@ -259,7 +260,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 <div key={idx} className="bg-slate-900 p-2.5 rounded text-xs flex justify-between items-center">
                   <div>
                     <div className="font-medium text-slate-200 font-mono">
-                      {f.fillDate} — {f.odometer.toLocaleString()} {t('unit_km')}
+                      {formatDate(f.fillDate, lang)} — {f.odometer.toLocaleString()} {t('unit_km')}
                     </div>
                     <div className="text-slate-400 text-[11px]">
                       {f.liters} {t('unit_liter')} ({f.pricePerLiter} {t('unit_currency')}/{t('unit_liter')})
@@ -298,7 +299,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   <div>
                     <div className="font-medium text-slate-200">{m.title}</div>
                     <div className="text-slate-400 text-[11px] font-mono">
-                      {m.serviceDate} — {m.odometer.toLocaleString()} {t('unit_km')}
+                      {formatDate(m.serviceDate, lang)} — {m.odometer.toLocaleString()} {t('unit_km')}
                     </div>
                   </div>
                   <div className="font-bold text-slate-200 font-mono">

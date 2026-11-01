@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CarBook app icon">
+  <rect width="512" height="512" rx="112" fill="#0f172a"/>
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="#1e293b"/>
+  <path d="M132 296h248M132 296v-16c0-8 6-14 14-14h40l24-52c3-7 10-12 18-12h108c8 0 15 5 18 12l24 52h40c8 0 14 6 14 14v16M132 296v64a10 10 0 0 0 10 10h24a10 10 0 0 0 10-10v-16M336 296v64a10 10 0 0 0 10 10h24a10 10 0 0 0 10-10v-16" fill="none" stroke="#f59e0b" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="180" cy="330" r="26" fill="#fbbf24"/>
+  <circle cx="332" cy="330" r="26" fill="#fbbf24"/>
+  <rect x="196" y="150" width="120" height="18" rx="9" fill="#f59e0b" opacity="0.55"/>
+</svg>

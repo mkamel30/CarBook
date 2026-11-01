@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { formatDate } from '@/i18n/util';
 import { exportVehicleDossierToExcel } from '@/services/exportExcel';
 
 export interface ReportsTabProps {
@@ -259,7 +260,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           <h3 className="text-xs font-bold text-slate-300 print:text-slate-900 flex items-center justify-between">
             <span>{t('rep_table_title')}</span>
             <span className="text-[11px] font-normal text-slate-400 print:text-slate-600">
-              {maintenanceLogs.length} {lang === 'ar' ? 'عملية مسجلة' : 'records logged'}
+              {t('rep_records_count', { count: maintenanceLogs.length }, maintenanceLogs.length)}
             </span>
           </h3>
           <div className="border border-slate-800 print:border-slate-300 rounded overflow-x-auto print:overflow-visible table-scrollbar">
@@ -292,7 +293,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                     }
                     return (
                       <tr key={idx}>
-                        <td className="p-2 font-mono whitespace-nowrap">{m.serviceDate}</td>
+                        <td className="p-2 font-mono whitespace-nowrap">{formatDate(m.serviceDate, lang)}</td>
                         <td className="p-2 font-mono whitespace-nowrap">
                           {m.odometer?.toLocaleString()} {t('unit_km')}
                         </td>

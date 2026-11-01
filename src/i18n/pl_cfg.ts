@@ -275,9 +275,43 @@ modal_maint_btn_update = Zaktualizuj wpis
 btn_cancel = Anuluj
 btn_edit = Edytuj
 btn_delete = Usuń
+btn_confirm = Potwierdź
+btn_retry = Ponów
 confirm_delete_fuel = Czy na pewno chcesz usunąć ten wpis tankowania?
 confirm_delete_maint = Czy na pewno chcesz usunąć ten wpis serwisowy?
 modal_make_model_required = Najpierw podaj markę i model
+
+# Loading / Error UI
+load_error_title = Nie udało się wczytać danych
+load_error_desc = Sprawdź połączenie lub serwer i spróbuj ponownie.
+
+# Dashboard stat labels
+dash_stat_odo = Przebieg
+
+# Alert statuses & counts (interpolated / plural)
+alerts_overdue_by = Po terminie o {km} km
+alerts_due_soon_remaining = Wkrótce (pozostało {km} km)
+alerts_good_remaining = Stan dobry (pozostało {km} km)
+alerts_mark_done_success = Gotowe!
+rep_records_count__one = {count} zapisany wpis
+rep_records_count__two = {count} zapisane wpisy
+rep_records_count__few = {count} zapisane wpisy
+rep_records_count__many = {count} zapisanych wpisów
+rep_records_count__other = {count} zapisane wpisy
+notif_urgent_items__one = {count} czynność wymagana
+notif_urgent_items__two = {count} czynności wymagane
+notif_urgent_items__few = {count} czynności wymagane
+notif_urgent_items__many = {count} czynności wymaganych
+notif_urgent_items__other = {count} czynności wymagane
+
+# Accessibility & auth labels
+vehicle_actions_aria = Opcje pojazdu
+fab_add_entry_aria = Dodaj wpis
+btn_login_google = Zaloguj się przez Google
+btn_login_short = Zaloguj
+
+# Maintenance modal derived total
+modal_maint_total_derived_hint = Obliczane automatycznie z części + robocizny
 `;
 
 export default plRaw;

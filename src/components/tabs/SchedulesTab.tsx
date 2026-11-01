@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from '@/i18n/context';
+import { formatDate } from '@/i18n/util';
+import { pushToast } from '@/components/ui/Toast';
+import { askConfirm } from '@/components/ui/ConfirmDialog';
 import { CheckCircle2, Edit3, Gauge, Calendar, Wrench, X, Check } from 'lucide-react';
 
 export interface SchedulesTabProps {
@@ -51,10 +54,10 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
         setEditingSchedule(null);
         if (onRefresh) onRefresh();
       } else {
-        alert(data.error || 'Failed to update schedule');
+        pushToast(data.error || 'Failed to update schedule', 'error');
       }
     } catch (e: any) {
-      alert(e.message);
+      pushToast(e.message, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -70,7 +73,8 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
       ? `Mark "${title}" as completed at ${targetOdo.toLocaleString()} km today?`
       : `هل تود تأكيد إتمام صيـانة "${title}" الآن عند قراءة العداد: ${targetOdo.toLocaleString()} كم؟`;
 
-    if (!window.confirm(confirmMsg)) return;
+    const ok = await askConfirm({ title: t('alerts_btn_mark_done'), message: confirmMsg });
+    if (!ok) return;
 
     try {
       const res = await fetch('/api/schedules', {
@@ -88,10 +92,10 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
         setTimeout(() => setActionSuccessId(null), 2500);
         if (onRefresh) onRefresh();
       } else {
-        alert(data.error || 'Failed to update schedule');
+        pushToast(data.error || 'Failed to update schedule', 'error');
       }
     } catch (e: any) {
-      alert(e.message);
+      pushToast(e.message, 'error');
     }
   };
 
@@ -178,7 +182,7 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
                         <Calendar className="w-3 h-3 text-slate-500" />
                         {t('alerts_modal_date_label')}
                       </span>
-                      <span className="font-mono text-slate-300">{item.schedule.lastDoneDate}</span>
+                      <span className="font-mono text-slate-300">{formatDate(item.schedule.lastDoneDate, lang)}</span>
                     </div>
                   )}
                 </div>
@@ -188,10 +192,10 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
               <div className="pt-2 border-t border-slate-800/80 mb-3 font-medium">
                 {lang !== 'ar'
                   ? isOverdue
-                    ? `⚠️ Overdue by ${Math.abs(item.remainingKm || 0).toLocaleString()} km!`
+                    ? t('alerts_overdue_by', { km: Math.abs(item.remainingKm || 0).toLocaleString() })
                     : isDueSoon
-                    ? `⏳ Due soon (${item.remainingKm?.toLocaleString()} km remaining)`
-                    : `✅ Good condition (${item.remainingKm?.toLocaleString()} km remaining)`
+                    ? t('alerts_due_soon_remaining', { km: item.remainingKm?.toLocaleString() ?? 0 })
+                    : t('alerts_good_remaining', { km: item.remainingKm?.toLocaleString() ?? 0 })
                   : item.alertMessageAr}
               </div>
 
@@ -218,7 +222,7 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
                   {isSuccess ? (
                     <>
                       <Check className="w-3.5 h-3.5" />
-                      <span>تم بنجاح!</span>
+                      <span>{t('alerts_mark_done_success')}</span>
                     </>
                   ) : (
                     <>

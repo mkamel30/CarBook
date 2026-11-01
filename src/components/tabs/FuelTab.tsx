@@ -1,6 +1,7 @@
 import React from 'react';
 import { PlusCircle, FileSpreadsheet, Edit2, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { formatDate } from '@/i18n/util';
 import { exportFuelToExcel } from '@/services/exportExcel';
 
 export interface FuelTabProps {
@@ -66,7 +67,7 @@ export const FuelTab: React.FC<FuelTabProps> = ({
             >
               {/* Top: Date & Odometer Chip */}
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 font-mono">{log.fillDate}</span>
+                <span className="text-xs text-slate-400 font-mono">{formatDate(log.fillDate, lang)}</span>
                 <span className="text-xs font-mono font-bold bg-amber-500/15 text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/25">
                   {log.odometer?.toLocaleString()} {t('unit_km')}
                 </span>
@@ -151,7 +152,7 @@ export const FuelTab: React.FC<FuelTabProps> = ({
             ) : (
               fuelLogs.map((log, idx) => (
                 <tr key={idx} className="hover:bg-slate-900/50">
-                  <td className="p-3 font-mono">{log.fillDate}</td>
+                  <td className="p-3 font-mono">{formatDate(log.fillDate, lang)}</td>
                   <td className="p-3 font-semibold text-amber-400 font-mono">
                     {log.odometer.toLocaleString()} {t('unit_km')}
                   </td>

@@ -27,6 +27,12 @@ import { AddVehicleModal } from '@/components/modals/AddVehicleModal';
 import { FuelLogModal } from '@/components/modals/FuelLogModal';
 import { MaintenanceLogModal } from '@/components/modals/MaintenanceLogModal';
 
+// Shared UI primitives (in-app replacements for alert()/confirm())
+import { ToastViewport, pushToast } from '@/components/ui/Toast';
+import { ConfirmDialogHost, askConfirm } from '@/components/ui/ConfirmDialog';
+import { GoogleIcon } from '@/components/ui/GoogleIcon';
+import { deriveMaintenanceTotal } from '@/components/tabs/maintenanceTotals';
+
 type Envelope = { success: true; data?: any } | { success: false; error: string };
 
 /**
@@ -57,7 +63,11 @@ export default function WorkbenchPage() {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'alerts' | 'manual' | 'doctor' | 'report' | 'settings'>('overview');
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  // Initial-load truthfulness: a failed first fetch must show an error panel
+  // with Retry, never the first-run "add your car" state (it invites duplicate vehicles).
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
 
   // Vehicle Form State
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
@@ -142,6 +152,11 @@ export default function WorkbenchPage() {
     ],
   });
   const [settingsMsg, setSettingsMsg] = useState('');
+  const [settingsError, setSettingsError] = useState('');
+  // In-flight guards for destructive deletes (mirrors the saving* flags).
+  const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null);
+  const [deletingFuelId, setDeletingFuelId] = useState<string | null>(null);
+  const [deletingMaintenanceId, setDeletingMaintenanceId] = useState<string | null>(null);
   const [showFabMenu, setShowFabMenu] = useState(false);
 
   // Fetch Vehicles
@@ -151,6 +166,7 @@ export default function WorkbenchPage() {
       const res = await fetch('/api/vehicles');
       const data = await readEnvelope(res);
       if (data.success) {
+        setInitialLoadError(null);
         setVehicles(data.data);
         if (data.data.length > 0) {
           setSelectedVehicle((prev: any) => {
@@ -169,11 +185,15 @@ export default function WorkbenchPage() {
           setSchedules([]);
           setReportData(null);
         }
+      } else {
+        setInitialLoadError(data.error || 'Failed to load vehicles');
       }
     } catch (e) {
       console.error('Failed to load vehicles', e);
+      setInitialLoadError(e instanceof Error ? e.message : 'Failed to load vehicles');
     } finally {
       setLoading(false);
+      setInitialLoadDone(true);
     }
   };
 
@@ -321,22 +341,31 @@ export default function WorkbenchPage() {
   };
 
   const handleDeleteVehicle = async (v: any) => {
-    if (!v) return;
-    const ok = window.confirm(t('confirm_delete_vehicle'));
+    if (!v || deletingVehicleId) return;
+    const ok = await askConfirm({
+      title: t('btn_delete_vehicle'),
+      message: t('confirm_delete_vehicle'),
+      danger: true,
+      confirmLabel: t('btn_delete'),
+    });
     if (!ok) return;
 
+    setDeletingVehicleId(v.id);
     try {
       const res = await fetch(`/api/vehicles?id=${encodeURIComponent(v.id)}`, {
         method: 'DELETE',
       });
       const data = await readEnvelope(res);
       if (data.success) {
+        pushToast(`${v.name} · ${t('btn_delete')} ✓`, 'success');
         await loadVehicles();
       } else {
-        alert(data.error);
+        pushToast(data.error, 'error');
       }
     } catch (e: any) {
-      alert(e.message || 'Failed to delete vehicle');
+      pushToast(e.message || 'Failed to delete vehicle', 'error');
+    } finally {
+      setDeletingVehicleId(null);
     }
   };
 
@@ -397,10 +426,10 @@ export default function WorkbenchPage() {
             .catch(() => {});
         }
       } else {
-        alert(data.error);
+        pushToast(data.error, 'error');
       }
     } catch (err: any) {
-      alert(err?.message || 'Request failed');
+      pushToast(err?.message || 'Request failed', 'error');
     } finally {
       setSavingVehicle(false);
     }
@@ -409,7 +438,7 @@ export default function WorkbenchPage() {
   // Trigger AI Schedule & Oil Lookup
   const handleAiLookup = async () => {
     if (!vehicleForm.make || !vehicleForm.model) {
-      alert(t('modal_make_model_required'));
+      pushToast(t('modal_make_model_required'), 'error');
       return;
     }
     setAiLoading(true);
@@ -490,16 +519,31 @@ export default function WorkbenchPage() {
   };
 
   const handleDeleteFuel = async (id: string) => {
-    if (!confirm(t('confirm_delete_fuel'))) return;
-    const res = await fetch(`/api/fuel?id=${id}`, { method: 'DELETE' });
-    const data = await readEnvelope(res);
-    if (data.success) {
-      if (selectedVehicle) {
-        loadVehicleDetails(selectedVehicle.id);
-        loadVehicles();
+    if (deletingFuelId) return;
+    const ok = await askConfirm({
+      title: t('btn_delete'),
+      message: t('confirm_delete_fuel'),
+      danger: true,
+      confirmLabel: t('btn_delete'),
+    });
+    if (!ok) return;
+
+    setDeletingFuelId(id);
+    try {
+      const res = await fetch(`/api/fuel?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await readEnvelope(res);
+      if (data.success) {
+        if (selectedVehicle) {
+          loadVehicleDetails(selectedVehicle.id);
+          loadVehicles();
+        }
+      } else {
+        pushToast(data.error, 'error');
       }
-    } else {
-      alert(data.error);
+    } catch (e: any) {
+      pushToast(e?.message || 'Failed to delete fuel log', 'error');
+    } finally {
+      setDeletingFuelId(null);
     }
   };
 
@@ -534,10 +578,10 @@ export default function WorkbenchPage() {
         loadVehicleDetails(selectedVehicle.id);
         loadVehicles();
       } else {
-        alert(data.error);
+        pushToast(data.error, 'error');
       }
     } catch (err: any) {
-      alert(err?.message || 'Request failed');
+      pushToast(err?.message || 'Request failed', 'error');
     } finally {
       setSavingFuel(false);
     }
@@ -589,16 +633,31 @@ export default function WorkbenchPage() {
   };
 
   const handleDeleteMaintenance = async (id: string) => {
-    if (!confirm(t('confirm_delete_maint'))) return;
-    const res = await fetch(`/api/maintenance?id=${id}`, { method: 'DELETE' });
-    const data = await readEnvelope(res);
-    if (data.success) {
-      if (selectedVehicle) {
-        loadVehicleDetails(selectedVehicle.id);
-        loadVehicles();
+    if (deletingMaintenanceId) return;
+    const ok = await askConfirm({
+      title: t('btn_delete'),
+      message: t('confirm_delete_maint'),
+      danger: true,
+      confirmLabel: t('btn_delete'),
+    });
+    if (!ok) return;
+
+    setDeletingMaintenanceId(id);
+    try {
+      const res = await fetch(`/api/maintenance?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await readEnvelope(res);
+      if (data.success) {
+        if (selectedVehicle) {
+          loadVehicleDetails(selectedVehicle.id);
+          loadVehicles();
+        }
+      } else {
+        pushToast(data.error, 'error');
       }
-    } else {
-      alert(data.error);
+    } catch (e: any) {
+      pushToast(e?.message || 'Failed to delete maintenance record', 'error');
+    } finally {
+      setDeletingMaintenanceId(null);
     }
   };
 
@@ -612,7 +671,10 @@ export default function WorkbenchPage() {
     const method = editingMaintenanceId ? 'PUT' : 'POST';
     const totalPartsCost = partsList.reduce((sum, p) => sum + (Number(p.cost) || 0), 0);
     const labor = Number(maintenanceForm.laborCost) || 0;
-    const finalTotal = totalPartsCost + labor;
+    // Additive, honest rule (see maintenanceTotals.ts): when parts or labor are
+    // filled the grand total is their sum; when both are 0/empty we honor the
+    // typed lump-sum total instead of silently overwriting it.
+    const { total: finalTotal } = deriveMaintenanceTotal(totalPartsCost, labor, maintenanceForm.totalCost);
 
     const payload = {
       ...(editingMaintenanceId ? { id: editingMaintenanceId } : {}),
@@ -640,10 +702,10 @@ export default function WorkbenchPage() {
         loadVehicleDetails(selectedVehicle.id);
         loadVehicles();
       } else {
-        alert(data.error);
+        pushToast(data.error, 'error');
       }
     } catch (err: any) {
-      alert(err?.message || 'Request failed');
+      pushToast(err?.message || 'Request failed', 'error');
     } finally {
       setSavingMaintenance(false);
     }
@@ -697,18 +759,20 @@ export default function WorkbenchPage() {
         ]);
         setDoctorQuery('');
       } else {
-        alert(data.error);
+        pushToast(data.error, 'error');
       }
     } catch (e: any) {
-      alert(e.message);
+      pushToast(e.message || 'Request failed', 'error');
     } finally {
       setDoctorLoading(false);
     }
   };
 
-  // Handle Settings Save
+  // Handle Settings Save — success and failure must never share one message slot.
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSettingsMsg('');
+    setSettingsError('');
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -722,14 +786,13 @@ export default function WorkbenchPage() {
       const data = await readEnvelope(res);
       if (data.success) {
         setSettingsMsg(t('set_save_success'));
+        setTimeout(() => setSettingsMsg(''), 3000);
         loadSettings();
       } else {
-        setSettingsMsg(data.error || 'Request failed');
+        setSettingsError(data.error || 'Request failed');
       }
     } catch (err: any) {
-      setSettingsMsg(err?.message || 'Request failed');
-    } finally {
-      setTimeout(() => setSettingsMsg(''), 3000);
+      setSettingsError(err?.message || 'Request failed');
     }
   };
 
@@ -790,7 +853,7 @@ export default function WorkbenchPage() {
               <div className="flex items-center gap-2.5 min-w-0">
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
                 <span className="font-semibold truncate">
-                  {t('notif_urgent_banner')} ({urgentCount})
+                  {t('notif_urgent_banner')} — {t('notif_urgent_items', { count: urgentCount }, urgentCount)}
                 </span>
               </div>
               <button
@@ -802,7 +865,35 @@ export default function WorkbenchPage() {
             </div>
           )}
 
-          {!selectedVehicle && activeTab !== 'settings' ? (
+          {loading && !initialLoadDone ? (
+            /* Initial data load: skeleton instead of a flash of the empty state */
+            <div className="max-w-4xl mx-auto space-y-4 animate-pulse" role="status" aria-label={t('ov_calculating')}>
+              <div className="h-20 bg-slate-950 border border-slate-800 rounded-xl" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="h-24 bg-slate-950 border border-slate-800 rounded-lg" />
+                ))}
+              </div>
+              <div className="h-48 bg-slate-950 border border-slate-800 rounded-lg" />
+              <span className="sr-only">{t('ov_calculating')}…</span>
+            </div>
+          ) : initialLoadError && vehicles.length === 0 && activeTab !== 'settings' ? (
+            /* Initial fetch FAILURE: honest error panel with Retry — never the
+               first-run "add your car" state, which invites duplicate vehicles. */
+            <div className="max-w-md mx-auto my-20 text-center bg-slate-950 p-8 rounded-xl border border-rose-900/60">
+              <AlertTriangle className="w-12 h-12 text-rose-400 mx-auto mb-4" />
+              <h2 className="text-base font-semibold mb-2 text-rose-200">{t('load_error_title')}</h2>
+              <p className="text-xs text-slate-400 mb-2">{t('load_error_desc')}</p>
+              <p className="text-[11px] text-slate-500 font-mono mb-6 break-words">{initialLoadError}</p>
+              <button
+                onClick={() => loadVehicles()}
+                disabled={loading}
+                className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold px-4 py-2 rounded text-xs inline-flex items-center justify-center gap-2 transition"
+              >
+                {t('btn_retry')}
+              </button>
+            </div>
+          ) : !selectedVehicle && activeTab !== 'settings' ? (
             <div className="max-w-md mx-auto my-20 text-center bg-slate-950 p-8 rounded-xl border border-slate-800">
               <Car className="w-12 h-12 text-amber-500 mx-auto mb-4" />
               <h2 className="text-base font-semibold mb-2">{t('app_welcome_title')}</h2>
@@ -821,13 +912,8 @@ export default function WorkbenchPage() {
                     onClick={handleLoginGoogle}
                     className="w-full sm:w-auto bg-white hover:bg-slate-100 text-slate-900 font-bold px-4 py-2 rounded text-xs inline-flex items-center justify-center gap-2 shadow-sm"
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                    </svg>
-                    <span>دخول بحساب جوجل</span>
+                    <GoogleIcon className="w-3.5 h-3.5" />
+                    <span>{t('btn_login_google')}</span>
                   </button>
                 )}
               </div>
@@ -912,6 +998,7 @@ export default function WorkbenchPage() {
                   settings={settings}
                   setSettings={setSettings}
                   settingsMsg={settingsMsg}
+                  settingsError={settingsError}
                   onSaveSettings={handleSaveSettings}
                   currentUser={currentUser}
                   onLoginGoogle={handleLoginGoogle}
@@ -983,6 +1070,10 @@ export default function WorkbenchPage() {
           onSelectTab={setActiveTab}
         />
       </main>
+
+      {/* In-app alert()/confirm() replacements (single host pair for the whole app) */}
+      <ToastViewport />
+      <ConfirmDialogHost />
     </div>
   );
 }

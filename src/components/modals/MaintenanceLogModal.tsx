@@ -1,6 +1,8 @@
 import React from 'react';
 import { Wrench, PlusCircle, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { Modal } from '@/components/ui/Modal';
+import { deriveMaintenanceTotal } from '@/components/tabs/maintenanceTotals';
 
 export interface MaintenancePartItem {
   id: string;
@@ -52,12 +54,15 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
 
   if (!isOpen) return null;
 
+  const totalDerivation = deriveMaintenanceTotal(
+    maintenanceForm.partsCost,
+    maintenanceForm.laborCost,
+    maintenanceForm.totalCost,
+  );
+
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 z-50 animate-in fade-in duration-150">
-      <div className="bg-slate-950 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 space-y-4 max-h-[92vh] sm:max-h-[85vh] overflow-y-auto shadow-2xl">
-        {/* M3 Drag Handle for mobile */}
-        <div className="sm:hidden m3-drag-handle" />
-        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+    <Modal isOpen={isOpen} onClose={onClose} panelClassName="max-w-lg" ariaLabel={editingMaintenanceId ? t('modal_maint_edit_title') : t('modal_maint_new_title')}>
+      <div className="flex justify-between items-center border-b border-slate-800 pb-3">
           <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
             <Wrench className="w-4 h-4 text-amber-500" />
             {editingMaintenanceId ? t('modal_maint_edit_title') : t('modal_maint_new_title')}
@@ -278,16 +283,33 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-300 mb-1 font-bold">{t('modal_maint_total_label')}</label>
+              <label className="block text-xs text-slate-300 mb-1 font-bold">
+                {t('modal_maint_total_label')}
+                {totalDerivation.derived && (
+                  <span className="block text-[10px] font-normal text-amber-400/80 mt-0.5">
+                    {t('modal_maint_total_derived_hint')}
+                  </span>
+                )}
+              </label>
               <input
                 required
                 type="number"
                 step="any"
                 min="0"
                 placeholder="0"
-                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-amber-400 outline-none focus:border-amber-500 font-bold font-mono"
-                value={maintenanceForm.totalCost || ''}
-                onChange={e => setMaintenanceForm({ ...maintenanceForm, totalCost: Number(e.target.value) })}
+                readOnly={totalDerivation.derived}
+                title={totalDerivation.derived ? t('modal_maint_total_derived_hint') : undefined}
+                className={`w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs outline-none focus:border-amber-500 font-bold font-mono ${
+                  totalDerivation.derived
+                    ? 'bg-slate-900/40 text-amber-300 cursor-not-allowed'
+                    : 'text-amber-400'
+                }`}
+                value={totalDerivation.derived ? totalDerivation.total : maintenanceForm.totalCost || ''}
+                onChange={e => {
+                  if (totalDerivation.derived) return;
+                  const val = e.target.value;
+                  setMaintenanceForm({ ...maintenanceForm, totalCost: val === '' ? 0 : Number(val) });
+                }}
               />
             </div>
           </div>
@@ -331,7 +353,6 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 };

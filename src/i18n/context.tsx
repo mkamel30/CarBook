@@ -2,12 +2,19 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { SUPPORTED_LANGUAGES, DICTIONARIES, LanguageInfo } from './config';
+import { translate, TranslateVars } from './resolve';
 
 interface I18nContextType {
   lang: string;
   setLang: (lang: string) => void;
   dir: 'rtl' | 'ltr';
-  t: (key: string, fallback?: string) => string;
+  /**
+   * t(key)                      — plain lookup (lang -> en -> ar -> key)
+   * t(key, fallback)            — legacy: string returned when the key is missing everywhere
+   * t(key, vars)                — {placeholder} interpolation, e.g. t('alerts_overdue_by', { km: 500 })
+   * t(key, vars, count)         — plural variant selection (key__one/two/few/many/other) + interpolation
+   */
+  t: (key: string, vars?: string | TranslateVars, count?: number) => string;
   languages: LanguageInfo[];
 }
 
@@ -26,7 +33,7 @@ const I18nContext = createContext<I18nContextType>({
   lang: 'ar',
   setLang: () => {},
   dir: 'rtl',
-  t: (key: string, fallback?: string) => fallback || key,
+  t: (key: string) => key,
   languages: SUPPORTED_LANGUAGES,
 });
 
@@ -67,22 +74,8 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const t = (key: string, fallback?: string): string => {
-    const currentDict = DICTIONARIES[lang];
-    if (currentDict && currentDict[key] !== undefined) {
-      return currentDict[key];
-    }
-    // Fallback to English, then Arabic, then fallback parameter, then key name
-    const enDict = DICTIONARIES['en'];
-    if (enDict && enDict[key] !== undefined) {
-      return enDict[key];
-    }
-    const arDict = DICTIONARIES['ar'];
-    if (arDict && arDict[key] !== undefined) {
-      return arDict[key];
-    }
-    return fallback || key;
-  };
+  const t = (key: string, vars?: string | TranslateVars, count?: number): string =>
+    translate(DICTIONARIES, lang, key, vars, count);
 
   return (
     <I18nContext.Provider value={{ lang, setLang, dir, t, languages: SUPPORTED_LANGUAGES }}>

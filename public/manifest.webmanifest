@@ -1,0 +1,28 @@
+{
+  "name": "CarBook | دفتر ومتابعة صيانة واستهلاك السيارة",
+  "short_name": "CarBook",
+  "description": "CarBook - نظام ذكي وبسيط لتسجيل ومتابعة صيانة وبنزين السيارات مع التنبيهات الدورية والتقارير",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "dir": "rtl",
+  "lang": "ar",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

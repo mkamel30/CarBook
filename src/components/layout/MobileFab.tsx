@@ -20,7 +20,6 @@ export const MobileFab: React.FC<MobileFabProps> = ({
   const { t, dir } = useTranslation();
 
   if (!selectedVehicle) return null;
-
   return (
     <div
       className="md:hidden fixed bottom-20 z-40 transition-all print:hidden"
@@ -50,8 +49,8 @@ export const MobileFab: React.FC<MobileFabProps> = ({
       )}
       <button
         onClick={() => setShowFabMenu(!showFabMenu)}
-        className="m3-fab w-13 h-13 rounded-2xl flex items-center justify-center font-bold text-slate-950 shadow-2xl active:scale-95 transition p-3"
-        aria-label="Add entry"
+        className="m3-fab w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-slate-950 shadow-2xl active:scale-95 transition p-3"
+        aria-label={t('fab_add_entry_aria')}
       >
         <PlusCircle
           className={`w-6 h-6 transition-transform duration-200 ${

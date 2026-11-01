@@ -1,6 +1,7 @@
 import React from 'react';
 import { Fuel } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { Modal } from '@/components/ui/Modal';
 
 export interface FuelLogModalProps {
   isOpen: boolean;
@@ -42,11 +43,13 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 z-50 animate-in fade-in duration-150">
-      <div className="bg-slate-950 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 space-y-4 max-h-[92vh] sm:max-h-[85vh] overflow-y-auto shadow-2xl">
-        {/* M3 Drag Handle for mobile */}
-        <div className="sm:hidden m3-drag-handle" />
-        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      panelClassName="max-w-md"
+      ariaLabel={editingFuelId ? t('modal_fuel_edit_title') : t('modal_fuel_new_title')}
+    >
+      <div className="flex justify-between items-center border-b border-slate-800 pb-3">
           <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2">
             <Fuel className="w-4 h-4 text-amber-500" />
             {editingFuelId ? t('modal_fuel_edit_title') : t('modal_fuel_new_title')}
@@ -227,7 +230,6 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 };

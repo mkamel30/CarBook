@@ -34,7 +34,7 @@ header_plate = Plate:
 header_no_plate = No Plate
 unit_km = km
 unit_egp = EGP
-unit_currency = $
+unit_currency = EGP
 unit_liter = L
 unit_l_per_100km = L/100km
 
@@ -275,9 +275,43 @@ modal_maint_btn_update = Update Record
 btn_cancel = Cancel
 btn_edit = Edit
 btn_delete = Delete
+btn_confirm = Confirm
+btn_retry = Retry
 confirm_delete_fuel = Are you sure you want to delete this fuel fill?
 confirm_delete_maint = Are you sure you want to delete this maintenance record?
 modal_make_model_required = Please enter the make and model first
+
+# Loading / Error UI
+load_error_title = Failed to load your data
+load_error_desc = Check your connection or the server, then try again.
+
+# Dashboard stat labels
+dash_stat_odo = Odometer
+
+# Alert statuses & counts (interpolated / plural)
+alerts_overdue_by = Overdue by {km} km
+alerts_due_soon_remaining = Due soon ({km} km remaining)
+alerts_good_remaining = Good condition ({km} km remaining)
+alerts_mark_done_success = Done!
+rep_records_count__one = {count} record logged
+rep_records_count__two = {count} records logged
+rep_records_count__few = {count} records logged
+rep_records_count__many = {count} records logged
+rep_records_count__other = {count} records logged
+notif_urgent_items__one = {count} item due
+notif_urgent_items__two = {count} items due
+notif_urgent_items__few = {count} items due
+notif_urgent_items__many = {count} items due
+notif_urgent_items__other = {count} items due
+
+# Accessibility & auth labels
+vehicle_actions_aria = Vehicle options
+fab_add_entry_aria = Add entry
+btn_login_google = Sign in with Google
+btn_login_short = Login
+
+# Maintenance modal derived total
+modal_maint_total_derived_hint = Auto-calculated from parts + labor
 `;
 
 export default enRaw;

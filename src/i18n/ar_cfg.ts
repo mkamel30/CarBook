@@ -34,7 +34,7 @@ header_plate = لوحة:
 header_no_plate = بدون لوحة
 unit_km = كم
 unit_egp = جنيه
-unit_currency = ج
+unit_currency = ج.م
 unit_liter = لتر
 unit_l_per_100km = لتر/100كم
 
@@ -275,9 +275,43 @@ modal_maint_btn_update = تحديث الصيانة
 btn_cancel = إلغاء
 btn_edit = تعديل
 btn_delete = حذف
+btn_confirm = تأكيد
+btn_retry = إعادة المحاولة
 confirm_delete_fuel = هل أنت متأكد من حذف هذه التفويلة؟
 confirm_delete_maint = هل أنت متأكد من حذف هذا السجل؟
 modal_make_model_required = يرجى إدخال الماركة والموديل أولاً
+
+# Loading / Error UI
+load_error_title = تعذر تحميل بياناتك
+load_error_desc = تحقق من الاتصال أو السيرفر ثم أعد المحاولة.
+
+# Dashboard stat labels
+dash_stat_odo = العداد
+
+# Alert statuses & counts (interpolated / plural)
+alerts_overdue_by = متأخرة بـ {km} كم
+alerts_due_soon_remaining = مستحق قريباً (متبقي {km} كم)
+alerts_good_remaining = الحالة جيدة (متبقي {km} كم)
+alerts_mark_done_success = تم بنجاح!
+rep_records_count__one = عملية واحدة مسجلة
+rep_records_count__two = عمليتان مسجلتان
+rep_records_count__few = {count} عمليات مسجلة
+rep_records_count__many = {count} عملية مسجلة
+rep_records_count__other = {count} عملية مسجلة
+notif_urgent_items__one = بند واحد مستحق
+notif_urgent_items__two = بندَان مستحقان
+notif_urgent_items__few = {count} بنود مستحقة
+notif_urgent_items__many = {count} بنداً مستحقاً
+notif_urgent_items__other = {count} بند مستحق
+
+# Accessibility & auth labels
+vehicle_actions_aria = خيارات السيارة
+fab_add_entry_aria = إضافة سجل جديد
+btn_login_google = دخول بحساب جوجل
+btn_login_short = دخول
+
+# Maintenance modal derived total
+modal_maint_total_derived_hint = محسوب تلقائياً من قطع الغيار + المصنعية
 `;
 
 export default arRaw;
