@@ -179,12 +179,28 @@ describe('offline fetch bridge: server-shaped envelopes', () => {
   });
 
   it('answers an unimplemented /api endpoint with a structured 501 (never silent-empty)', async () => {
-    const res = await bridge('/api/backup');
+    const res = await bridge('/api/stats');
     expect(res.status).toBe(501);
     const env = await envelope(res);
     expect(env.success).toBe(false);
     expect(env.code).toBe('NOT_IMPLEMENTED');
     expect(typeof env.error).toBe('string');
+  });
+
+  it('serves the fuel-prices presets locally so the country picker works offline', async () => {
+    const res = await bridge('/api/settings/fuel-prices');
+    expect(res.status).toBe(200);
+    const env = await envelope(res);
+    expect(env.success).toBe(true);
+    // Same payload as the server route, from the same geoPricing module.
+    expect(env.data.current.countryCode).toBe('EG');
+    expect(Array.isArray(env.data.supportedCountries)).toBe(true);
+    expect(env.data.supportedCountries.length).toBeGreaterThan(1);
+
+    const sa = await envelope(await bridge('/api/settings/fuel-prices?country=SA'));
+    expect(sa.data.current.countryCode).toBe('SA');
+    const tz = await envelope(await bridge('/api/settings/fuel-prices?tz=Asia/Riyadh'));
+    expect(tz.data.current.countryCode).toBe('SA');
   });
 });
 
@@ -218,5 +234,71 @@ describe('offline fetch bridge: network passthrough', () => {
     const res = await remote('/api/vehicles');
     expect((await envelope(res)).success).toBe(true);
     expect(forwarded.every((u) => !u.includes('/api/vehicles'))).toBe(true);
+  });
+});
+
+describe('offline fetch bridge: needs-connection state for auth/AI', () => {
+  function offlineBridge(passthroughFetch: typeof fetch, isOnline: () => boolean): FetchHandler {
+    return createFetchBridge({
+      db: makeDatabase(),
+      settings: makeMemorySettingsStore(),
+      serverBaseUrl: 'https://srv.test',
+      passthroughFetch,
+      isOnline,
+      now: () => NOW,
+    });
+  }
+
+  it('answers AI and session GETs with a structured 503 while offline, without touching the network', async () => {
+    const used: string[] = [];
+    const remote = offlineBridge((async (input: any) => {
+      used.push(String(input));
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch, () => false);
+
+    for (const [url, init] of [
+      ['/api/ai/doctor', { method: 'POST', body: '{}' }],
+      ['/api/ai/manual', { method: 'POST', body: '{}' }],
+      ['/api/ai/lookup', { method: 'POST', body: '{}' }],
+      ['/api/auth/me', undefined],
+    ] as Array<[string, RequestInit | undefined]>) {
+      const res = await remote(url, init);
+      expect(res.status).toBe(503);
+      const env = await envelope(res);
+      expect(env.success).toBe(false);
+      expect(env.code).toBe('NETWORK_REQUIRED');
+      // readEnvelope()/page.tsx surfaces `error` straight into the UI.
+      expect(env.error).toContain('No connection');
+    }
+    expect(used).toEqual([]);
+
+    // Offline must not disable the local half of the app.
+    expect((await envelope(await remote('/api/vehicles'))).success).toBe(true);
+    expect((await envelope(await remote('/api/reports?vehicleId=nope'))).data).toBeUndefined();
+  });
+
+  it('converts a transport failure for an AI call into the same 503 envelope', async () => {
+    const remote = offlineBridge((async () => {
+      throw new TypeError('Failed to fetch');
+    }) as typeof fetch, () => true);
+
+    const res = await remote('/api/ai/doctor', { method: 'POST', body: '{}' });
+    expect(res.status).toBe(503);
+    const env = await envelope(res);
+    expect(env.code).toBe('NETWORK_REQUIRED');
+    expect(env.error).toContain('Failed to fetch');
+  });
+
+  it('still forwards normally when the probe reports connectivity', async () => {
+    const used: string[] = [];
+    const remote = offlineBridge((async (input: any) => {
+      used.push(String(input));
+      return new Response(JSON.stringify({ success: true, data: { advice: 'check the dealer' } }), { status: 200 });
+    }) as typeof fetch, () => true);
+
+    const env = await envelope(await remote('/api/ai/doctor', { method: 'POST', body: '{}' }));
+    expect(used).toEqual(['https://srv.test/api/ai/doctor']);
+    expect(env.success).toBe(true);
+    expect(env.data.advice).toContain('dealer');
   });
 });

@@ -7,8 +7,15 @@
 // are forwarded to the real server because they genuinely need network:
 //   /api/auth/*  — Google login / device session
 //   /api/ai/*    — Gemini/OpenRouter manual + doctor lookups
-// Anything else under /api has no offline handler and returns a structured 501
-// (never a silent empty body), so an unfinished endpoint fails loudly.
+// Both fail LOUDLY offline: with no connectivity the bridge short-circuits them
+// into a structured 503 {error, code:'NETWORK_REQUIRED'} instead of letting a
+// transport exception escape, and a transport error is converted to the same
+// envelope. /api/backup and /api/settings/fuel-prices are served locally — the
+// backup document is byte-compatible with the server's, restore semantics mirror
+// src/services/backup.ts, and fuel prices come from the same geoPricing presets
+// the server route uses. Anything else under /api has no offline handler and
+// returns a structured 501 (never a silent empty body), so an unfinished
+// endpoint fails loudly.
 
 import { Q } from '@nozbe/watermelondb';
 import type { Database } from '@nozbe/watermelondb';
@@ -28,6 +35,20 @@ import {
 import { ok, okMessage, fail, notImplemented } from './envelope';
 import { settingsResponseData, type SettingsStore } from './settingsStore';
 import { SERVER_BASE_URL } from './config';
+import {
+  RESTORE_MODES,
+  applyBackupDocument,
+  backupByteSize,
+  buildBackupDocument,
+  parseBackupDocument,
+  MAX_RESTORE_BYTES,
+  BackupTooLargeError,
+} from './localBackup';
+import {
+  detectCountryFromTimezone,
+  getFuelPresetsByCountry,
+  listSupportedCountries,
+} from '@app/services/geoPricing';
 
 // Pure, runtime-agnostic helpers aliased straight from the shared web code so
 // aggregation can never drift from the server implementation.
@@ -47,6 +68,13 @@ export interface BridgeDeps {
   /** The original fetch captured before patching, so passthrough cannot recurse. */
   passthroughFetch?: typeof fetch;
   now?: () => Date;
+  /**
+   * Connectivity probe for the auth/AI passthrough. Defaults to navigator.onLine
+   * (true when the API is missing, e.g. under Node). When it reports offline the
+   * bridge answers with a structured 503 instead of a rejected network call, so
+   * the shared UI shows an error rather than hanging.
+   */
+  isOnline?: () => boolean;
 }
 
 export type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -89,6 +117,12 @@ function splitUrl(url: string): { remote: boolean; pathname: string; search: URL
   const isAbsolute = /^https?:\/\//i.test(url);
   const u = new URL(url, 'http://carbook.offline');
   return { remote: isAbsolute, pathname: u.pathname, search: u.searchParams };
+}
+
+/** navigator.onLine, defaulting to "reachable" where the API is absent (Node). */
+function defaultOnline(): boolean {
+  if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') return navigator.onLine;
+  return true;
 }
 
 interface Row {
@@ -422,6 +456,59 @@ async function handleReports(db: Database, params: URLSearchParams): Promise<Res
   });
 }
 
+/**
+ * GET /api/backup — the server's route returns the RAW document (not the usual
+ * {success,data} envelope) with a Content-Disposition attachment header, because
+ * SettingsTab downloads `res.blob()` straight away. Reproduced exactly.
+ */
+async function handleBackupExport(db: Database, nowIso: string): Promise<Response> {
+  const doc = await buildBackupDocument(db, () => new Date(nowIso));
+  const stamp = doc.exportedAt.slice(0, 10);
+  return new Response(JSON.stringify(doc, null, 2), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Disposition': `attachment; filename="carbook-backup-${stamp}.json"`,
+      'X-CarBook-Backup-Bytes': String(backupByteSize(doc)),
+    },
+  });
+}
+
+/** POST /api/backup — same body {file, mode}, same report, same error strings. */
+async function handleBackupRestore(db: Database, body: any, at: number): Promise<Response> {
+  const mode = body?.mode ?? 'merge';
+  if (!RESTORE_MODES.includes(mode)) {
+    return fail(`mode must be one of ${RESTORE_MODES.join(', ')}`, 400);
+  }
+  const bytes = backupByteSize(body?.file);
+  if (bytes > MAX_RESTORE_BYTES) {
+    // Refuse BEFORE touching the database: a restored account bigger than the
+    // snapshot budget could never be persisted, so it must fail loudly instead.
+    return fail(new BackupTooLargeError(bytes).message, 413, 'BACKUP_TOO_LARGE');
+  }
+  try {
+    const report = await applyBackupDocument(db, parseBackupDocument(body?.file), mode, at);
+    return ok(report);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return fail(message, 400);
+  }
+}
+
+/**
+ * GET /api/settings/fuel-prices — the server's route is a thin wrapper over the
+ * bundled geoPricing presets, so the device answers it from the very same module
+ * (same `current` + `supportedCountries` payload) instead of failing offline.
+ */
+function handleFuelPrices(params: URLSearchParams): Response {
+  const country = params.get('country');
+  const tz = params.get('tz');
+  let resolved = country;
+  if (!resolved && tz) resolved = detectCountryFromTimezone(tz);
+  if (!resolved) resolved = 'EG';
+  return ok({ current: getFuelPresetsByCountry(resolved), supportedCountries: listSupportedCountries() });
+}
+
 function handleSettings(store: SettingsStore, method: string, body: any): Response {
   if (method === 'GET') {
     return ok(settingsResponseData(store.load()));
@@ -441,6 +528,17 @@ export function createFetchBridge(deps: BridgeDeps): FetchHandler {
   const { db, settings } = deps;
   const serverBaseUrl = (deps.serverBaseUrl ?? SERVER_BASE_URL ?? '').replace(/\/$/, '');
   const passthrough = deps.passthroughFetch ?? globalThis.fetch?.bind(globalThis);
+  const isOnline = deps.isOnline ?? defaultOnline;
+
+  /**
+   * AI (and session probes) cannot be answered on-device. Offline, and whenever
+   * the network itself refuses, they get one explicit envelope: 503 +
+   * code NETWORK_REQUIRED. The shared UI's readEnvelope() turns that into a
+   * visible error message, so an offline tab is a stated state — never a spinner
+   * and never a silent success.
+   */
+  const NETWORK_REQUIRED_MESSAGE =
+    'لا يوجد اتصال بالإنترنت · No connection — this needs the server';
 
   async function forward(url: RequestInfo | URL, init: RequestInit | undefined, rewrite: boolean): Promise<Response> {
     // auth + AI need the network: rewrite the relative path onto the server origin.
@@ -449,10 +547,23 @@ export function createFetchBridge(deps: BridgeDeps): FetchHandler {
     if (rewrite && serverBaseUrl && typeof url === 'string' && url.startsWith('/')) {
       target = `${serverBaseUrl}${url}`;
     }
+    // Only the network-dependent family is gated; a plain asset fetch keeps the
+    // platform's own error behaviour.
+    if (rewrite && !isOnline()) {
+      return fail(NETWORK_REQUIRED_MESSAGE, 503, 'NETWORK_REQUIRED');
+    }
     if (!passthrough) {
       return fail('No network transport available for auth/AI requests', 502, 'NO_TRANSPORT');
     }
-    return passthrough(target as RequestInfo, init);
+    try {
+      return await passthrough(target as RequestInfo, init);
+    } catch (err) {
+      // A transport failure (no route, DNS, airplane mode racing the probe) must
+      // surface as the same structured state, not as a rejected fetch promise.
+      if (!rewrite) throw err;
+      const reason = err instanceof Error ? err.message : String(err);
+      return fail(`${NETWORK_REQUIRED_MESSAGE} (${reason})`, 503, 'NETWORK_REQUIRED');
+    }
   }
 
   return async function bridge(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -493,6 +604,12 @@ export function createFetchBridge(deps: BridgeDeps): FetchHandler {
           return await handleReports(db, search);
         case '/api/settings':
           return handleSettings(settings, method, await readBody(input, init));
+        case '/api/settings/fuel-prices':
+          return method === 'GET' ? handleFuelPrices(search) : notImplemented(`GET /api/settings/fuel-prices (${method})`);
+        case '/api/backup':
+          if (method === 'GET') return await handleBackupExport(db, nowIso);
+          if (method === 'POST') return await handleBackupRestore(db, await readBody(input, init), at);
+          return notImplemented(`GET|POST /api/backup (${method})`);
         default:
           return notImplemented(`/api/${pathname.replace(/^\/api\//, '')} (${method})`);
       }

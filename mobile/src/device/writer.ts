@@ -60,3 +60,38 @@ export async function localMarkDeleted(db: Database, table: string, id: string, 
     });
   });
 }
+
+/**
+ * Upsert used by the offline restore path: identical to localCreate/localUpdate
+ * (so every restored row leaves the store dirty and rides up to the server), with
+ * two restore-specific extras — the row is created when absent, and a local
+ * tombstone is revived (`_deleted_at` cleared) when present.
+ */
+export async function localRestore(db: Database, table: string, id: string, fields: Fields, at?: number): Promise<void> {
+  const now = at ?? Date.now();
+  await db.write(async () => {
+    const c = db.collections.get(table as any);
+    let rec: any;
+    try {
+      rec = await c.find(id);
+    } catch {
+      rec = undefined;
+    }
+    if (!rec) {
+      const raw: any = { id, _status: 'created', _changed: '', updated_at_sync: now, _dirty: 'created', _deleted_at: 0, rejected_reason: '' };
+      for (const col of colsFor(table)) raw[col.col] = normalize(col, fields[srvKey(col)]);
+      await db.batch(c.prepareCreateFromDirtyRaw(raw));
+      return;
+    }
+    await rec.update((r: any) => {
+      for (const col of colsFor(table)) {
+        const k = srvKey(col);
+        if (k in fields) r._raw[col.col] = normalize(col, fields[k]);
+      }
+      r._raw.updated_at_sync = now;
+      r._raw._dirty = 'updated';
+      r._raw._deleted_at = 0;
+      r._raw.rejected_reason = '';
+    });
+  });
+}

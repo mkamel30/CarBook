@@ -22,6 +22,7 @@ import {
   type BearerStore,
 } from './offline/authBridge';
 import { SERVER_BASE_URL } from './offline/config';
+import { createScheduleAlerter } from './offline/scheduleAlerts';
 
 // Account session bearer (the durable 7-day JWT redeemed from the OAuth
 // handoff code). localStorage today; keystore migration is tracked in
@@ -152,6 +153,20 @@ async function startWithHandoff(): Promise<void> {
     if (search) window.history.replaceState(null, '', window.location.pathname + window.location.hash);
   }
   boot.start();
+  // Offline maintenance reminders: a periodic local sweep of the device's own
+  // schedules through the bridge, delivered by the shared notifications service.
+  // No new dependency and no server round-trip (see scheduleAlerts.ts for the
+  // WebView Notification limitation).
+  const alerter = createScheduleAlerter({
+    onRun: (run) => {
+      if (!run.notifications.supported) {
+        console.warn('[carbook] device notifications unavailable in this WebView; reminders stay in-app', run);
+      } else if (run.error) {
+        console.error('[carbook] reminder sweep failed:', run.error);
+      }
+    },
+  });
+  alerter.start();
 }
 
 if (shell) void startWithHandoff();
