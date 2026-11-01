@@ -196,7 +196,9 @@ export default function WorkbenchPage() {
   }, []);
 
   const handleLoginGoogle = () => {
-    window.location.href = '/api/auth/login';
+    const isNative = typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
+    const sourceParam = isNative ? '?source=app' : '';
+    window.location.href = `/api/auth/login${sourceParam}`;
   };
 
   const handleLogout = async () => {

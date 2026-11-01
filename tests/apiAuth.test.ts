@@ -19,6 +19,7 @@ import { PATCH as patchSchedule } from '@/app/api/schedules/route';
 import { POST as postSettings, GET as getSettings } from '@/app/api/settings/route';
 import { POST as postVehicle, GET as getVehicles, PUT as putVehicle, DELETE as deleteVehicle } from '@/app/api/vehicles/route';
 import { POST as aiLookup } from '@/app/api/ai/lookup/route';
+import { GET as tokenLogin } from '@/app/api/auth/token-login/route';
 
 const A = { id: 'user-a', email: 'a@example.com', name: 'A', picture: null };
 const B = { id: 'user-b', email: 'b@example.com', name: 'B', picture: null };
@@ -301,5 +302,24 @@ describe('API route authorization', () => {
     expect(ownerDel.status).toBe(200);
     expect(await repo.getVehicleById(vehicleA, A.id)).toBeNull();
 
+  });
+  it('handles token-login for mobile deep linking securely', async () => {
+    // Missing token
+    const resMissing = await tokenLogin(makeReq('/api/auth/token-login'));
+    expect(resMissing.status).toBe(307);
+    expect(resMissing.headers.get('location')).toContain('auth_error=missing_token');
+
+    // Invalid token
+    const resInvalid = await tokenLogin(makeReq('/api/auth/token-login?token=invalid.token.here'));
+    expect(resInvalid.status).toBe(307);
+    expect(resInvalid.headers.get('location')).toContain('auth_error=invalid_token');
+
+    // Valid token
+    const resValid = await tokenLogin(makeReq(`/api/auth/token-login?token=${tokenA}`));
+    expect(resValid.status).toBe(307);
+    expect(resValid.headers.get('location')).toContain('localhost:3070/');
+    const cookie = resValid.cookies.get('carbook_session');
+    expect(cookie).toBeDefined();
+    expect(cookie?.value).toBe(tokenA);
   });
 });
