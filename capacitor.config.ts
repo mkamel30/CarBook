@@ -5,8 +5,7 @@ const config: CapacitorConfig = {
   appName: 'CarBook',
   webDir: 'out',
   server: {
-    url: 'http://carbook.141.147.136.170.sslip.io',
-    cleartext: true,
+    url: 'https://carbook.141.147.136.170.sslip.io',
     androidScheme: 'https',
   },
   android: {
