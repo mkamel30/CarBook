@@ -1,6 +1,6 @@
 # CarBook Architecture & Technical Specification
 
-> **Version:** 2.0.0
+> **Version:** 2.1.0
 > **Target:** Self-hosted web application with an offline-capable device client
 > **Core principle:** Your data lives in one SQLite file you control. AI features are opt-in. Nothing phones home.
 
@@ -28,18 +28,22 @@ Two consequences worth stating up front, because they explain several design cho
 └───────────────────────────────┬────────────────────────────────┘
                                 │ fetch, JSON envelope
 ┌───────────────────────────────▼────────────────────────────────┐
-│ API                 16 route handlers under src/app/api/         │
+│ API                 18 route files / 34 method handlers under    │
+│                     src/app/api/                                 │
 │                     auth · vehicles · fuel · maintenance ·        │
-│                     schedules · reports · settings · backup ·     │
-│                     sync · ai/{lookup,manual,doctor}              │
+│                     schedules · reports · settings ·              │
+│                     settings/fuel-prices · backup · sync ·        │
+│                     ai/{lookup,manual,doctor}                     │
 └───────────────────────────────┬────────────────────────────────┘
                                 │ requireUser / requireOwnership
 ┌───────────────────────────────▼────────────────────────────────┐
 │ Services            calculator · ai · aiOrchestrator ·            │
 │                     automotiveDatabase · exportExcel · backup ·   │
-│                     auth · authz · deviceAuth · notifications     │
+│                     auth · authz · deviceAuth · rateLimit ·       │
+│                     geoPricing · presets · notifications          │
 └───────────────────────────────┬────────────────────────────────┘
-                                │ Zod parse on every write
+                                │ Zod parse on every write —
+                                │ including per-row sync pushes
 ┌───────────────────────────────▼────────────────────────────────┐
 │ Domain              src/domain/schemas.ts — the single definition │
 │                     of what a valid vehicle, fill, invoice or     │
@@ -60,23 +64,26 @@ Alongside it, a second application:
 mobile/               Vite + React 18 + WatermelonDB 0.28 + LokiJS
   src/device/           localStore.ts (dirty tracking, cursor, conflict rules)
                         session.ts (device id, token storage, refresh)
+                        runtime.ts (retry loop: bounded attempts, explicit failure)
                         schema.ts · models.ts · database.ts · writer.ts
-  src/                  App.tsx, main.tsx
+  src/offline/          fetchBridge.ts (answers the web UI's /api fetches from
+                        WatermelonDB) · syncBoot.ts · mappers.ts · settingsStore.ts
+  src/                  App.tsx (mounts the real web page), main.tsx
 ```
 
-It is a separate project with its own `package.json`, `tsconfig.json` and Vitest config — but it does **not** duplicate the sync protocol. `mobile/src/device/localStore.ts` imports `src/sync/client.ts` from the parent repository through a relative path (`../../../src/sync/client`), which is why `mobile/vite.config.ts` sets `server.fs.allow: ['..']` and why the root `npm test` collects the mobile tests too. One contract, one implementation, two consumers.
+It is a separate project with its own `package.json`, `tsconfig.json` and Vitest config — but it does **not** duplicate the sync protocol. `mobile/src/device/localStore.ts` imports `src/sync/client.ts` from the parent repository by relative path, the newer `mobile/src/offline/` layer does the same through the `@sync/*` alias — which in `mobile/vite.config.ts` and `mobile/tsconfig.json` now resolves to the real shared directory `../src/sync` — and the shell mounts the **same** web UI through the `@app/*` alias rather than a copy (`mobile/src/App.tsx`). The two test trees are separate runs by design: the root `vitest.config.ts` includes exactly `src/**/*.test.ts` and `tests/**/*.test.ts`, and `mobile/` includes only its own `src/**/*.test.ts`. CI (`pnpm` with frozen lockfiles) runs both: `pnpm test` at the root, then `pnpm --prefix mobile test`. One contract, one implementation, two consumers.
 
 ---
 
 ## 3. Persistence
 
-**SQLite through `@libsql/client`.** Chosen deliberately: it is a pure-JS/WSM client, so `npm install` needs no C++ toolchain on Windows, Linux or macOS. `better-sqlite3` is still listed in `package.json` but is not imported anywhere — it is dead weight awaiting removal.
+**SQLite through `@libsql/client`.** Chosen deliberately: it is a pure-JS/WSM client, so `pnpm install` needs no C++ toolchain on Windows, Linux or macOS. `better-sqlite3` is still listed in `package.json` but is not imported anywhere — it is dead weight awaiting removal.
 
 **Two access styles, on purpose.**
 - `repository.ts` uses Drizzle ORM for reads and simple writes (`eq`, `desc`, typed selects). It is the ergonomic path for the web UI.
 - `sync.ts` uses raw parameterised SQL inside `client.batch(...)`. Cursor pulls, counter bumps and tombstone writes need exact control over ordering and atomicity, which an ORM abstraction would obscure.
 
-**Migrations are additive and idempotent.** `db.ts` runs `CREATE TABLE IF NOT EXISTS` for the full schema, then a series of guarded `ALTER TABLE ... ADD COLUMN` statements for databases created before a column existed. Every one is wrapped in a try/catch that ignores "duplicate column". There is no down-migration and no migration history table; the file is the history.
+**Migrations are idempotent DDL, not a migration tool.** `db.ts` runs `CREATE TABLE IF NOT EXISTS` for the full current schema, then a series of guarded `ALTER TABLE ... ADD COLUMN` statements for databases created before a column existed (each in a try/catch that ignores "duplicate column"), plus a few one-off rebuilds for structural changes — e.g. `app_settings` being rebuilt around the composite `(key, user_id)` primary key, or the specs cache gaining `owner_user_id`, each detected by inspecting `sqlite_master` so it runs exactly once. Legacy rows migrate into the global/default shape (`user_id = ''`) and stay readable as fallbacks. Rows that predate sync get a backfilled `seq` so a first `since = 0` pull receives the whole history. `drizzle-kit` is declared in `devDependencies` but there is no `drizzle.config.*` and no generated migration folder — the DDL above *is* the migration story. There is no down-migration and no migration history table; the file is the history.
 
 **Tables:**
 
@@ -87,10 +94,12 @@ It is a separate project with its own `package.json`, `tsconfig.json` and Vitest
 | `fuel_logs` | Fill-ups. `is_full_tank` decides whether the row participates in consumption math. |
 | `maintenance_logs` | Invoices. `parts_list` is a JSON array of itemised parts. |
 | `maintenance_schedules` | Recurring service items with `interval_km` / `interval_months` and the last-done baseline. |
-| `app_settings` | Key/value store. Holds fuel grades and prices, AI provider choice and masked key state, theme and language preference. |
-| `global_vehicle_specs_cache` | Cross-user cache of factory specs keyed on `(make_normalized, model_normalized, year)`, with a `hit_count`. |
+| `app_settings` | Key/value store, **keyed per user**: primary key `(key, user_id)`, with `user_id = ''` the global/legacy row that every user falls back to. Holds `ai_provider` (global by design), `ai_api_key` and `fuel_types` (per user). Values are plaintext at rest — `is_encrypted` records that honestly. Theme and language are *not* here; they live in the browser's `localStorage` (`src/theme/context.tsx`, `src/i18n/context.tsx`). |
+| `global_vehicle_specs_cache` | Factory-spec cache keyed on `(make_normalized, model_normalized, year, owner_user_id)` with a `hit_count`. `owner_user_id = ''` rows are the official/seeded catalog visible to everyone; AI-derived rows are saved under the requesting user and returned only to them — owner-scoped, not a cross-user soup. |
 | `sync_counter` | One row, `id = 1`. The source of every `seq` value. |
 | `device_sessions` | One row per signed-in device. Stores only the SHA-256 of the refresh token. |
+| `auth_codes` | One-time OAuth→device handoff codes. Primary key is SHA-256(code); the raw code is never stored. `exp` (10 min) and `used` (flipped atomically at redemption) make a captured URL die after one use or on expiry. |
+| `revocations` | Deny-list of `jti` values for logged-out web sessions, with the revoked token's own `exp`. Persisted so a restart cannot resurrect logged-out cookies; hydrated into an in-process cache at boot (`src/instrumentation.ts`) and GC'd opportunistically. |
 
 The database path is resolved as `explicit argument → CARBOOK_DB_PATH → ./car_maintenance.db`. That ordering is what lets a deployment keep data outside the checkout, and what lets the test suite run against throwaway files.
 
@@ -121,7 +130,9 @@ Sync is a **cursor**, not a diff. Each of the four syncable tables carries:
 | `deleted` | Tombstone. Rows are never physically removed once they have a `seq`. |
 | `sync_ts` | Wall-clock of the last write. Breaks ties: highest wins. |
 
-A device calls `POST /api/sync` with `{ deviceId, since, pushed }`. The server applies the pushes inside one transaction, drawing a fresh `seq` for each accepted row, then returns `{ serverSeq, pulled, rejected }`: `pulled` holds every row with `seq > since` grouped by table, each with an `upsert` list and a `deleted` id list; `rejected` names any pushed row the server refused and why. The device applies the pull, then advances its stored cursor to `serverSeq`.
+A device calls `POST /api/sync` with `{ deviceId, since, pushed }`. The server screens every pushed row before accepting it (full contract in [API.md §9](API.md)): per-row Zod validation built from the same domain schemas the REST layer uses — so *"Zod parse on every write"* genuinely covers pushes now — required-column checks, int/real coercion, ownership, and a **clock clamp** (a client timestamp more than 60 s ahead of the server is untrusted and pinned to server time, so a fast device cannot outrank the authoritative row). Refusals come back per row in `rejected[]` with machine-readable reasons (`missing_id`, `forbidden`, `no_parent`, `invalid_payload:<field>:<message>`); accepts come back per row in `applied[]` with kind `upsert` or `delete`. A row the server already tombstoned is **silently dropped** — a stale offline copy cannot resurrect a deletion. Accepted upserts and delete-tombstones each draw a fresh `seq` from one atomic counter reservation and are written in a single batch, then the server returns `{ serverSeq, pulled, rejected, applied }`: `pulled` holds every row with `seq > since` grouped by table, each with an `upsert` list and a `deleted` id list. The device applies the pull, advances its stored cursor to `serverSeq`, and — through the optional `remarkRejected()` hook in `src/sync/client.ts` — re-marks exactly the refused rows so they stay dirty and retry, instead of being acknowledged and lost.
+
+**seq is stamped by every mutation, on every path.** REST writes (`createVehicle`/`updateVehicle`/`deleteVehicle`, fuel and maintenance add/update/delete, schedule baseline updates, `updateVehicleSpecs`), backup restores, and the guest→account link reassignment all reserve `seq` from the same counter, so a change made anywhere is observable to any device's pull cursor. Deletes are tombstones (`deleted = 1` + `rev + 1` + fresh `seq`) rather than `DELETE FROM` — hard deletes would leave the sequence and other devices would never learn about them. Deleting a vehicle tombstones its whole subtree with one reserved block.
 
 **The invariant that took the most work.** A pushed row stays dirty until the server acknowledges it, so "is dirty" says nothing about "was sent". The device records the local revision it pushed and compares on apply:
 
@@ -145,7 +156,7 @@ Two WatermelonDB constraints shaped the schema:
 
 Session handling: a stable device id, a refresh token in secure storage, and a 15-minute access token in memory. `POST /api/auth/device` registers or refreshes; the server stores only the SHA-256 of the refresh token, rotates it on every use, and treats a replayed token as theft — it revokes that device's sessions rather than quietly accepting the newer one. A token is bound to the device id that minted it, so presenting a phone's token from a desktop fails.
 
-**Current state, plainly:** the sync contract, the device store and the guest/link flow are implemented and tested end to end in-process (`mobile/src/device/e2e.test.ts` drives a real `WMDBLocalStore` against a real `SyncService`). The Capacitor shell has not been flipped from `server.url` to a bundled `webDir`, so none of this code runs on a phone yet.
+**Current state, plainly:** the sync contract, the device store and the guest/link flow are implemented and tested end to end in-process (`mobile/src/device/e2e.test.ts` drives a real `WMDBLocalStore` against the real sync server; `runtime.test.ts` and `offline/fetchBridge.test.ts` cover the retry loop and the fetch bridge). The OAuth → device handoff **exists**: the callback deep-links a one-time code, `android/…/MainActivity.java` parses `carbook://login?code=…` (with a legacy `?token=` fallback for old installs) and loads `/api/auth/token-login?code=…` in the WebView. An offline-APK program is in progress — the `mobile/` shell mounts the real web UI over the offline fetch bridge and sync runtime — but the shipped Capacitor config still points at the remote site (`server.url` with `webDir: 'out'` as fallback), so no bundled on-device build is being promised or distributed yet.
 
 ---
 
@@ -155,7 +166,7 @@ Three capabilities, one gateway, one orchestrator.
 
 **`services/ai.ts`** is the only module that talks to the network. It enforces HTTPS, rejects embedded credentials, blocks private and reserved address ranges, refuses to follow redirects, and applies a deadline to every request. Retries are bounded at three attempts with model rotation, and `NonRetryableAiError` exists so a permanent failure escapes the loop on the first try instead of burning quota three times.
 
-**`services/aiOrchestrator.ts`** decides *whether* to call the network at all, using a four-tier key resolution: user BYOK key in settings → `SERVER_GEMINI_API_KEY` / `GEMINI_API_KEY` → `SERVER_OPENROUTER_API_KEY` / `OPENROUTER_API_KEY` → none. With no key it does not fail; it falls back to local data.
+**`services/aiOrchestrator.ts`** decides *whether* to call the network at all, using a four-tier key resolution: the caller's BYOK key (`ai_api_key` per-user row, falling back to the legacy global row) → `SERVER_GEMINI_API_KEY` / `GEMINI_API_KEY` → `SERVER_OPENROUTER_API_KEY` / `OPENROUTER_API_KEY` → none. With no key it does not fail; it falls back to local data.
 
 **`services/automotiveDatabase.ts`** is that fallback: 9 preseeded make/model/year records with full factory specs and maintenance schedules, plus heuristic generators for anything not in the list. Lookup normalises case and spacing, matches on exact model (so `Corolla` never leaks its specs into `Corolla Cross`), and requires the year to fall inside the record's range. A miss produces a heuristic proposal, clearly labelled as such, rather than a confident wrong answer.
 
@@ -188,7 +199,7 @@ Schedule status is classified as `ok`, `due_soon` (≤ 1,000 km or ≤ 14 days r
 
 ## 9. Internationalisation and theming
 
-**i18n.** Dictionaries are TypeScript modules in `src/i18n/` (`ar_cfg.ts`, `en_cfg.ts`, `pl_cfg.ts`) whose content is `.cfg` key-value text parsed at load by `src/i18n/parser.ts`. The parser is deliberately small: skip blank lines and lines starting with `#` or `;`, split on the **first** `=`, trim both halves, drop lines with no `=`. Values are taken literally — quoting is not stripped, so a value written as `"text"` keeps its quote characters. `src/locales/` holds the editable originals for Arabic and English; Polish exists only as its TS dictionary. `SUPPORTED_LANGUAGES` in `config.ts` is the registry.
+**i18n.** Dictionaries are TypeScript modules in `src/i18n/` (`ar_cfg.ts`, `en_cfg.ts`, `pl_cfg.ts`) whose content is `.cfg` key-value text parsed at load by `src/i18n/parser.ts`. The parser is deliberately small: skip blank lines and lines starting with `#` or `;`, split on the **first** `=`, trim both halves, drop lines with no `=`. Values are taken literally — quoting is not stripped, so a value written as `"text"` keeps its quote characters. The `*_cfg.ts` modules are the **runtime source of truth**; `src/locales/*.cfg` are *generated mirrors* for translators — each carries a "GENERATED FILE — do not edit by hand" banner and is regenerated with `pnpm gen:locales` (`scripts/gen-locales.mjs` extracts the template literal). A parity test in `tests/i18n.test.ts` asserts the mirrors match the embedded dictionaries byte-for-byte, so drift fails CI. `SUPPORTED_LANGUAGES` in `config.ts` is the registry.
 
 Lookup in `context.tsx` is `t(key, fallback?)`: current locale → English → Arabic → the caller's `fallback` argument → the literal key. A half-finished translation therefore still renders.
 
@@ -204,15 +215,19 @@ One convention that is easy to get wrong: content branches on `lang !== 'ar'`, n
 
 What is enforced, and the limits of each control.
 
-**Authorization.** `requireUser` / `requireOwnership` / `authErrorResponse` in `services/authz.ts`, applied in every data route. `tests/apiAuth.test.ts` (8 tests) pins the contract from both sides: anonymous writes are rejected on every mutating route, cross-tenant writes to fuel logs, maintenance logs and schedules answer `404`, the real owner can read/write/delete their own records, a session cookie and a bearer token authenticate identically, an unknown id is reported exactly like a foreign one, and an anonymous caller gets an empty vehicle list rather than the unassigned legacy rows.
+**Authorization.** `requireUser` / `requireOwnership` / `authErrorResponse` in `services/authz.ts`, applied in every data route. `tests/apiAuth.test.ts` (10 tests) pins the contract from both sides: anonymous writes are rejected on every mutating route, cross-tenant writes to fuel logs, maintenance logs and schedules answer `404`, the real owner can read/write/delete their own records, a session cookie and a bearer token authenticate identically, an unknown id is reported exactly like a foreign one, and an anonymous caller gets an empty vehicle list rather than the unassigned legacy rows. `tests/routeCoverage.test.ts` (15 tests) exercises the remaining route-level contracts (sync POST validation/clamp, backup, reports tenancy, fuel-prices presets, callback cookie flags) directly through the handlers.
 
-**Sessions.** A custom HS256 JWT. The browser gets a 30-day `httpOnly` `carbook_session` cookie (`secure` in production, which is why HTTPS is not optional); the device gets a 15-minute bearer. `JWT_SECRET` must be stable across restarts or every session drops at once.
+**Sessions.** A custom HS256 JWT (`services/auth.ts`). The browser gets a **7-day** `httpOnly` `carbook_session` cookie — shrunk from 30 days so a stolen cookie's blast radius is a quarter of what it was; the OAuth login re-mints it on each sign-in, which behaves like a sliding renewal. Every newly minted token carries a random `jti`, and logout **revokes it server-side** via `revocations` (persisted, rehydrated at boot, bounded in size and retention). Tokens minted before that change still verify until their own `exp` and cannot be revoked (nothing identifies them) — the accepted cost of the transition window. The device gets a 15-minute bearer. `JWT_SECRET` must be stable across restarts or every session drops at once; it is required in production and the OAuth handoff requires the network by design.
+
+**OAuth → device handoff.** Browser sign-in for the app mints a **single-use 10-minute authorization code**, never a durable token in a URL: only SHA-256(code) is stored (`auth_codes`), redemption is atomic (`used = 0` guard with change-count check), and unknown/spent/expired codes answer an indistinguishable `401`. The callback's CSRF gate (nonce mirrored in state and a callback-scoped httpOnly cookie, compared constant-time) is enforced for app and web alike. Legacy installed APKs still forward an old `?token=<30-day JWT>`; that dual-read is removed no earlier than 2026-12-01, which is why deploys must take server-before-APK order ([DEPLOYMENT.md §11](DEPLOYMENT.md)).
+
+**Rate limiting.** In-route sliding-window throttles (`services/rateLimit.ts`), deliberately *not* global middleware: `login` and `token-login` 10/min per IP, `auth/device` 20/min per IP, `ai/*` 10/min per user per endpoint. 429 responses carry `Retry-After`; state is a bounded in-process Map (single-process deployment assumption). The IP is the first `X-Forwarded-For` hop — advisory abuse throttle only, never an authorization signal.
 
 **Device tokens.** SHA-256 at rest, rotation on use, reuse detection, device binding. Rotated rows are kept with `revoked_at` set rather than deleted — a replayed token has to remain distinguishable from a token never seen before, or the theft signal is lost.
 
 **SSRF.** Outgoing AI calls require plain HTTPS, reject userinfo in the URL, and reject loopback, RFC 1918, CGNAT, link-local, IPv6 local/multicast/v4-mapped and cloud-metadata ranges in every `inet_aton` spelling (dotted quad, decimal, octal, hex, abbreviated). Redirects are not followed, because following one replays the bearer key to the redirect target. *Known limit:* this validates URL text. A hostname that resolves to a private address — DNS rebinding — needs resolve-then-dial at a layer that can hold a socket, and this one cannot. `tests/aiSecurity.test.ts` (12 tests) pins the guard, the transport hardening and the retry classification.
 
-**Secrets.** AI keys live in `app_settings` or the environment. They are never bundled into client JavaScript and `/api/settings` returns only a masked form.
+**Secrets.** BYOK AI keys live in `app_settings` **per user** (one user's key is invisible to another — pinned by `tests/settingsPerUser.test.ts`), server-managed keys in the environment. Neither is ever bundled into client JavaScript and `/api/settings` returns only a masked form. `app_settings` values are plaintext-at-rest; the docs and the `is_encrypted` column say so honestly — no encryption is claimed that the code does not do.
 
 **Excel export.** `services/exportExcel.ts` writes through SheetJS `json_to_sheet`, which emits strings as `t="str"` cells with no `<f>` element — nothing in the output is executable by a spreadsheet. `tests/export.test.ts` asserts that property directly rather than adding quote-prefix escaping that would corrupt legitimate values. There is no CSV export path in the application.
 
@@ -222,30 +237,37 @@ What is enforced, and the limits of each control.
 
 ## 11. Test map
 
-114 tests across 18 files. `npm test` at the repository root runs all of them, including the three under `mobile/` — the Vitest config sets no `include`, so the root run collects both trees. `cd mobile && npm test` runs the device subset alone (18 tests, 3 files).
+**201 tests across 24 files** in the server workspace *at time of writing* (measured by running `pnpm test`: 20 suites under `tests/` plus **31 colocated `src/` tests in 4 suites** — the CI scope now covers both trees). The `mobile/` workspace runs separately; its device suites were 36 passing + 2 skipped across 4 files when this was counted, and the count is growing while the offline-APK program (WP1) lands in parallel — trust the CI badge, not a snapshot. Both trees run in CI with `pnpm install --frozen-lockfile`.
 
 | File | Covers |
 | :--- | :--- |
-| `tests/baseline.test.ts` | Harness sanity — one assertion that the runner works. |
-| `tests/storage.test.ts` | Zod rejection of invalid domain data, vehicle creation, ACID fuel and maintenance writes that advance the odometer, settings persistence, schedule baseline updates, and owner resolution refusing unknown or unassigned rows. |
-| `tests/calculator.test.ts` | Consumption between two full tanks, omission for partial fills while keeping the chain intact, alert classification, and the AI layer's bounded retry, SSRF rejection, OEM spec validation and doctor grounding. |
-| `tests/i18n.test.ts` | `.cfg` parser: comments and blank lines, values containing `=`, and loading the Polish dictionary. |
-| `tests/auth.test.ts` | JWT sign/verify, rejection of tampered tokens, tenant isolation, the legacy-claim gate from both sides (claims for the designated owner, refuses for anyone else), and nothing exposed to an anonymous visitor. |
-| `tests/apiAuth.test.ts` | The route-level authorization contract — see §10. |
-| `tests/aiOrchestrator.test.ts` | Keyless operation: preseeded specs served and cached in SQLite, heuristic specs for unknown models, schedule caching, and doctor advice. |
-| `tests/aiSecurity.test.ts` | SSRF guard across every address spelling, redirect refusal, timeouts, and retry classification. |
-| `tests/vehicleSpecs.test.ts` | Exact-match lookup, case and space normalisation, no prefix inheritance, inclusive year ranges, blank inputs, heuristic fallback. |
-| `tests/export.test.ts` | Workbook and sheet structure for the dossier, maintenance and fuel exports in both languages, legacy parts formats, column auto-fit, and cell typing. |
-| `tests/notifications.test.ts` | Notification support detection, and the urgent-schedule filter that prevents repeat alerts. |
-| `src/persistence/sync.test.ts` | Server contract: push and pull, device-to-device propagation, a vehicle and its logs in one request, foreign-child rejection, last-write-wins in both directions, tombstones, cursor advance. |
-| `src/services/backup.test.ts` | Tenant-scoped export, merge restore (recreates deleted rows, never overwrites a newer local edit), replace restore, refusal to land rows under a foreign vehicle, rejection of a non-CarBook file, and restored rows becoming visible through the sync cursor. |
-| `src/services/deviceAuth.test.ts` | Guest registration, malformed device id rejection, refresh rotation, reuse detection revoking every session, two devices signed in at once, cross-device token rejection, and guest→account linking including its idempotent and refusal cases. |
-| `src/sync/client.test.ts` | `syncOnce` ordering: apply pulled rows before advancing the cursor, do not advance if applying throws, surface HTTP and `success:false` failures, send a bearer token when given one. |
-| `mobile/src/device/localStore.test.ts` | In-flight edit and delete survival, LWW convergence when a push loses, cursor persistence and reload. |
-| `mobile/src/device/session.test.ts` | Register on first run, reuse an unexpired session without a network call, refresh when nearly stale, fall back to registering when the stored token is refused, link with the account token rather than the guest one. |
-| `mobile/src/device/e2e.test.ts` | Device ⇄ server offline sync end to end: offline create reaching a second device, offline edit and stale edit under LWW, offline delete propagating, tenant isolation. |
+| `tests/baseline.test.ts` (1) | Harness sanity — one assertion that the runner works. |
+| `tests/storage.test.ts` (10) | Zod rejection of invalid domain data, vehicle creation, ACID fuel and maintenance writes that advance the odometer, settings persistence, schedule baseline updates, and owner resolution refusing unknown or unassigned rows. |
+| `tests/calculator.test.ts` (7) / `tests/calculatorEdges.test.ts` (13) | Consumption between two full tanks, omission for partial fills while keeping the chain intact, alert classification; edge cases on the same engine. |
+| `tests/i18n.test.ts` (19) | `.cfg` parser: comments and blank lines, values containing `=`, loading the Polish dictionary, **ar/en/pl key parity, and the `src/locales/*.cfg` mirrors matching the embedded dictionaries exactly**. |
+| `tests/auth.test.ts` (6) | JWT sign/verify, rejection of tampered tokens, tenant isolation, the legacy-claim gate from both sides, and nothing exposed to an anonymous visitor. |
+| `tests/authHandoff.test.ts` (17) | The OAuth state-nonce CSRF gate (missing/forged/mismatched state), the one-time `?code=` deep-link handoff (single-use, expiry, no code leak on failure), the legacy `?token=` dual-read window, and constant-time `exp` enforcement. |
+| `tests/sessionLifecycle.test.ts` (13) | 7-day mint with `jti`, logout revocation surviving a simulated restart, junk cookies creating no revocation rows, jti-less legacy tokens verifying but unrevocable, and the sliding-window limiter (429 + `Retry-After`, bounded keys, login route wiring). |
+| `tests/apiAuth.test.ts` (10) | The route-level authorization contract — see §10. |
+| `tests/routeCoverage.test.ts` (15) | Route-level contracts previously untested: sync POST (auth, per-row rejection with siblings applying, future-clock clamp, tombstone after `DELETE /api/fuel`), backup GET shape, reports tenancy, `GET /api/settings/fuel-prices` exact EG presets, callback cookie flags. |
+| `tests/syncCorrectness.test.ts` (9) | seq stamped by REST mutations and propagated without restart; delete cascades as per-child tombstones; fuel/maintenance deletes propagate and are not resurrected; the client `remarkRejected` re-marks exactly refused rows; per-row push validation, int/real coercion, future-clock clamp. |
+| `tests/settingsPerUser.test.ts` (5) | `ai_api_key` invisible across users and no fake encryption claim; `ai_provider` stays global; EG geoPreset fallback (never stale hardcoded prices); per-user `fuel_types` with legacy global fallback; AI-derived spec-cache rows scoped to their owner. |
+| `tests/aiOrchestrator.test.ts` (4) | Keyless operation: preseeded specs served and cached in SQLite, heuristic specs for unknown models, schedule caching, and doctor advice. |
+| `tests/aiRefusal.test.ts` (3) | Refusal paths: a schema-failing schedule proposal means bounded retries, **zero invalid writes**, and an explicit heuristic fallback; a non-retryable provider failure escapes after one attempt; config resolution stays provider-correct with no network call. |
+| `tests/aiSecurity.test.ts` (12) | SSRF guard across every address spelling, redirect refusal, timeouts, and retry classification. |
+| `tests/vehicleSpecs.test.ts` (6) | Exact-match lookup, case and space normalisation, no prefix inheritance, inclusive year ranges, blank inputs, heuristic fallback. |
+| `tests/geoPricing.test.ts` (5) | Country presets, timezone detection, and supported-country listing. |
+| `tests/export.test.ts` (9) | Workbook and sheet structure for the dossier, maintenance and fuel exports in both languages, legacy parts formats, column auto-fit, and cell typing. |
+| `tests/maintenanceTotals.test.ts` (4) | Parts/labor/total summation rules used by the maintenance tab. |
+| `tests/notifications.test.ts` (2) | Notification support detection, and the urgent-schedule filter that prevents repeat alerts. |
+| `src/persistence/sync.test.ts` (10) | Server contract: push and pull, device-to-device propagation, a vehicle and its logs in one request, foreign-child rejection, last-write-wins in both directions, tombstones, cursor advance. |
+| `src/services/backup.test.ts` (7) | Tenant-scoped export, merge restore (recreates deleted rows, never overwrites a newer local edit), replace restore, refusal to land rows under a foreign vehicle, rejection of a non-CarBook file, and restored rows becoming visible through the sync cursor. |
+| `src/services/deviceAuth.test.ts` (8) | Guest registration, malformed device id rejection, refresh rotation, reuse detection revoking every session, two devices signed in at once, cross-device token rejection, and guest→account linking including its idempotent and refusal cases. |
+| `src/sync/client.test.ts` (6) | `syncOnce` ordering: apply pulled rows before advancing the cursor, do not advance if applying throws, surface HTTP and `success:false` failures, send a bearer token when given one, re-mark refused rows through the optional `remarkRejected` hook. |
 
-`npm run typecheck` runs `tsc --noEmit` in strict mode across the whole tree; `mobile/` has its own. Both are clean.
+`mobile/` (its own `pnpm test`): `device/localStore.test.ts` (in-flight edit and delete survival, LWW convergence when a push loses, cursor persistence), `device/session.test.ts` (register/refresh/reuse/link lifecycle), `device/runtime.test.ts` (bounded retry loop with explicit failure), `device/e2e.test.ts` (device ⇄ server sync end to end, tenant isolation), `offline/fetchBridge.test.ts` (the offline API bridge answers the web UI's fetches from WatermelonDB).
+
+`pnpm run typecheck` runs `tsc --noEmit` in strict mode across the whole tree; `mobile/` has its own. Both are clean, and so is lint — and CI now **enforces** it: `pnpm lint` (`next lint` over ESLint pinned at `eslint@8.57.1` + `eslint-config-next@15.5.28`, the exact pair matching the installed Next 15.5.28) is a blocking step, so new **errors** fail the pipeline. Pre-existing stylistic findings (`no-explicit-any` etc.) are downgraded to **warnings** — 237 at time of writing, measured with `pnpm lint | grep -c "Warning:"` — under a ratchet policy: the number may only shrink, never grow.
 
 ---
 
@@ -253,10 +275,11 @@ What is enforced, and the limits of each control.
 
 Stated here so nobody has to rediscover them:
 
-- **No vehicle edit or delete in the web UI.** `/api/vehicles` exposes `GET` and `POST` only. Deletion is reachable through the sync push path (and therefore from a device), but there is no browser affordance for either operation.
-- **`better-sqlite3` is an unused dependency.** Declared, never imported.
-- **The `@sync` alias in `mobile/` points nowhere.** `mobile/vite.config.ts` and `mobile/tsconfig.json` both map `@sync/*` to `mobile/src/sync/*`, a directory that does not exist. The device layer reaches the shared contract by relative path instead. Either create the directory or drop the alias.
-- **No OAuth → device handoff.** `PUT /api/auth/device` requires a real account bearer token, and nothing delivers one to a phone after browser sign-in. A one-time-code redirect is the missing piece.
-- **The Capacitor shell loads the remote site** (`server.url`), so no bundled web assets run on-device.
-- **No LICENSE file.** Both READMEs say MIT; the file itself is absent.
+- **The Capacitor shell still loads the remote site** (`server.url` in `capacitor.config.ts`), so the offline device layer does not yet run from a bundled build. An offline-APK program (shell mounting the web UI over `mobile/src/offline/`'s fetch bridge) is in progress; no on-device build is being promised while it lands.
+- **`better-sqlite3` is an unused dependency.** Declared in `package.json`, never imported anywhere in `src/` or `mobile/src/`.
 - **DNS rebinding** is not defended against, as noted in §10.
+- **The legacy `?token=` dual-read window** in `/api/auth/token-login` still accepts pre-T6 30-day JWTs (unrevocable, no `jti`) until its documented removal date, no earlier than 2026-12-01.
+- **237 lint warnings** — stylistic findings (`no-explicit-any` and friends) grandfathered as warnings under the §11 ratchet; the pipeline only blocks on errors.
+- **Revocation and rate-limit state are per-process.** Correct for the supported single-Node-server deployment (the app ships exactly one); a hypothetical multi-worker deploy would need shared state for both.
+
+*Closed since the previous revision of this document:* vehicle edit/delete now exist as `PUT`/`DELETE /api/vehicles` and in the web UI; the OAuth → device one-time-code handoff is implemented (`auth_codes`, `MainActivity`, `token-login`); `LICENSE` exists (MIT); the `mobile/` `@sync` alias now resolves to the real shared directory.

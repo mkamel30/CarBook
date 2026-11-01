@@ -26,7 +26,7 @@ If the instance is running, also take an application-level export from **Setting
 | Node.js ≥ 18.18 | Reference host runs v20+. |
 | A hostname that resolves to the host | A real domain, or an `sslip.io` name for testing. |
 | Ports 80 and 443 open | On *both* the cloud firewall and the OS firewall — see §7. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Only if you want Google sign-in. The app is fully usable without it. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Only for Google sign-in; the app boots and browses without it, but saving data on the web needs a session. |
 | A generated `JWT_SECRET` | `openssl rand -base64 32`. **Required in production.** |
 
 ---
@@ -37,7 +37,7 @@ Next.js reads `.env`, then `.env.production` when `NODE_ENV=production`, then re
 
 | Variable | Required | Default | Purpose |
 | :--- | :--- | :--- | :--- |
-| `JWT_SECRET` | **Yes, in production** | — | Signs session and device tokens. `getJwtSecret()` **throws** under `NODE_ENV=production` if unset — and it throws at *request* time, so the app boots and renders fine, then every auth route answers `500`. Changing it invalidates all sessions. |
+| `JWT_SECRET` | **Yes, in production** | dev-only fallback | Signs session and device tokens. `getJwtSecret()` **throws** under `NODE_ENV=production` if unset — and it throws at *request* time, so the app boots and renders fine, then every auth route answers `500`. Outside production it falls back to a fixed `carbook_jwt_dev_only_secret` string, which must never be what a live host relies on. Changing it invalidates all sessions. |
 | `CARBOOK_DB_PATH` | Recommended | `./car_maintenance.db` | Absolute path to the SQLite file. Set it to somewhere outside the checkout so a redeploy cannot touch live data. |
 | `APP_ORIGIN` | Behind a proxy | inferred | Canonical public origin. Without it the post-login redirect is built from `x-forwarded-host`, and trusting a client-supplied host header is how open redirects happen. |
 | `GOOGLE_CLIENT_ID` | For sign-in | — | OAuth client id. |
@@ -46,14 +46,17 @@ Next.js reads `.env`, then `.env.production` when `NODE_ENV=production`, then re
 | `SERVER_GEMINI_API_KEY` | No | — | Server-managed Google AI Studio key. `GEMINI_API_KEY` is accepted as an alias. |
 | `SERVER_OPENROUTER_API_KEY` | No | — | Server-managed OpenRouter key. `OPENROUTER_API_KEY` is accepted as an alias. |
 | `AI_TIMEOUT_MS` | No | `30000` | Per-request deadline for outgoing AI calls. |
+| `CARBOOK_SERVER_URL` | **Android builds only** | the sslip.io default in `capacitor.config.ts` | Read at **build/`cap sync` time** by `capacitor.config.ts` to set the Capacitor WebView's `server.url` — it is baked into the APK, not looked up at runtime. Keep it in sync with the `server_url` string resource in `android/app/src/main/res/values/config.xml` that `MainActivity` uses for the auth deep link. |
 
-With no AI key the app does not degrade to nothing: it falls back to the preseeded automotive database, the cross-user specs cache, and clearly-labelled heuristics.
+With no AI key the app does not degrade to nothing: it falls back to the preseeded automotive database, the official specs cache (AI-derived rows are scoped to their owner), and clearly-labelled heuristics.
 
-`.env.example` in the repository root is the canonical annotated copy of this table.
+`.env.example` in the repository root is the canonical annotated copy of the runtime variables in this table; `CARBOOK_SERVER_URL` is build-time only (§ Android) and deliberately absent from it.
 
 ---
 
 ## 3. Install
+
+The tool of record is **pnpm** (CI installs with `pnpm install --frozen-lockfile`; the npm lockfile was removed deliberately).
 
 ```bash
 sudo mkdir -p /var/www/carbook /var/lib/carbook
@@ -61,8 +64,8 @@ sudo chown -R $USER:$USER /var/www/carbook /var/lib/carbook
 
 git clone https://github.com/mkamel30/CarBook.git /var/www/carbook-src
 cd /var/www/carbook-src
-npm install
-npm run build
+pnpm install
+pnpm build
 ```
 
 Build on the host, or build elsewhere and ship `.next`, `public`, `package.json`, `next.config.js` and `node_modules`. `next start` does not need `src/` at runtime — which is what makes the partial-artifact deploy in §5 work.
@@ -216,7 +219,7 @@ Then set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI` on
 
 **A trap worth naming.** The redirect URI Google compares against is the one the app *sends*, not the one you think it sends. If `GOOGLE_REDIRECT_URI` is unset the app infers it from request headers, and a mismatch produces `redirect_uri_mismatch` with no obvious cause. Set it explicitly.
 
-With placeholder credentials left in place Google answers `401 invalid_client`. Everything else in CarBook works without signing in — the app does not require an account.
+With placeholder credentials left in place Google answers `401 invalid_client`. Browsing the app works without an account; on the web, saving data requires signing in (the phone app registers a guest device identity instead). Note that sign-in and the AI features require network by design — they are the two things the offline story does not remove.
 
 ---
 
@@ -275,11 +278,13 @@ A `cron` entry for the file copy, plus a weekly off-host push, is enough for a s
 
 ## 11. Redeploying
 
+A push to `main` runs `.github/workflows/deploy.yml`: frozen-lockfile install of both workspaces, typecheck, lint, `pnpm test` (server *and* colocated `src/` suites) + `pnpm --prefix mobile test`, production build, then scp-and-restart of `/var/www/carbook` with a post-restart check of `127.0.0.1:3070` and the public HTTPS origin. The manual path below is the equivalent, for hosts not wired to the pipeline:
+
 ```bash
 cd /var/www/carbook-src
 git pull
-npm install
-npm run build
+pnpm install
+pnpm build
 ```
 
 Then ship `.next`, `public`, `package.json` and `next.config.js` to `/var/www/carbook`, remove the old build first, and restart:
@@ -293,6 +298,8 @@ sudo systemctl restart carbook.service
 `rm -rf .next` before extracting is not optional tidiness — a stale route cache serves old handlers under new URLs, and the symptom is a fix that "did not take".
 
 Migrations run automatically at startup and are additive, so an existing database needs no manual step. Because of that, the artifact bundle must never contain a `car_maintenance.db`: shipping one overwrites live history. `CARBOOK_DB_PATH` pointing outside the checkout makes the mistake impossible rather than merely unlikely.
+
+**Deploy order: server before APK.** The mobile OAuth handoff now redeems single-use codes at `/api/auth/token-login?code=…`, but the endpoint keeps a dual-read branch accepting the old `?token=<30-day JWT>` form for already-installed APKs (removal no earlier than **2026-12-01**, see `src/app/api/auth/token-login/route.ts`). That window is what lets an old phone log in against a new server — the reverse (new APK against an old server) has **no** fallback: the old server has never heard of `?code=` and the sign-in just fails. So: deploy the server first, ship a rebuilt APK only after it is live, and never roll the server back past the handoff commit while new APKs are in users' hands.
 
 ---
 
@@ -309,17 +316,42 @@ Four things that instance taught, generalised:
 
 ---
 
-## 13. Roadmap
+## 13. Android build and release signing
 
-Ordered by what unblocks what.
+The APK is a Capacitor shell. Today it loads the remote site (`server.url` in `capacitor.config.ts`; `webDir: 'out'` is only the fallback and is not currently a populated static export — producing it is part of the offline program below). Syncing the shell and building it: `pnpm android:sync` (`cap sync android`) then Gradle via `pnpm android:apk:debug` / `pnpm android:apk:release`. Two places must agree on the server origin: `capacitor.config.ts` (`server.url`, overridable at build time with `CARBOOK_SERVER_URL`, §2) and the `server_url` string resource in `android/app/src/main/res/values/config.xml`, which `MainActivity` uses to send the OAuth deep link (`carbook://login?code=…`) to the right backend.
 
-1. **HTTPS on the host.** Blocks Google sign-in, blocks the device client, blocks the `secure` cookie. Everything below waits on it.
-2. **Move the database out of the checkout** and set `CARBOOK_DB_PATH`. Small, safe, and it removes the worst possible redeploy failure.
-3. **Scheduled backups.** A `cron` entry plus an off-host destination.
-4. **Claim the legacy rows.** Assign the `user_id IS NULL` vehicles to the owner's account so pre-auth history becomes visible. Verify the account email matches the one that actually signs in before running it — a mismatch makes the claim a silent no-op.
-5. **OAuth → device handoff.** `PUT /api/auth/device` needs a real account bearer token, and nothing currently delivers one to a phone after browser sign-in. The missing piece is a one-time-code redirect: browser completes sign-in, mints a short-lived code, the device redeems it.
-6. **Flip the Capacitor shell** from `server.url` to a bundled `webDir`. Until then the phone loads the remote site and the offline data layer never runs on a device.
-7. **Reuse the web UI inside the mobile shell**, or accept two UIs. The device data layer is done; the screens are not.
-8. **Vehicle edit and delete in the web UI.** `/api/vehicles` exposes `GET` and `POST` only.
-9. **Remove the unused `better-sqlite3` dependency** and the dead `@sync` alias in `mobile/`.
-10. **Add a `LICENSE` file.** Both READMEs state MIT; the file itself is absent.
+**The keystore is owner-held.** It is not in the repository and never will be — signing keys committed to Git are signing keys burned. The owner generates it once, outside the checkout, and keeps it (and its passwords) in a password manager:
+
+```bash
+keytool -genkeypair -v -storetype PKCS12 \
+  -keystore carbook-release.keystore -alias carbook \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Then copy `android/keystore.properties.example` to `android/keystore.properties` (git-ignored; it contains only `storeFile`, `storePassword`, `keyAlias`, `keyPassword`) and fill in the real values. `android/app/build.gradle` loads it when present and signs `release` with it; **when it is absent, release builds fall back to the debug signing config** — fine for local verification, useless for distribution. Never commit `keystore.properties` or the `.jks`/`.keystore` file itself.
+
+```bash
+pnpm android:sync
+pnpm android:apk:release        # gradlew assembleRelease — signed if keystore.properties exists
+```
+
+**Offline APK — in progress, not a promise.** The device data layer, sync runtime and shell (`mobile/`) are implemented and tested in-process; the offline fetch bridge that lets the bundled UI read and write WatermelonDB instead of the network is landing now (§12 of [ARCHITECTURE.md](ARCHITECTURE.md)). Until that program finishes and a genuine offline build is cut, the shipped APK loads the remote site through `server.url` — a working network is a prerequisite, and Google sign-in and the AI features require network by design. Do not distribute a release APK built on the assumption of offline until it is actually verified on a device.
+
+## 14. Roadmap
+
+Ordered by what unblocks what. Items marked ✅ were verified against the code, not against intentions.
+
+1. **Scheduled backups.** A `cron` entry plus an off-host destination.
+2. **Finish the offline-APK program** (§13): bundle a real static export into the shell, flip it off `server.url`, verify on a device, then cut the first release build with the owner's keystore. The server-side half is ready — the sync protocol, per-row refusals and the fetch bridge are all tested — the on-device verification is what is missing.
+3. **Verify the one-time-code handoff against the live host** end to end on a real phone (the flow is unit- and route-tested in-process; the dual-read `?token=` window stays until 2026-12-01 at the earliest to cover installed older APKs meanwhile).
+4. **Remove the unused `better-sqlite3` dependency** (still declared in `package.json`, imported nowhere).
+
+Closed since the previous revision of this guide:
+
+- ✅ **HTTPS on the reference host** — Let's Encrypt against the `sslip.io` name; the `secure` session cookie and the OAuth handoff depend on it. Any new self-host must still do this first.
+- ✅ **Database moved out of the checkout** — `/var/lib/carbook` via `CARBOOK_DB_PATH` in the systemd unit (§4).
+- ✅ **Legacy rows claimed** — `findOrCreateUser` reassigns `user_id IS NULL` / `'default'` vehicles to the designated owner account on login (`src/persistence/repository.ts`); verify the signing-in email matches before assuming it ran.
+- ✅ **OAuth → device handoff** — single-use 10-minute codes, deep link `carbook://login?code=`, redemption at `/api/auth/token-login` (§11, API.md §1).
+- ✅ **Vehicle edit and delete** — `PUT`/`DELETE /api/vehicles` (tombstones with cascade) and a web-UI affordance.
+- ✅ **`LICENSE` file** — MIT, `Copyright (c) 2026 Mostafa Kamel`.
+- ✅ **`@sync` alias in `mobile/`** — now resolves to the real shared `src/sync/` directory.
