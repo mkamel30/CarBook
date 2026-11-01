@@ -25,7 +25,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   onDeleteVehicle,
   onOpenAddVehicle,
 }) => {
-  const { t, lang, dir } = useTranslation();
+  const { t, dir } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
