@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-LibSQL-003B57?logo=sqlite)](https://libsql.org/)
-[![Tests](https://img.shields.io/badge/Tests-114%20passing-brightgreen?logo=vitest)](https://vitest.dev/)
+[![Tests](https://img.shields.io/badge/Tests-119%20passing-brightgreen?logo=vitest)](https://vitest.dev/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#الترخيص)
 
 **[English](README.md)** • **[العربية](README.ar.md)** • **[Architecture](docs/ARCHITECTURE.md)** • **[API](docs/API.md)** • **[Deployment](docs/DEPLOYMENT.md)**
@@ -51,7 +51,7 @@ CarBook دفتر شخصي للسيارة: يسجّل ما تضعه في الخز
 | التحقق من البيانات | Zod 3.24 (مخططات النطاق على كل عملية كتابة) |
 | جداول البيانات | `xlsx` (SheetJS) |
 | غلاف الأجهزة المحمولة | Capacitor 8.6 + تطبيق Vite/React منفصل في [`mobile/`](mobile/) مع WatermelonDB 0.28 |
-| الاختبارات | Vitest 3 — 114 اختباراً في 18 ملفاً |
+| الاختبارات | Vitest 3 — 119 اختباراً في 18 ملفاً |
 
 يحتوي المستودع على تطبيقين:
 
@@ -111,7 +111,7 @@ npm run dev          # http://localhost:3070
 تسجيل الدخول بجوجل يحتاج قيمتي `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` حقيقيتين وعنوان إعادة توجيه مسجّلاً؛ ومع بقاء القيم الوهمية يردّ جوجل بـ`401 invalid_client`. وكل شيء آخر في التطبيق يعمل دون تسجيل دخول.
 
 ```bash
-npm test             # 114 اختباراً، وتشمل مجموعة mobile
+npm test             # 119 اختباراً، وتشمل مجموعة mobile
 npm run typecheck    # tsc --noEmit بوضع strict
 npm run build        # بناء نسخة الإنتاج
 ```
