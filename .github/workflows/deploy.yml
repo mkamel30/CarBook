@@ -1,0 +1,86 @@
+name: CarBook Automated CI/CD Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Run Tests & Build Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Install Dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --prefix mobile install
+
+      - name: Run Test Suite
+        run: |
+          pnpm test tests/
+          pnpm --prefix mobile test
+
+      - name: Build Next.js Production Bundle
+        env:
+          NODE_ENV: production
+          JWT_SECRET: dummy_secret_for_build_step_only_12345
+        run: pnpm build
+
+      - name: Package Production Artifacts
+        run: |
+          mkdir -p deploy-bundle
+          tar -czf deploy-bundle/carbook_artifacts.tar.gz --exclude=".next/cache" .next public package.json next.config.js
+
+      - name: Deploy to Oracle Cloud VPS
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          HOST_INPUT: ${{ secrets.VPS_HOST }}
+        run: |
+          # Setup SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy.key
+          chmod 600 ~/.ssh/deploy.key
+
+          # Parse Host: handles both "ubuntu@ip" and "ip"
+          CLEAN_HOST=$(echo "$HOST_INPUT" | sed 's/.*@//')
+          TARGET_USER="ubuntu"
+          TARGET="${TARGET_USER}@${CLEAN_HOST}"
+
+          echo "🚀 Deploying artifact to $TARGET..."
+          scp -i ~/.ssh/deploy.key -o StrictHostKeyChecking=no deploy-bundle/carbook_artifacts.tar.gz "$TARGET:/tmp/carbook_artifacts.tar.gz"
+
+          ssh -i ~/.ssh/deploy.key -o StrictHostKeyChecking=no "$TARGET" '
+            set -e
+            echo "📦 Extracting new build artifacts..."
+            rm -rf /var/www/carbook/.next
+            tar -xzf /tmp/carbook_artifacts.tar.gz -C /var/www/carbook
+            rm -f /tmp/carbook_artifacts.tar.gz
+
+            echo "🔄 Restarting carbook.service..."
+            sudo systemctl restart carbook.service
+
+            echo "🩺 Verifying deployment..."
+            sleep 3
+            sudo systemctl is-active carbook.service
+            curl -sS -o /dev/null -w "Local Port 3070 HTTP Status: %{http_code}\n" http://127.0.0.1:3070/
+            curl -sS -o /dev/null -w "Production HTTPS Status: %{http_code}\n" https://carbook.141.147.136.170.sslip.io/
+            echo "🎉 Deployment successful!"
+          '
