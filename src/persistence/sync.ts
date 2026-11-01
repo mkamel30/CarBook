@@ -65,6 +65,11 @@ interface TableDef {
   boolColumns?: string[];
   intColumns?: string[];
   realColumns?: string[];
+  // TEXT columns storing a JSON document. The push contract sends them as real
+  // structures (mobile toSrvValue parses the device JSON text so Zod sees an
+  // array/object); SQLite binds scalars only, so these are re-serialised right
+  // before bind — exactly what the repository's REST path does.
+  jsonColumns?: string[];
 }
 
 export const SYNC_TABLES: Record<string, TableDef> = {
@@ -76,6 +81,7 @@ export const SYNC_TABLES: Record<string, TableDef> = {
     owner: 'user',
     intColumns: ['year'],
     realColumns: ['initial_odometer', 'current_odometer'],
+    jsonColumns: ['specs'],
   },
   maintenance_schedules: {
     columns: [
@@ -94,6 +100,7 @@ export const SYNC_TABLES: Record<string, TableDef> = {
     ],
     owner: 'vehicle',
     realColumns: ['odometer', 'parts_cost', 'labor_cost', 'total_cost', 'next_due_odometer'],
+    jsonColumns: ['parts_list'],
   },
   fuel_logs: {
     columns: [
@@ -129,6 +136,31 @@ function readColumn(row: SyncRow, name: string, def: TableDef): any {
   if (v !== null && def.intColumns?.includes(name)) v = coerceNumber(v, true);
   else if (v !== null && def.realColumns?.includes(name)) v = coerceNumber(v, false);
   return v;
+}
+
+// Value handed to SQLite for a JSON TEXT column: structures (array/object)
+// become JSON text — the same form the repository writes on the REST path —
+// while pre-stringified strings and null pass through untouched. Push payloads
+// arrive from JSON.parse, so stringify cannot throw here. Non-JSON values of a
+// wrong type are rejected per-row by Zod long before this runs; they would only
+// reach here as scalars and bind as-is.
+function toBindValue(def: TableDef, col: string, v: any): any {
+  if (!def.jsonColumns?.includes(col)) return v;
+  return v !== null && typeof v === 'object' ? JSON.stringify(v) : v;
+}
+
+// Candidate-side mirror of toBindValue: a pre-stringified JSON structure becomes
+// the real array/object so the domain validators (parts_list must be an array)
+// accept both shapes. Malformed JSON stays a string and is refused per-row with
+// an invalid_payload reason — never a batch abort.
+function toJsonCandidateValue(def: TableDef, col: string, v: any): any {
+  if (!def.jsonColumns?.includes(col) || typeof v !== 'string' || !v.trim()) return v;
+  try {
+    const parsed = JSON.parse(v);
+    return parsed !== null && typeof parsed === 'object' ? parsed : v;
+  } catch {
+    return v;
+  }
 }
 
 /**
@@ -169,7 +201,7 @@ const SYNC_VALIDATORS: Record<string, z.ZodTypeAny> = {
  * abort the whole write batch, so a row missing one is refused per-row instead.
  */
 const REQUIRED_COLUMNS: Record<string, string[]> = {
-  vehicles: ['name', 'make', 'model', 'year', 'created_at'],
+  vehicles: ['name', 'make', 'model', 'year', 'created_at', 'updated_at'],
   maintenance_schedules: ['vehicle_id', 'item_code', 'title_ar', 'title_en', 'interval_km'],
   maintenance_logs: ['vehicle_id', 'service_date', 'odometer', 'service_type', 'title', 'total_cost', 'created_at'],
   fuel_logs: ['vehicle_id', 'fill_date', 'odometer', 'liters', 'price_per_liter', 'total_cost', 'created_at'],
@@ -185,6 +217,7 @@ function buildCandidate(raw: SyncRow, def: TableDef): SyncRow {
   for (const c of def.columns) {
     let v = readColumn(raw, c, def);
     if (def.boolColumns?.includes(c)) v = v === 1;
+    else v = toJsonCandidateValue(def, c, v);
     out[toCamel(c)] = v;
   }
   return out;
@@ -375,7 +408,7 @@ export async function runSync(
         });
       } else {
         const isVeh = def.owner === 'user';
-        const businessVals = def.columns.map(c => readColumn(op.row, c, def));
+        const businessVals = def.columns.map(c => toBindValue(def, c, readColumn(op.row, c, def)));
         const insertCols = [...(isVeh ? ['user_id'] : []), 'id', ...def.columns, 'rev', 'seq', 'sync_ts', 'deleted'];
         const values = [...(isVeh ? [userId] : []), op.row.id, ...businessVals, 1, seq, op.ts, 0];
         const setExprs = def.columns.map(c => `${c} = excluded.${c}`).join(', ');

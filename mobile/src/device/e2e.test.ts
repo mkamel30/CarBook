@@ -10,13 +10,10 @@ import { makeDatabase } from './database';
 import { WMDBLocalStore } from './localStore';
 import { localCreate, localUpdate, localMarkDeleted } from './writer';
 
-// WP2 reality check (reported to the orchestrator): the server's Zod pass demands
-// parts_list as an ARRAY, but the write batch binds scalars only — src/persistence/
-// sync.ts lacks the repository's JSON.stringify step for JSON TEXT columns, so an
-// array push aborts the whole batch ("SQLite3 can only bind…"). The device pushes
-// the contract-correct array; the happy-path assertions below skip (not fail) until
-// that one-line server fix lands, and switch on automatically once it does.
-const isBindGapError = (e: unknown) => /can only bind/i.test(String(e));
+// The server (src/persistence/sync.ts) serialises JSON TEXT columns
+// (parts_list, specs) before binding, so array-shaped pushes — the contract
+// mobile's toSrvValue produces — apply per-row instead of aborting the batch.
+// The happy paths below assert that directly.
 
 let dbPath: string;
 
@@ -133,7 +130,7 @@ describe('device ⇄ server offline sync (end-to-end)', () => {
     expect(await vehiclesOf(dbOther)).toHaveLength(0);
   });
 
-  it('pushes a maintenance log whose parts_list validates against the real server schema', async (ctx) => {
+  it('pushes a maintenance log whose parts_list validates against the real server schema', async () => {
     await seedUser('u1');
     const PARTS = [
       { id: 'p1', name: 'Oil filter', condition: 'new', cost: 15 },
@@ -149,16 +146,7 @@ describe('device ⇄ server offline sync (end-to-end)', () => {
       created_at: iso(),
     }, 1000);
 
-    let out;
-    try {
-      out = await syncOnce(new WMDBLocalStore(dbA), { baseUrl: 'http://s', deviceId: 'devA', fetchImpl: fetchToServer('u1') });
-    } catch (e) {
-      if (isBindGapError(e)) {
-        console.warn('[WP2] server cannot bind parts_list arrays yet (sync.ts JSON-column serialization) — happy path skipped, activates with the server fix');
-        return ctx.skip();
-      }
-      throw e;
-    }
+    const out = await syncOnce(new WMDBLocalStore(dbA), { baseUrl: 'http://s', deviceId: 'devA', fetchImpl: fetchToServer('u1') });
     expect(out.rejected).toEqual([]);
     expect((await dbA.collections.get('maintenance_logs').find('log-1') as any)._raw._dirty).toBe('');
 
@@ -172,7 +160,7 @@ describe('device ⇄ server offline sync (end-to-end)', () => {
     expect(parsed).toEqual(PARTS);
   });
 
-  it('keeps a per-row-invalid log dirty and flagged through the real server, then accepts the fix', async (ctx) => {
+  it('keeps a per-row-invalid log dirty and flagged through the real server, then accepts the fix', async () => {
     await seedUser('u1');
     const dbA = makeDatabase();
     await localCreate(dbA, 'vehicles', 'veh-1', { name: 'Corolla', make: 'Toyota', model: 'A', year: 2020, initial_odometer: 0, current_odometer: 0, created_at: iso(), updated_at: iso() }, 1000);
@@ -198,16 +186,7 @@ describe('device ⇄ server offline sync (end-to-end)', () => {
 
     // User fixes the row offline: next sync accepts it and the flag clears.
     await localUpdate(dbA, 'maintenance_logs', 'log-1', { parts_list: JSON.stringify([{ name: 'Gasket', condition: 'new', cost: 5 }]), total_cost: 35 }, 2000);
-    let out2;
-    try {
-      out2 = await syncOnce(new WMDBLocalStore(dbA), { baseUrl: 'http://s', deviceId: 'devA', fetchImpl: fetchToServer('u1') });
-    } catch (e) {
-      if (isBindGapError(e)) {
-        console.warn('[WP2] refusal→fix→acceptance leg skipped: server array-bind gap (see parts_list note above)');
-        return ctx.skip();
-      }
-      throw e;
-    }
+    const out2 = await syncOnce(new WMDBLocalStore(dbA), { baseUrl: 'http://s', deviceId: 'devA', fetchImpl: fetchToServer('u1') });
     expect(out2.rejected).toEqual([]);
     const fixed = (await dbA.collections.get('maintenance_logs').find('log-1') as any)._raw;
     expect(fixed._dirty).toBe('');
