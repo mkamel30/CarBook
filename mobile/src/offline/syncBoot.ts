@@ -68,7 +68,7 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
   const addOnlineListener = deps.addOnlineListener ?? defaultAddOnlineListener;
 
   let state: SyncState = {
-    phase: 'idle', message: '准备就绪 / Ready', lastSyncedAt: null, lastOutcome: null, guest: false,
+    phase: 'idle', message: 'جاهز · Ready', lastSyncedAt: null, lastOutcome: null, guest: false,
   };
   const listeners = new Set<(s: SyncState) => void>();
   let inFlight: Promise<SyncOutcome | null> | null = null;
@@ -116,19 +116,19 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
 
   async function run(): Promise<SyncOutcome | null> {
     if (!deps.baseUrl) {
-      set({ phase: 'offline', message: '本地模式 · Local only (no server)' });
+      set({ phase: 'offline', message: 'وضع محلي · Local only (no server)' });
       return null;
     }
     if (!isOnline()) {
-      set({ phase: 'offline', message: '离线 · Offline' });
+      set({ phase: 'offline', message: 'غير متصل · Offline' });
       return null;
     }
-    set({ phase: 'syncing', message: '同步中… · Syncing…' });
+    set({ phase: 'syncing', message: 'جارٍ المزامنة… · Syncing…' });
     try {
       const outcome = await runtime.syncNow();
       set({
         phase: 'synced',
-        message: `已同步 · Synced (+${outcome.pushedCount}/↓${outcome.pulledCount})`,
+        message: `تمت المزامنة · Synced (+${outcome.pushedCount}/↓${outcome.pulledCount})`,
         lastSyncedAt: Date.now(),
         lastOutcome: outcome,
         guest,
@@ -136,7 +136,7 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
       return outcome;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      set({ phase: 'error', message: `同步失败 · Retry pending: ${message}` });
+      set({ phase: 'error', message: `فشل المزامنة · Retry pending: ${message}` });
       throw err;
     }
   }

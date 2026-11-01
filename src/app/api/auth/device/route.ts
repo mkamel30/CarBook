@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/services/auth';
 import { linkGuestToUser, refreshDeviceSession, registerDevice, revokeDeviceSession } from '@/services/deviceAuth';
 import { buildRateLimitResponse, getClientIp, deviceAuthLimiter } from '@/services/rateLimit';
+import { withMobileCors } from '@/services/mobileCors';
 
 export const runtime = 'nodejs';
 
@@ -10,7 +11,7 @@ function bad(message: string) {
 }
 
 /** POST {deviceId} — first launch, or re-register after the keystore was wiped. */
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   // In-route abuse throttle (T6): 20 register/refresh attempts per minute per
   // IP. Higher than login because several phones behind one household NAT
   // legitimately refresh together.
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
  * POST {deviceId} while signed in as a real account — moves everything the
  * guest identity owns onto that account and reissues the device session.
  */
-export async function PUT(req: NextRequest) {
+async function PUTHandler(req: NextRequest) {
   const user = getAuthenticatedUser(req);
   if (!user?.id || user.guest) {
     return NextResponse.json({ success: false, error: 'A signed-in, non-guest account is required' }, { status: 401 });
@@ -51,7 +52,7 @@ export async function PUT(req: NextRequest) {
 }
 
 /** DELETE ?sessionId= — sign one device out without touching the others. */
-export async function DELETE(req: NextRequest) {
+async function DELETEHandler(req: NextRequest) {
   const user = getAuthenticatedUser(req);
   if (!user?.id || user.guest) {
     return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
@@ -62,3 +63,7 @@ export async function DELETE(req: NextRequest) {
   await revokeDeviceSession(user.id, sessionId);
   return NextResponse.json({ success: true });
 }
+
+export const POST = withMobileCors(POSTHandler);
+export const PUT = withMobileCors(PUTHandler);
+export const DELETE = withMobileCors(DELETEHandler);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revokeSessionByToken } from '@/services/auth';
+import { withMobileCors } from '@/services/mobileCors';
 
 /**
  * Clear the session cookie and — for tokens minted with a `jti` (T6+) —
@@ -21,12 +22,15 @@ async function revokeAndBuild(res: NextResponse, req: NextRequest): Promise<Next
   return res;
 }
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   const res = NextResponse.redirect(`${req.nextUrl.origin}/`);
   return revokeAndBuild(res, req);
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const res = NextResponse.json({ success: true });
   return revokeAndBuild(res, req);
 }
+
+export const GET = withMobileCors(GETHandler);
+export const POST = withMobileCors(POSTHandler);

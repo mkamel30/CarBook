@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { OwnedTable, StorageRepository } from '@/persistence/repository';
-import { getAuthenticatedUser, type AuthSessionUser } from '@/services/auth';
+import { getAuthenticatedUser, verifySessionToken, type AuthSessionUser } from '@/services/auth';
 
 /** An authorization failure the routes map straight to an HTTP status. */
 export class AuthError extends Error {
@@ -10,8 +10,40 @@ export class AuthError extends Error {
   }
 }
 
+/**
+ * The bearer half of the offline→account bridge (task #17).
+ *
+ * A bundled Capacitor app runs on the local `https://localhost` origin, so its
+ * cross-origin fetches can never carry the SameSite=lax `carbook_session`
+ * cookie. It authenticates with `Authorization: Bearer <session JWT>` instead —
+ * the same token type the cookie holds, checked by the same
+ * `verifySessionToken`, so a revoked `jti` (logout) is rejected over bearer
+ * exactly as over cookie. Nothing about cookie behaviour changes.
+ *
+ * Returns null for a non-bearer header so callers fall through to the cookie.
+ */
+export function bearerUser(req: NextRequest): AuthSessionUser | null {
+  const raw = req.headers.get('authorization');
+  if (!raw) return null;
+  const match = /^Bearer\s+(\S.+)$/i.exec(raw.trim());
+  if (!match) return null;
+  return verifySessionToken(match[1]);
+}
+
+/**
+ * Bearer first, then the session cookie.
+ *
+ * The same precedence `getAuthenticatedUser` already applies; it is spelled out
+ * here so every route going through `requireUser` — /api/vehicles, /api/fuel,
+ * /api/maintenance, /api/schedules, /api/reports, /api/settings, /api/ai/* —
+ * inherits the bearer bridge by construction instead of by coincidence.
+ */
+export function resolveUser(req: NextRequest): AuthSessionUser | null {
+  return bearerUser(req) ?? getAuthenticatedUser(req);
+}
+
 export function requireUser(req: NextRequest): AuthSessionUser {
-  const user = getAuthenticatedUser(req);
+  const user = resolveUser(req);
   if (!user) throw new AuthError(401, 'Authentication required');
   return user;
 }

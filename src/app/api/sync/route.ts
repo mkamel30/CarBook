@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/services/auth';
 import { runSync, type SyncRequest } from '@/persistence/sync';
+import { withMobileCors } from '@/services/mobileCors';
 
 export const runtime = 'nodejs';
 
 // Two-way offline sync: client pushes its local changes and pulls everything
 // that changed on the server since its cursor. Requires a signed-in user;
 // guest/offline-claim upload is handled separately (see plan Phase 4).
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const user = getAuthenticatedUser(req);
     if (!user?.id) {
@@ -30,3 +31,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+export const POST = withMobileCors(POSTHandler);

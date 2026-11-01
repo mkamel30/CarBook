@@ -3,8 +3,9 @@ import { getOrFetchVehicleManual } from '@/services/aiOrchestrator';
 import { StorageRepository } from '@/persistence/repository';
 import { authErrorResponse, requireUser } from '@/services/authz';
 import { aiRateGuard } from '@/services/rateLimit';
+import { withMobileCors } from '@/services/mobileCors';
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     // T6 abuse throttle: 10/min per user. Additive guard only — the auth and
     // ownership flow below is untouched.
@@ -46,3 +47,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+export const POST = withMobileCors(POSTHandler);

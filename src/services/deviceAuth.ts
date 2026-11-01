@@ -43,6 +43,15 @@ function guestUserId(deviceId: string): string {
   return `guest:${deviceId}`;
 }
 
+/**
+ * True for the synthetic guest identity a device owns before sign-in.
+ * Exported so auth surfaces can refuse to mint a durable credential for one
+ * (see /api/auth/token-login POST) without duplicating the id scheme here.
+ */
+export function isGuestUserId(userId: string): boolean {
+  return typeof userId === 'string' && userId.startsWith('guest:');
+}
+
 async function loadUser(client: any, userId: string): Promise<AuthSessionUser | null> {
   const res = await client.execute({
     sql: 'SELECT id, email, name, picture, is_guest FROM users WHERE id = ?',

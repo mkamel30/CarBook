@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/services/auth';
+import { withMobileCors } from '@/services/mobileCors';
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   const user = getAuthenticatedUser(req);
   if (!user) {
     return NextResponse.json({ authenticated: false, user: null });
@@ -12,3 +13,5 @@ export async function GET(req: NextRequest) {
     user,
   });
 }
+
+export const GET = withMobileCors(GETHandler);

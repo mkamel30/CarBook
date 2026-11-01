@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, primaryKey } from 'drizzle-orm/sqlite-core';
 
 export const usersTable = sqliteTable('users', {
   id: text('id').primaryKey(), // Google sub
@@ -86,11 +86,13 @@ export const fuelLogsTable = sqliteTable('fuel_logs', {
 });
 
 export const appSettingsTable = sqliteTable('app_settings', {
-  key: text('key').primaryKey(),
+  key: text('key').notNull(),
   value: text('value').notNull(),
   isEncrypted: integer('is_encrypted', { mode: 'boolean' }).notNull().default(false),
   updatedAt: text('updated_at').notNull(),
-});
+  // '' = global default row (legacy or shared); any other value scopes to that user.
+  userId: text('user_id').notNull().default(''),
+}, (table) => [primaryKey({ columns: [table.key, table.userId] })]);
 
 export const globalVehicleSpecsCacheTable = sqliteTable('global_vehicle_specs_cache', {
   id: text('id').primaryKey(),
@@ -103,5 +105,7 @@ export const globalVehicleSpecsCacheTable = sqliteTable('global_vehicle_specs_ca
   source: text('source').notNull().default('server_gemini'),
   createdAt: text('created_at').notNull(),
   hitCount: integer('hit_count').notNull().default(1),
+  // '' = globally shared (official/seeded) row; otherwise the row is AI-derived and only visible to its owner.
+  ownerUserId: text('owner_user_id').notNull().default(''),
 });
 

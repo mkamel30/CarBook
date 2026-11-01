@@ -23,11 +23,38 @@ const PALETTE: Record<SyncPhase, Palette> = {
 
 export function StatusChip({ boot }: { boot: SyncBoot }) {
   const [state, setState] = useState<SyncState>(boot.getStatus());
+  const [note, setNote] = useState<string | null>(null);
 
-  useEffect(() => boot.subscribe(setState), [boot]);
+  useEffect(
+    () =>
+      boot.subscribe((s) => {
+        setState(s);
+        if (s.phase === 'synced') setNote(null);
+      }),
+    [boot],
+  );
 
-  const palette = PALETTE[state.phase];
-  const spinning = state.phase === 'syncing';
+  // Auth handoff outcomes (mobile/src/main.tsx): a failed code redemption or a
+  // burned bearer must be visible, never a silent half-login.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { kind?: string; stage?: string; reason?: string }
+        | undefined;
+      if (detail?.kind === 'failed') {
+        setNote(`فشل تسجيل الدخول · Login failed (${detail.stage}: ${detail.reason})`);
+      } else if (detail?.kind === 'unauthorized') {
+        setNote('انتهت الجلسة · Session ended — sign in again');
+      } else if (detail?.kind === 'signedin') {
+        setNote(null);
+      }
+    };
+    window.addEventListener('carbook:handoff', handler);
+    return () => window.removeEventListener('carbook:handoff', handler);
+  }, []);
+
+  const palette = note ? PALETTE.error : PALETTE[state.phase];
+  const spinning = !note && state.phase === 'syncing';
 
   return (
     <button
@@ -70,7 +97,7 @@ export function StatusChip({ boot }: { boot: SyncBoot }) {
         }}
       />
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {state.message}
+        {note ?? state.message}
       </span>
     </button>
   );

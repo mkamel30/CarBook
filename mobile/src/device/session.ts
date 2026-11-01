@@ -25,6 +25,21 @@ export interface SessionTransport {
   baseUrl: string;
 }
 
+/**
+ * A rejection from `/api/auth/device`, carrying the HTTP status so a caller can
+ * react to 401 specifically. The account handoff (offline/authBridge.ts) needs
+ * exactly that: a 401 means the credential it just presented is dead and must
+ * be dropped, while any other failure is retryable without losing the session.
+ */
+export class SessionAuthError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'SessionAuthError';
+    this.status = status;
+  }
+}
+
 /** Refresh this long before the token actually dies, so a sync never races it. */
 const RENEW_SKEW_MS = 60 * 1000;
 
@@ -49,7 +64,9 @@ async function call<T>(transport: SessionTransport, init: RequestInit): Promise<
   const doFetch = transport.fetchImpl ?? fetch;
   const res = await doFetch(`${transport.baseUrl.replace(/\/$/, '')}/api/auth/device`, init);
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json?.success) throw new Error(json?.error || `auth failed: ${res.status}`);
+  if (!res.ok || !json?.success) {
+    throw new SessionAuthError(json?.error || `auth failed: ${res.status}`, res.status);
+  }
   return json.data as T;
 }
 

@@ -215,14 +215,35 @@ export default function WorkbenchPage() {
     loadSettings();
   }, []);
 
+  // Bundled APK: the account handoff finishes AFTER mount (the bearer arrives
+  // via deep link), so re-ask /api/auth/me once the shell reports a sign-in.
+  useEffect(() => {
+    const onHandoff = (e: Event) => {
+      if ((e as CustomEvent)?.detail?.kind === 'signedin') loadAuth();
+    };
+    window.addEventListener('carbook:handoff', onHandoff);
+    return () => window.removeEventListener('carbook:handoff', onHandoff);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleLoginGoogle = () => {
-    const isNative = typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
-    const sourceParam = isNative ? '?source=app' : '';
-    window.location.href = `/api/auth/login${sourceParam}`;
+    // Bundled APK: the shell opens the SERVER login URL in the external browser
+    // (Google refuses embedded WebViews); the deep link returns with a code.
+    const shell = typeof window !== 'undefined'
+      ? (window as { carbookShell?: { openLogin?: () => void } }).carbookShell
+      : undefined;
+    if (shell?.openLogin) {
+      shell.openLogin();
+      return;
+    }
+    window.location.href = '/api/auth/login';
   };
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
+    // Bundled APK: drop the stored account bearer too, or the next boot would
+    // re-attach a revoked credential.
+    (window as { carbookShell?: { clearSession?: () => void } }).carbookShell?.clearSession?.();
     setCurrentUser(null);
     window.location.reload();
   };

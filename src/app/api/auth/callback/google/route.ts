@@ -128,104 +128,14 @@ export async function GET(req: NextRequest) {
     // Check if authentication was initiated from mobile app or Android device
     if (isApp) {
       // Deep-link handoff: never put a durable session token in the URL. Mint a
-      // single-use, short-lived authorization code; the app redeems it at
-      // /api/auth/token-login?code=... to obtain its own session cookie.
+      // single-use, short-lived authorization code and redirect to the App Link
+      // target: a verified install hands the URL straight to MainActivity (the
+      // browser renders nothing); an unverified install gets the tap-to-open
+      // page at /app-login instead.
       const handoffCode = await issueOneTimeCode(user.id);
-      const appUrl = `carbook://login?code=${encodeURIComponent(handoffCode)}`;
-      const safeUserName = (user.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const html = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>تسجيل الدخول | CarBook</title>
-  <style>
-    body {
-      background: #090d16;
-      color: #f8fafc;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      padding: 16px;
-      box-sizing: border-box;
-      text-align: center;
-    }
-    .card {
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 20px;
-      padding: 32px 24px;
-      max-width: 380px;
-      width: 100%;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-    }
-    .icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-      display: inline-block;
-    }
-    h2 {
-      margin: 0 0 8px 0;
-      font-size: 20px;
-      color: #f1f5f9;
-    }
-    p {
-      color: #94a3b8;
-      font-size: 14px;
-      line-height: 1.5;
-      margin: 0 0 24px 0;
-    }
-    .btn {
-      display: block;
-      background: #f59e0b;
-      color: #090d16;
-      font-weight: bold;
-      padding: 14px 20px;
-      border-radius: 12px;
-      text-decoration: none;
-      font-size: 15px;
-      transition: background 0.2s;
-    }
-    .btn:active {
-      background: #d97706;
-    }
-    .subtext {
-      margin-top: 16px;
-      font-size: 12px;
-      color: #64748b;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">🚗</div>
-    <h2>تم تسجيل الدخول بنجاح!</h2>
-    <p>مرحباً بك ${safeUserName}. جاري إعادتك لتطبيق CarBook...</p>
-    <a id="openApp" class="btn" href="${appUrl}">العودة للتطبيق الآن</a>
-    <div class="subtext">إذا لم يتم فتح التطبيق تلقائياً، اضغط على الزر أعلاه.</div>
-  </div>
-  <script>
-    const appUrl = ${JSON.stringify(appUrl)};
-    window.location.replace(appUrl);
-    setTimeout(function() {
-      window.location.href = appUrl;
-    }, 400);
-  </script>
-</body>
-</html>`;
-
-      // The app WebView mints its own cookie when it redeems the code, so no
-      // session cookie is set here (this response is rendered in the system
-      // browser, which never owns the app's session).
-      const appResponse = new NextResponse(html, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-        },
-      });
+      const appResponse = NextResponse.redirect(
+        `${origin}/app-login?code=${encodeURIComponent(handoffCode)}`,
+      );
       clearOAuthNonceCookie(appResponse);
       return appResponse;
     }
