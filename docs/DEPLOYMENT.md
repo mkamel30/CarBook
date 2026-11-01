@@ -320,7 +320,7 @@ Four things that instance taught, generalised:
 
 ## 13. Android build and release signing
 
-The APK is a Capacitor shell. Today it loads the remote site (`server.url` in `capacitor.config.ts`; `webDir: 'out'` is only the fallback and is not currently a populated static export — producing it is part of the offline program below). Syncing the shell and building it: `pnpm android:sync` (`cap sync android`) then Gradle via `pnpm android:apk:debug` / `pnpm android:apk:release`. Two places must agree on the server origin: `capacitor.config.ts` (`server.url`, overridable at build time with `CARBOOK_SERVER_URL`, §2) and the `server_url` string resource in `android/app/src/main/res/values/config.xml`, which `MainActivity` uses to send the OAuth deep link (`carbook://login?code=…`) to the right backend.
+The APK is a Capacitor shell that now **bundles the offline client** (`webDir: 'mobile/dist'`; the remote `server.url` was removed on 2026-11-01 — the app runs fully offline against WatermelonDB and syncs to the server when connected; the stale `out/` placeholder is deleted). Build: `pnpm --prefix mobile build` then `pnpm android:sync` (`cap sync android`), Gradle via `pnpm android:apk:debug` / `pnpm android:apk:release`. Two places must agree on the server origin: the `server_url` string resource in `android/app/src/main/res/values/config.xml` (used by `MainActivity` for the App Link `/app-login?code=…` handling and the legacy `carbook://login?token=` fallback) and `VITE_CARBOOK_SERVER_URL` in `mobile/.env` (baked into the bundle at build time for pass-through auth/AI calls; see `mobile/.env.example`).
 
 **The keystore is owner-held.** It is not in the repository and never will be — signing keys committed to Git are signing keys burned. The owner generates it once, outside the checkout, and keeps it (and its passwords) in a password manager:
 
@@ -346,7 +346,7 @@ Ordered by what unblocks what. Items marked ✅ were verified against the code, 
 1. **Scheduled backups.** A `cron` entry plus an off-host destination.
 2. **Finish the offline-APK program** (§13): bundle a real static export into the shell, flip it off `server.url`, verify on a device, then cut the first release build with the owner's keystore. The server-side half is ready — the sync protocol, per-row refusals and the fetch bridge are all tested — the on-device verification is what is missing.
 3. **Verify the one-time-code handoff against the live host** end to end on a real phone (the flow is unit- and route-tested in-process; the dual-read `?token=` window stays until 2026-12-01 at the earliest to cover installed older APKs meanwhile).
-4. **Remove the unused `better-sqlite3` dependency** (still declared in `package.json`, imported nowhere).
+4. ~~Remove the unused `better-sqlite3` dependency~~ **done 2026-11-01** (with `drizzle-kit`; full gates re-run).
 
 Closed since the previous revision of this guide:
 

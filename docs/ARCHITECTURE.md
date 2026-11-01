@@ -77,13 +77,13 @@ It is a separate project with its own `package.json`, `tsconfig.json` and Vitest
 
 ## 3. Persistence
 
-**SQLite through `@libsql/client`.** Chosen deliberately: it is a pure-JS/WSM client, so `pnpm install` needs no C++ toolchain on Windows, Linux or macOS. `better-sqlite3` is still listed in `package.json` but is not imported anywhere — it is dead weight awaiting removal.
+**SQLite through `@libsql/client`.** Chosen deliberately: it is a pure-JS/WSM client, so `pnpm install` needs no C++ toolchain on Windows, Linux or macOS. (`better-sqlite3` was removed from `package.json` on 2026-11-01 — it was never imported.)
 
 **Two access styles, on purpose.**
 - `repository.ts` uses Drizzle ORM for reads and simple writes (`eq`, `desc`, typed selects). It is the ergonomic path for the web UI.
 - `sync.ts` uses raw parameterised SQL inside `client.batch(...)`. Cursor pulls, counter bumps and tombstone writes need exact control over ordering and atomicity, which an ORM abstraction would obscure.
 
-**Migrations are idempotent DDL, not a migration tool.** `db.ts` runs `CREATE TABLE IF NOT EXISTS` for the full current schema, then a series of guarded `ALTER TABLE ... ADD COLUMN` statements for databases created before a column existed (each in a try/catch that ignores "duplicate column"), plus a few one-off rebuilds for structural changes — e.g. `app_settings` being rebuilt around the composite `(key, user_id)` primary key, or the specs cache gaining `owner_user_id`, each detected by inspecting `sqlite_master` so it runs exactly once. Legacy rows migrate into the global/default shape (`user_id = ''`) and stay readable as fallbacks. Rows that predate sync get a backfilled `seq` so a first `since = 0` pull receives the whole history. `drizzle-kit` is declared in `devDependencies` but there is no `drizzle.config.*` and no generated migration folder — the DDL above *is* the migration story. There is no down-migration and no migration history table; the file is the history.
+**Migrations are idempotent DDL, not a migration tool.** `db.ts` runs `CREATE TABLE IF NOT EXISTS` for the full current schema, then a series of guarded `ALTER TABLE ... ADD COLUMN` statements for databases created before a column existed (each in a try/catch that ignores "duplicate column"), plus a few one-off rebuilds for structural changes — e.g. `app_settings` being rebuilt around the composite `(key, user_id)` primary key, or the specs cache gaining `owner_user_id`, each detected by inspecting `sqlite_master` so it runs exactly once. Legacy rows migrate into the global/default shape (`user_id = ''`) and stay readable as fallbacks. Rows that predate sync get a backfilled `seq` so a first `since = 0` pull receives the whole history. (`drizzle-kit` was removed from `devDependencies` on 2026-11-01; the DDL above *is* the migration story.) There is no down-migration and no migration history table; the file is the history.
 
 **Tables:**
 
@@ -276,7 +276,7 @@ What is enforced, and the limits of each control.
 Stated here so nobody has to rediscover them:
 
 - **The Capacitor shell still loads the remote site** (`server.url` in `capacitor.config.ts`), so the offline device layer does not yet run from a bundled build. An offline-APK program (shell mounting the web UI over `mobile/src/offline/`'s fetch bridge) is in progress; no on-device build is being promised while it lands.
-- **`better-sqlite3` is an unused dependency.** Declared in `package.json`, never imported anywhere in `src/` or `mobile/src/`.
+- **`better-sqlite3` and `drizzle-kit` were removed** (2026-11-01 cleanup: declared, imported nowhere; gates re-run green after the removal).
 - **DNS rebinding** is not defended against, as noted in §10.
 - **The legacy `?token=` dual-read window** in `/api/auth/token-login` still accepts pre-T6 30-day JWTs (unrevocable, no `jti`) until its documented removal date, no earlier than 2026-12-01.
 - **237 lint warnings** — stylistic findings (`no-explicit-any` and friends) grandfathered as warnings under the §11 ratchet; the pipeline only blocks on errors.
