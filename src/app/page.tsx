@@ -842,6 +842,7 @@ export default function WorkbenchPage() {
                   onSelectTab={setActiveTab}
                   onEditVehicle={openEditVehicleModal}
                   onDeleteVehicle={handleDeleteVehicle}
+                  onOpenAddVehicle={openAddVehicleModal}
                 />
               )}
 

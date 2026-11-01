@@ -1,5 +1,5 @@
-import React from 'react';
-import { AlertTriangle, Fuel, Wrench, Pencil, Trash2, Car } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { AlertTriangle, Fuel, Wrench, Pencil, Trash2, Car, MoreVertical, Plus } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 
 export interface OverviewTabProps {
@@ -11,6 +11,7 @@ export interface OverviewTabProps {
   onSelectTab: (tab: any) => void;
   onEditVehicle?: (vehicle: any) => void;
   onDeleteVehicle?: (vehicle: any) => void;
+  onOpenAddVehicle?: () => void;
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
@@ -22,8 +23,25 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   onSelectTab,
   onEditVehicle,
   onDeleteVehicle,
+  onOpenAddVehicle,
 }) => {
-  const { t, lang } = useTranslation();
+  const { t, lang, dir } = useTranslation();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen]);
 
   // Sort schedules by urgency: Overdue first, Due Soon second, OK last
   const prioritizedSchedules = [...schedules].sort((a, b) => {
@@ -62,28 +80,68 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {onEditVehicle && (
+        {/* 3-dots Menu for Vehicle Actions */}
+        {(onOpenAddVehicle || onEditVehicle || onDeleteVehicle) && (
+          <div className="relative shrink-0" ref={menuRef}>
             <button
-              onClick={() => onEditVehicle(selectedVehicle)}
-              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-medium flex items-center gap-1.5 transition"
-              title={t('btn_edit_vehicle')}
+              type="button"
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              aria-label="خيارات السيارة"
+              className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-400 border border-slate-800 hover:border-slate-700 transition active:scale-95"
             >
-              <Pencil className="w-3.5 h-3.5 text-amber-400" />
-              <span>{t('btn_edit_vehicle')}</span>
+              <MoreVertical className="w-4 h-4" />
             </button>
-          )}
-          {onDeleteVehicle && (
-            <button
-              onClick={() => onDeleteVehicle(selectedVehicle)}
-              className="px-3 py-1.5 rounded-lg bg-rose-950/20 hover:bg-rose-950/40 text-rose-300 border border-rose-900/40 hover:border-rose-900/60 text-xs font-medium flex items-center gap-1.5 transition"
-              title={t('btn_delete_vehicle')}
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-              <span>{t('btn_delete_vehicle')}</span>
-            </button>
-          )}
-        </div>
+
+            {isMenuOpen && (
+              <div className={`absolute ${dir === 'rtl' ? 'left-0' : 'right-0'} mt-2 w-48 bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl z-30 py-1.5 backdrop-blur-md animate-in fade-in zoom-in-95 duration-100`}>
+                {onOpenAddVehicle && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      onOpenAddVehicle();
+                    }}
+                    className="w-full text-start px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800/80 hover:text-amber-400 flex items-center gap-2.5 transition"
+                  >
+                    <Plus className="w-4 h-4 text-emerald-400" />
+                    <span>{t('action_add_vehicle') || 'إضافة سيارة أخرى'}</span>
+                  </button>
+                )}
+
+                {onEditVehicle && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      onEditVehicle(selectedVehicle);
+                    }}
+                    className="w-full text-start px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800/80 hover:text-amber-400 flex items-center gap-2.5 transition"
+                  >
+                    <Pencil className="w-4 h-4 text-amber-400" />
+                    <span>{t('btn_edit_vehicle')}</span>
+                  </button>
+                )}
+
+                {onDeleteVehicle && (
+                  <>
+                    <div className="my-1 border-t border-slate-800" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        onDeleteVehicle(selectedVehicle);
+                      }}
+                      className="w-full text-start px-3.5 py-2 text-xs font-medium text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 flex items-center gap-2.5 transition"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-400" />
+                      <span>{t('btn_delete_vehicle')}</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Key Metrics Cards */}

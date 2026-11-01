@@ -230,6 +230,7 @@ modal_car_edit_title = Edytuj dane pojazdu
 modal_car_btn_update = Zaktualizuj pojazd
 modal_car_engine_cc = Pojemność silnika (CC / Litry)
 modal_car_engine_cc_placeholder = np. 1600cc, 1.5 Turbo lub 2.0L
+action_add_vehicle = Dodaj kolejny pojazd
 btn_edit_vehicle = Edytuj pojazd
 btn_delete_vehicle = Usuń pojazd
 confirm_delete_vehicle = Czy na pewno chcesz usunąć ten pojazd? Wszystkie powiązane wpisy paliwa i serwisu zostaną trwale usunięte.

@@ -230,6 +230,7 @@ modal_car_edit_title = Edit Vehicle Details
 modal_car_btn_update = Update Vehicle
 modal_car_engine_cc = Engine Displacement (CC / Liters)
 modal_car_engine_cc_placeholder = e.g. 1600cc, 1.5 Turbo, or 2.0L
+action_add_vehicle = Add Another Vehicle
 btn_edit_vehicle = Edit Vehicle
 btn_delete_vehicle = Delete Vehicle
 confirm_delete_vehicle = Are you sure you want to delete this vehicle? All of its fuel and maintenance records will be deleted permanently.
