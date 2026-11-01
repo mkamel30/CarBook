@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mkamel.carbook",
+      "sha256_cert_fingerprints": [
+        "4C:BC:69:6E:12:77:E0:A9:A4:95:1F:C2:32:54:8F:9E:24:64:E5:97:1B:22:A8:86:AD:A9:D5:42:72:71:3B:9E"
+      ]
+    }
+  }
+]

@@ -21,6 +21,7 @@ import { issueOneTimeCode, redeemOneTimeCode } from '@/services/deviceAuth';
 import { GET as login } from '@/app/api/auth/login/route';
 import { GET as callback } from '@/app/api/auth/callback/google/route';
 import { GET as tokenLogin } from '@/app/api/auth/token-login/route';
+import { GET as appLogin } from '@/app/app-login/route';
 
 const GOOGLE_AUTH_CODE = 'google-oauth-code-xyz';
 const GOOGLE_SUB = 'google_handoff_user_1';
@@ -53,9 +54,10 @@ function callbackUrl(source: 'app' | 'web', nonce: string, extraCode = GOOGLE_AU
   return `/api/auth/callback/google?${q}`;
 }
 
-function extractCode(html: string): string | null {
-  const m = html.match(/carbook:\/\/login\?code=([^"'&\s]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
+function appHandoffCode(res: Response): string | null {
+  const location = res.headers.get('location');
+  if (!location) return null;
+  return new URL(location).searchParams.get('code');
 }
 
 async function setCodeRow(code: string, patch: { exp?: number; used?: number }) {
@@ -152,18 +154,17 @@ describe('OAuth callback state CSRF', () => {
 });
 
 describe('One-time deep-link code handoff', () => {
-  it('app callback uses ?code= (never a durable token) in the HTML/deep link', async () => {
+  it('app callback redirects to the App Link handoff page with ?code= (never a durable token)', async () => {
     const nonce = crypto.randomBytes(32).toString('base64url');
     const res = await callback(
       makeReq(callbackUrl('app', nonce), { headers: { ...nonceCookie(nonce), 'User-Agent': 'android-webview' } }),
     );
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain('carbook://login?code=');
-    expect(html).not.toContain('carbook://login?token=');
-    // The app handoff must not carry the 30-day JWT in the URL or body.
-    expect(extractCode(html)).toBeTruthy();
-    // No session cookie is minted for the app HTML response (WebView redeems the code).
+    expect(res.status).toBe(307);
+    const location = res.headers.get('location')!;
+    expect(location).toContain('/app-login?code=');
+    expect(location).not.toContain('token=');
+    expect(new URL(location).searchParams.get('code')).toBeTruthy();
+    // No session cookie is minted for the app handoff (the app redeems the code).
     expect(res.cookies.get('carbook_session')).toBeUndefined();
   });
 
@@ -172,7 +173,7 @@ describe('One-time deep-link code handoff', () => {
     const cb = await callback(
       makeReq(callbackUrl('app', nonce), { headers: { ...nonceCookie(nonce), 'User-Agent': 'android-webview' } }),
     );
-    const code = extractCode(await cb.text())!;
+    const code = appHandoffCode(cb)!;
 
     const res = await tokenLogin(makeReq(`/api/auth/token-login?code=${encodeURIComponent(code)}`));
     expect(res.status).toBe(307);
@@ -191,7 +192,7 @@ describe('One-time deep-link code handoff', () => {
     const cb = await callback(
       makeReq(callbackUrl('app', nonce), { headers: { ...nonceCookie(nonce), 'User-Agent': 'android-webview' } }),
     );
-    const code = extractCode(await cb.text())!;
+    const code = appHandoffCode(cb)!;
 
     const first = await tokenLogin(makeReq(`/api/auth/token-login?code=${encodeURIComponent(code)}`));
     expect(first.status).toBe(307);
@@ -274,5 +275,23 @@ describe('verifySessionToken exp + constant-time', () => {
     const { verifySessionToken } = await import('@/services/auth');
     const t = signSessionToken({ id: 'u', email: 'u@e.com', name: 'U', picture: null }, 1);
     expect(verifySessionToken(t)?.id).toBe('u');
+  });
+});
+
+describe('App Link handoff page (/app-login)', () => {
+  it('renders the tap-to-open page carrying the carbook:// deep link, uncacheable', async () => {
+    const code = 'a'.repeat(43);
+    const res = await appLogin(makeReq(`/app-login?code=${code}`));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toContain('no-store');
+    const html = await res.text();
+    expect(html).toContain(`carbook://login?code=${code}`);
+    expect(html).not.toContain('token=');
+  });
+
+  it('redirects home with auth_error when neither code nor token is present', async () => {
+    const res = await appLogin(makeReq('/app-login'));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toContain('auth_error=missing_code');
   });
 });

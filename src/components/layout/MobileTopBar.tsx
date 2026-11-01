@@ -1,5 +1,5 @@
 import React from 'react';
-import { Car, Globe, Settings, LogOut, Bell } from 'lucide-react';
+import { Globe, Settings, LogOut, Bell } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 import { nextLang } from '@/i18n/util';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
@@ -33,10 +33,10 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
   const nextCode = nextLang(lang);
 
   return (
-    <header className="md:hidden sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 px-3.5 py-2.5 flex items-center justify-between shrink-0">
+    <header className="md:hidden sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 px-3.5 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-2 min-w-0">
-        <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-500 shrink-0">
-          <Car className="w-4 h-4" />
+        <div className="w-8 h-8 rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center shrink-0">
+          <img src="/logo.png" alt="CarBook" className="w-8 h-8 object-cover" />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
