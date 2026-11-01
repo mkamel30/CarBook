@@ -31,11 +31,14 @@ jobs:
       - name: Install Dependencies
         run: |
           pnpm install --frozen-lockfile
-          pnpm --prefix mobile install
+          pnpm --prefix mobile install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
 
       - name: Run Test Suite
         run: |
-          pnpm test tests/
+          pnpm test
           pnpm --prefix mobile test
 
       - name: Build Next.js Production Bundle
