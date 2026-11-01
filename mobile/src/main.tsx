@@ -1,3 +1,8 @@
+// The Tailwind pipeline entry for the shell: import the ROOT globals.css
+// verbatim (it carries the @tailwind directives AND the theme custom
+// properties the shared components depend on). Zero copy — the two surfaces
+// can never drift. mobile/tailwind.config.cjs scans ../src + ./src for classes.
+import '../../src/app/globals.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';

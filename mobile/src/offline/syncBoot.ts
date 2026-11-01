@@ -1,18 +1,19 @@
-// Offline sync boot — mounts the WP2 sync runtime loop into the app shell.
+// Offline sync boot — presentation wrapper around the WP2 sync runtime.
 //
-// Composes the exact pieces device/runtime.ts orchestrates — ensureSession(guest
-// device) -> syncOnce -> an `online` listener — but imports ONLY the stable
-// primitives (device/session.ts, @device/localStore, @sync/client). At the time
-// of writing device/runtime.ts is owned by WP2 and still being edited (its
-// relative sync-client import is mid-fix), so the shell depends on this thin,
-// build-safe wrapper instead; WP3 should switch the shell onto device/runtime.ts
-// once it lands. All side effects (fetch, timers, network events) are injectable
-// so the whole flow runs under Node/vitest.
+// device/runtime.ts createRuntime is the SINGLE SOURCE for the sync loop:
+// ensureDeviceId -> ensureSession(guest device) -> syncOnce with bounded
+// backoff (MAX_SYNC_ATTEMPTS) and an explicit SyncFailedError state. This
+// wrapper only adds what the shell UI needs on top: an offline gate (skip
+// before burning retry attempts when there is no server / no connectivity),
+// human-readable bilingual status messages, and subscribe() for the chip.
+// All side effects (fetch, timers, network events) stay injectable so the
+// whole flow runs under Node/vitest.
 
 import type { Database } from '@nozbe/watermelondb';
 import { WMDBLocalStore } from '@device/localStore';
-import { ensureSession, type SessionStore, type StoredSession } from '@device/session';
-import { syncOnce, type SyncOutcome } from '@sync/client';
+import { createRuntime } from '@device/runtime';
+import type { SessionStore, StoredSession } from '@device/session';
+import type { SyncOutcome } from '@sync/client';
 
 export interface DeviceIdStore {
   load(): Promise<string | null>;
@@ -50,24 +51,6 @@ export interface SyncBoot {
   subscribe(cb: (state: SyncState) => void): () => void;
 }
 
-function newDeviceId(): string {
-  const c = globalThis.crypto as Crypto | undefined;
-  if (c?.randomUUID) return c.randomUUID();
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
-    const r = (Math.random() * 16) | 0;
-    const v = ch === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-async function ensureDeviceId(store: DeviceIdStore): Promise<string> {
-  const existing = await store.load();
-  if (existing) return existing;
-  const id = newDeviceId();
-  await store.save(id);
-  return id;
-}
-
 function defaultOnline(): boolean {
   if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') return navigator.onLine;
   return true;
@@ -89,6 +72,42 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
   };
   const listeners = new Set<(s: SyncState) => void>();
   let inFlight: Promise<SyncOutcome | null> | null = null;
+  let guest = false;
+
+  // The runtime owns the session lifecycle; we still need `guest` for the chip,
+  // so observe it through a passthrough store.
+  const probingSessionStore: SessionStore = {
+    async load() {
+      const s = await deps.sessionStore.load();
+      if (s) guest = s.guest;
+      return s;
+    },
+    async save(session: StoredSession) {
+      guest = session.guest;
+      await deps.sessionStore.save(session);
+    },
+    async clear() {
+      guest = false;
+      await deps.sessionStore.clear();
+    },
+  };
+
+  // Single source for the sync transport + backoff (device/runtime.ts). The
+  // online listener is owned by THIS wrapper (start() below) because we gate on
+  // connectivity before triggering a run — hence a no-op registration for the
+  // runtime's own default listener.
+  const runtime = createRuntime({
+    baseUrl: deps.baseUrl,
+    sessionStore: probingSessionStore,
+    deviceIdStore: deps.deviceIdStore,
+    makeLocalStore: () =>
+      new WMDBLocalStore(deps.db, {
+        loadSince: () => deps.sinceStore?.load() ?? 0,
+        saveSince: (seq) => deps.sinceStore?.save(seq),
+      }),
+    fetchImpl: deps.fetchImpl,
+    addOnlineListener: () => () => {},
+  });
 
   function set(next: Partial<SyncState>): void {
     state = { ...state, ...next };
@@ -106,27 +125,13 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
     }
     set({ phase: 'syncing', message: '同步中… · Syncing…' });
     try {
-      const deviceId = await ensureDeviceId(deps.deviceIdStore);
-      const session: StoredSession = await ensureSession(deps.sessionStore, deviceId, {
-        baseUrl: deps.baseUrl,
-        fetchImpl: deps.fetchImpl,
-      });
-      const store = new WMDBLocalStore(deps.db, {
-        loadSince: () => deps.sinceStore?.load() ?? 0,
-        saveSince: (seq) => deps.sinceStore?.save(seq),
-      });
-      const outcome = await syncOnce(store, {
-        baseUrl: deps.baseUrl,
-        deviceId,
-        authToken: session.accessToken,
-        fetchImpl: deps.fetchImpl,
-      });
+      const outcome = await runtime.syncNow();
       set({
         phase: 'synced',
         message: `已同步 · Synced (+${outcome.pushedCount}/↓${outcome.pulledCount})`,
         lastSyncedAt: Date.now(),
         lastOutcome: outcome,
-        guest: session.guest,
+        guest,
       });
       return outcome;
     } catch (err) {

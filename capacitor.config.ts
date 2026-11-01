@@ -1,22 +1,25 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-// Production server origin. Override at build/sync time with CARBOOK_SERVER_URL;
-// the value below is only the default. This is read when `cap sync`/`cap copy`
-// evaluates this config (build time), so it never ships a runtime env lookup.
-const SERVER_URL = process.env.CARBOOK_SERVER_URL || 'https://carbook.141.147.136.170.sslip.io';
-
+// Offline-first shell: the web app is BUNDLED into the APK (webDir = mobile/dist)
+// and served from the local https://localhost scheme. There is intentionally NO
+// server.url — the app boots from local assets and syncs opportunistically.
+//
+// The server origin now lives in two places that MUST agree:
+//   1. mobile/.env VITE_CARBOOK_SERVER_URL  (baked into the JS bundle at build)
+//   2. android/app/src/main/res/values/config.xml <string name="server_url">
+//      (used by MainActivity's deep-link auth handoff, which still loads the
+//      SERVER url in the WebView to complete a token login — transitional until
+//      task #17 replaces it with an in-app bearer bridge).
 const config: CapacitorConfig = {
   appId: 'com.mkamel.carbook',
   appName: 'CarBook',
-  webDir: 'out',
+  webDir: 'mobile/dist',
   server: {
-    url: SERVER_URL,
     androidScheme: 'https',
   },
   android: {
     backgroundColor: '#090d16',
-    // server.url is https and androidScheme is https; no http:// asset is loaded
-    // by the served bundle, so mixed content is disabled.
+    // Everything loads from the local https://localhost scheme; no http asset.
     allowMixedContent: false,
   },
 };

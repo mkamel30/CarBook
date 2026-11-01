@@ -19,7 +19,7 @@ interface AppProps {
 export default function App({ boot }: AppProps) {
   return (
     <>
-      {/* Keyframes for the sync chip (no Tailwind pipeline in the shell). */}
+      {/* Keyframes for the sync chip (styled inline; Tailwind covers the shared UI). */}
       <style>{`@keyframes carbook-chip-pulse{0%,100%{opacity:1}50%{opacity:.35}}`}</style>
       <ThemeProvider>
         <I18nProvider>

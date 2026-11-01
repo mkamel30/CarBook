@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from 'tailwindcss';
+import autoprefixer from 'autoprefixer';
 import { fileURLToPath } from 'node:url';
 
 // Regex `find` aliases (not bare strings) so the '@' / '@app' prefixes never
@@ -25,6 +27,14 @@ export default defineConfig({
   },
   server: {
     fs: { allow: ['..'] },
+  },
+  css: {
+    // Tailwind pipeline for the shared UI. Plugins are wired inline (rather
+    // than via a postcss.config file) so they apply deterministically whatever
+    // cwd vite is launched from. tailwindcss picks up mobile/tailwind.config.cjs.
+    postcss: {
+      plugins: [tailwindcss(), autoprefixer()],
+    },
   },
   build: {
     outDir: 'dist',

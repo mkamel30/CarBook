@@ -13,7 +13,8 @@
     "android:sync": "cap sync android",
     "android:open": "cap open android",
     "android:apk:debug": "cd android && .\\gradlew.bat assembleDebug",
-    "android:apk:release": "cd android && .\\gradlew.bat assembleRelease"
+    "android:apk:release": "cd android && .\\gradlew.bat assembleRelease",
+    "build:apk:local": "pnpm --prefix mobile build && cap sync android && cd android && .\\gradlew.bat assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",
