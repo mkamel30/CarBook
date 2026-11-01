@@ -130,7 +130,7 @@ function parseIpv4Literal(host: string): number | null {
 }
 
 function isBlockedIpv6(raw: string): boolean {
-  let h = raw.toLowerCase();
+  const h = raw.toLowerCase();
   const embedded = h.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/);
   if (embedded) return isBlockedAddress(embedded[1]);
   if (h === '::' || h === '::1') return true;
@@ -376,7 +376,7 @@ ${maintSummary}
 
 function extractJson(text: string): string {
   // Strip code fences if present
-  let cleaned = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+  const cleaned = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
 
   // Find opening '{' and matching closing '}'
   const startIdx = cleaned.indexOf('{');
