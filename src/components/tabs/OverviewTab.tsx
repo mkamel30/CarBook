@@ -52,14 +52,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   return (
     <div className="space-y-6">
       {/* Vehicle Info & Action Header */}
-      <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+      <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl relative">
+        <div className="flex items-start gap-3 pe-12">
+          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0 mt-0.5">
             <Car className="w-5 h-5" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base font-bold text-slate-100">{selectedVehicle.name}</h2>
+              <h2 className="text-base font-bold text-slate-100 truncate">{selectedVehicle.name}</h2>
               <span className="text-xs text-slate-400 font-medium">
                 ({selectedVehicle.make} {selectedVehicle.model} - {selectedVehicle.year})
               </span>
@@ -69,7 +69,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </span>
               )}
             </div>
-            <div className="text-xs text-slate-400 flex items-center gap-3 mt-1">
+            <div className="text-xs text-slate-400 flex items-center gap-3 mt-1.5 flex-wrap">
               {selectedVehicle.licensePlate && (
                 <span>{t('modal_car_plate')}: <strong className="text-slate-300 font-mono">{selectedVehicle.licensePlate}</strong></span>
               )}
@@ -80,20 +80,24 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
 
-        {/* 3-dots Menu for Vehicle Actions */}
+        {/* 3-dots Menu for Vehicle Actions - Firmly pinned in the top-end corner */}
         {(onOpenAddVehicle || onEditVehicle || onDeleteVehicle) && (
-          <div className="relative shrink-0" ref={menuRef}>
+          <div className="absolute top-3.5 end-3.5 z-20" ref={menuRef}>
             <button
               type="button"
               onClick={() => setIsMenuOpen((prev) => !prev)}
               aria-label="خيارات السيارة"
-              className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-400 border border-slate-800 hover:border-slate-700 transition active:scale-95"
+              className="p-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-amber-400 border border-slate-800 hover:border-slate-700 transition active:scale-95 shadow-sm"
             >
               <MoreVertical className="w-4 h-4" />
             </button>
 
             {isMenuOpen && (
-              <div className={`absolute ${dir === 'rtl' ? 'left-0' : 'right-0'} mt-2 w-48 bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl z-30 py-1.5 backdrop-blur-md animate-in fade-in zoom-in-95 duration-100`}>
+              <div
+                className={`absolute top-full mt-1.5 w-48 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl z-30 py-1.5 backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 ${
+                  dir === 'rtl' ? 'left-0' : 'right-0'
+                }`}
+              >
                 {onOpenAddVehicle && (
                   <button
                     type="button"
