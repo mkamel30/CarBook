@@ -4,26 +4,30 @@ import type {
   LocalStore,
   PushPayload,
   PulledTable,
+  SyncResponseData,
   SyncRow,
 } from '../../../src/sync/client';
-import { DEVICE_COLS, SYNC_TABLE_NAMES, srvKey } from './schema';
+import { DEVICE_COLS, SYNC_TABLE_NAMES, srvKey, toDeviceValue, toSrvValue } from './schema';
 
 // Dirty states stored in the device-only `_dirty` column. Rows the device changed
 // since the last ack carry 'created' | 'updated' | 'deleted'; synced rows are ''.
 const DIRTY_UNSYNCED = ['created', 'updated', 'deleted'];
 
 type RawFields = Record<string, string | number | null>;
+type RejectedRow = NonNullable<SyncResponseData['rejected']>[number];
+type PendingRow = { table: string; id: string; at: number; status: string; raw: RawFields };
 
 function businessCols(table: string) {
   return DEVICE_COLS[table];
 }
 
 // Build the server-shaped push row (snake_case columns + numeric updatedAt) from a
-// device record's raw fields.
+// device record's raw fields. `json` columns are parsed so the server's Zod
+// validators see real structures (parts_list must arrive as an array).
 function serialize(table: string, id: string, raw: RawFields, updatedAt: number): SyncRow {
   const row: SyncRow = { id, updatedAt };
   for (const c of businessCols(table)) {
-    row[srvKey(c)] = raw[c.col] ?? null;
+    row[srvKey(c)] = toSrvValue(c, raw[c.col] as string | number | null);
   }
   return row;
 }
@@ -33,10 +37,10 @@ function rawMapFromPulled(table: string, row: SyncRow, updatedAt: number): RawFi
     updated_at_sync: updatedAt,
     _dirty: '',
     _deleted_at: 0,
+    rejected_reason: '',
   };
   for (const c of businessCols(table)) {
-    const v = row[srvKey(c)];
-    raw[c.col] = v === undefined ? null : (v as string | number | null);
+    raw[c.col] = toDeviceValue(c, row[srvKey(c)]);
   }
   return raw;
 }
@@ -51,7 +55,11 @@ export class WMDBLocalStore implements LocalStore {
   private since = 0;
   // What collectDirty() handed to the transport, so markSynced() only clears rows
   // that are still exactly as they were when pushed.
-  private pending: Array<{ table: string; id: string; at: number }> = [];
+  private pending: PendingRow[] = [];
+  // The same snapshot, kept past markSynced() so remarkRejected() can restore the
+  // exact dirty state (and, for refused deletes, the row body) of pushed rows the
+  // server refused. Reset only by the next collectDirty().
+  private lastPushed: PendingRow[] = [];
 
   constructor(
     private db: Database,
@@ -92,6 +100,7 @@ export class WMDBLocalStore implements LocalStore {
   async collectDirty(): Promise<PushPayload> {
     const pushed: PushPayload = {};
     this.pending = [];
+    this.lastPushed = [];
     for (const table of SYNC_TABLE_NAMES) {
       const c = this.db.collections.get(table as any);
       const dirty = await c.query(Q.where('_dirty', Q.oneOf(DIRTY_UNSYNCED))).fetch();
@@ -102,7 +111,9 @@ export class WMDBLocalStore implements LocalStore {
         const raw = (rec as any)._raw || {};
         const status = raw._dirty;
         const updatedAt = Number(raw.updated_at_sync) || Date.now();
-        this.pending.push({ table, id: String(rec.id), at: updatedAt });
+        const entry: PendingRow = { table, id: String(rec.id), at: updatedAt, status, raw: { ...raw } };
+        this.pending.push(entry);
+        this.lastPushed.push(entry);
         if (status === 'deleted') {
           del.push({ id: rec.id, updatedAt });
         } else {
@@ -184,7 +195,11 @@ export class WMDBLocalStore implements LocalStore {
           if ((rec as any)._raw._dirty === 'deleted') {
             ops.push(rec.prepareDestroyPermanently());
           } else {
-            ops.push(rec.prepareUpdate((r: any) => { r._raw._dirty = ''; }));
+            ops.push(rec.prepareUpdate((r: any) => {
+              r._raw._dirty = '';
+              // The server accepted this exact revision: any earlier refusal is stale.
+              r._raw.rejected_reason = '';
+            }));
           }
         }
       }
@@ -192,5 +207,59 @@ export class WMDBLocalStore implements LocalStore {
     });
     this.since = serverSeq;
     this.meta.saveSince?.(serverSeq);
+  }
+
+  /**
+   * Second half of the ack: syncOnce() calls this right after markSynced() cleared
+   * the whole dirty set, with the rows the server refused per-row. A refused row
+   * must go back to the exact dirty state it was pushed in — never acknowledged,
+   * flagged with the server's reason so the UI can surface it and the next sync
+   * retries (or the user edits and the new revision wins). Deliberately
+   * UI-agnostic: bookkeeping columns only.
+   */
+  async remarkRejected(rejected: RejectedRow[]): Promise<void> {
+    if (!rejected.length) return;
+    await this.db.write(async () => {
+      const ops: any[] = [];
+      for (const rej of rejected) {
+        const table = String(rej.table);
+        if (!SYNC_TABLE_NAMES.includes(table)) continue;
+        const snap = this.lastPushed.find((p) => p.table === table && p.id === String(rej.id));
+        if (!snap) continue; // not something this push sent — nothing to restore
+        const c = this.db.collections.get(table as any);
+        const reason = String(rej.reason || 'rejected').slice(0, 400);
+        let rec: any;
+        try {
+          rec = await c.find(String(rej.id));
+        } catch {
+          rec = undefined;
+        }
+        if (!rec) {
+          // A refused tombstone: markSynced() purged it believing the delete landed.
+          // Recreate the row with its pushed body, still dirty, so the delete retries.
+          if (snap.status !== 'deleted') continue;
+          ops.push(c.prepareCreateFromDirtyRaw({
+            id: String(rej.id),
+            _status: 'created',
+            _changed: '',
+            ...snap.raw,
+            _dirty: 'deleted',
+            rejected_reason: reason,
+          }));
+          continue;
+        }
+        // Re-mark only the revision the server actually saw. A row re-edited
+        // mid-flight (newer updated_at_sync) or replaced by the pulled server copy
+        // is already in the right state; leave it alone.
+        const raw = (rec as any)._raw || {};
+        if (raw._dirty === '' && Number(raw.updated_at_sync) === snap.at) {
+          ops.push(rec.prepareUpdate((r: any) => {
+            r._raw._dirty = snap.status;
+            r._raw.rejected_reason = reason;
+          }));
+        }
+      }
+      await this.db.batch(...ops);
+    });
   }
 }

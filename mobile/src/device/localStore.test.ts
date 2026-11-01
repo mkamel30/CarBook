@@ -162,3 +162,158 @@ describe('device local store: in-flight edits are never lost', () => {
     expect(reopened.getSince()).toBe(50);
   });
 });
+
+// The server's per-row refusals (src/sync/client.ts remarkRejected hook): a
+// refused row must never be acknowledged away — it stays dirty with the reason
+// attached so the next sync retries or the user edits it.
+describe('device local store: refused rows stay retryable', () => {
+  let db: any;
+  let store: WMDBLocalStore;
+
+  beforeEach(() => {
+    db = makeDatabase();
+    store = new WMDBLocalStore(db);
+  });
+
+  it('keeps a server-refused row dirty and flags the rejection reason', async () => {
+    await localCreate(db, 'vehicles', 'v1', vehicleFields('Bad Year'), 1000);
+    await store.collectDirty();
+    await store.applyPulled({});
+    await store.markSynced(7);
+    expect((await rawOf(db, 'vehicles', 'v1'))._dirty).toBe('');
+
+    await store.remarkRejected([{ table: 'vehicles', id: 'v1', reason: 'invalid_payload:year:too big' }]);
+
+    const raw = await rawOf(db, 'vehicles', 'v1');
+    expect(raw._dirty).toBe('created');
+    expect(raw.rejected_reason).toBe('invalid_payload:year:too big');
+    // Retried on the next sync, unchanged.
+    const again = await store.collectDirty();
+    expect(again.vehicles?.upsert?.[0]?.id).toBe('v1');
+  });
+
+  it('clears the flag once the server accepts the revision', async () => {
+    await localCreate(db, 'vehicles', 'v1', vehicleFields('Bad'), 1000);
+    await store.collectDirty();
+    await store.markSynced(7);
+    await store.remarkRejected([{ table: 'vehicles', id: 'v1', reason: 'forbidden' }]);
+
+    await store.collectDirty();
+    await store.markSynced(9); // accepted this time (no remarkRejected)
+    const raw = await rawOf(db, 'vehicles', 'v1');
+    expect(raw._dirty).toBe('');
+    expect(raw.rejected_reason).toBe('');
+  });
+
+  it('a fresh local edit clears the stale refusal and wins the retry', async () => {
+    await localCreate(db, 'vehicles', 'v1', vehicleFields('Bad'), 1000);
+    await store.collectDirty();
+    await store.markSynced(7);
+    await store.remarkRejected([{ table: 'vehicles', id: 'v1', reason: 'invalid_payload:year:x' }]);
+
+    await localUpdate(db, 'vehicles', 'v1', { year: 2019 }, 1500);
+    expect((await rawOf(db, 'vehicles', 'v1')).rejected_reason).toBe('');
+    const pushed = await store.collectDirty();
+    expect(pushed.vehicles?.upsert?.[0]).toMatchObject({ id: 'v1', year: 2019, updatedAt: 1500 });
+  });
+
+  it('does not re-mark or flag a row the user already re-edited mid-flight', async () => {
+    await localCreate(db, 'vehicles', 'v1', vehicleFields('First'), 1000);
+    await store.collectDirty();
+    await localUpdate(db, 'vehicles', 'v1', { name: 'Newer edit' }, 1500);
+    await store.markSynced(7); // rejects the ts-1000 revision only
+
+    await store.remarkRejected([{ table: 'vehicles', id: 'v1', reason: 'invalid_payload:name:x' }]);
+    const raw = await rawOf(db, 'vehicles', 'v1');
+    expect(raw._dirty).toBe('updated');
+    expect(raw.updated_at_sync).toBe(1500);
+    expect(raw.rejected_reason).toBe('');
+  });
+
+  it('recreates a refused tombstone: purged delete returns as dirty and retries', async () => {
+    await localCreate(db, 'vehicles', 'v1', vehicleFields('Kill'), 1000);
+    await store.collectDirty();
+    await store.markSynced(1); // creation acked
+    await localMarkDeleted(db, 'vehicles', 'v1', 2000);
+
+    await store.collectDirty();
+    await store.markSynced(2); // believed the delete landed — row purged
+    await store.remarkRejected([{ table: 'vehicles', id: 'v1', reason: 'forbidden' }]);
+
+    const raw = await rawOf(db, 'vehicles', 'v1');
+    expect(raw._dirty).toBe('deleted');
+    expect(raw.name).toBe('Kill');
+    expect(raw.rejected_reason).toBe('forbidden');
+    const again = await store.collectDirty();
+    expect(again.vehicles?.delete).toEqual([{ id: 'v1', updatedAt: 2000 }]);
+  });
+});
+
+describe('device local store: parts_list JSON round-trip', () => {
+  const PARTS = [
+    { id: 'p1', name: 'Oil filter', condition: 'new', cost: 15 },
+    { name: 'Spark plug', condition: 'used_import', cost: 8.5 },
+  ];
+
+  function logFields(parts: unknown) {
+    return {
+      vehicle_id: 'v1', service_date: '2026-11-01', odometer: 1200,
+      service_type: 'oil_change', title: 'Oil service',
+      parts_list: parts, parts_cost: 23.5, labor_cost: 30, total_cost: 53.5,
+      created_at: iso(),
+    };
+  }
+
+  let db: any;
+  let store: WMDBLocalStore;
+
+  beforeEach(() => {
+    db = makeDatabase();
+    store = new WMDBLocalStore(db);
+  });
+
+  it('pushes the stored JSON string as a parsed array, keeping the column a string', async () => {
+    await localCreate(db, 'maintenance_logs', 'log-1', logFields(JSON.stringify(PARTS)), 1000);
+    expect(typeof (await rawOf(db, 'maintenance_logs', 'log-1')).parts_list).toBe('string');
+
+    const pushed = await store.collectDirty();
+    const row = pushed.maintenance_logs?.upsert?.[0];
+    expect(Array.isArray(row?.parts_list)).toBe(true);
+    expect(row?.parts_list).toEqual(PARTS);
+  });
+
+  it('accepts an array straight into the writer and normalises it to text', async () => {
+    await localCreate(db, 'maintenance_logs', 'log-1', logFields(PARTS), 1000);
+    const raw = await rawOf(db, 'maintenance_logs', 'log-1');
+    expect(typeof raw.parts_list).toBe('string');
+    expect(JSON.parse(raw.parts_list)).toEqual(PARTS);
+  });
+
+  it('pulls server rows back into the string column, whether parts arrive as text or array', async () => {
+    // The live server TEXT column arrives as a JSON string...
+    await store.applyPulled({
+      maintenance_logs: {
+        upsert: [{ id: 'log-1', updatedAt: 500, vehicle_id: 'v1', title: 'X', parts_list: JSON.stringify(PARTS) }],
+        deleted: [],
+      },
+    });
+    expect((await rawOf(db, 'maintenance_logs', 'log-1')).parts_list).toBe(JSON.stringify(PARTS));
+
+    // ...and a defensive device-to-device shape (array) is stringified, never stored raw.
+    await store.applyPulled({
+      maintenance_logs: {
+        upsert: [{ id: 'log-1', updatedAt: 600, vehicle_id: 'v1', title: 'X', parts_list: PARTS }],
+        deleted: [],
+      },
+    });
+    const raw = await rawOf(db, 'maintenance_logs', 'log-1');
+    expect(typeof raw.parts_list).toBe('string');
+    expect(JSON.parse(raw.parts_list)).toEqual(PARTS);
+  });
+
+  it('sends malformed JSON as-is so the server refuses it per-row instead of dropping it', async () => {
+    await localCreate(db, 'maintenance_logs', 'log-1', logFields('{ not json'), 1000);
+    const pushed = await store.collectDirty();
+    expect(pushed.maintenance_logs?.upsert?.[0]?.parts_list).toBe('{ not json');
+  });
+});

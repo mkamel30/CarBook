@@ -9,13 +9,39 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
 //   prop = the camelCase property exposed on the WatermelonDB Model.
 //   type = WatermelonDB column type. is_full_tank is stored as number (0/1) to
 //          avoid boolean coercion between SQLite ints and JS booleans.
-// Business cols are pushed/pulled; the trailing three are device-local bookkeeping.
+//   json = the device column keeps a JSON TEXT blob, but the server's Zod
+//          validators demand the parsed structure on push (e.g. maintenance_logs
+//          .parts_list must arrive as an array of maintenancePartItemSchema).
+//          The push/pull layer converts with toSrvValue/toDeviceValue so the
+//          WatermelonDB column itself stays a string.
+// Business cols are pushed/pulled; the trailing columns are device-local bookkeeping.
 
 export type ColType = 'string' | 'number' | 'boolean';
-export interface ColDef { col: string; prop: string; type: ColType; srv?: string; }
+export interface ColDef { col: string; prop: string; type: ColType; srv?: string; json?: boolean; }
 
 /** Server-side key a device column maps to in the sync contract. */
 export const srvKey = (c: ColDef): string => c.srv ?? c.col;
+
+/** Device stored value -> value placed in the push payload. */
+export function toSrvValue(c: ColDef, v: string | number | null | undefined): unknown {
+  if (!c.json || typeof v !== 'string') return v ?? null;
+  const s = v.trim();
+  if (!s) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    // Malformed local JSON is sent as-is: the server refuses it per-row with a
+    // reason, remarkRejected keeps the row dirty, and the user can fix it.
+    return v;
+  }
+}
+
+/** Pulled server value -> value stored in the (string) device column. */
+export function toDeviceValue(c: ColDef, v: unknown): string | number | null {
+  if (v === undefined || v === null) return null;
+  if (c.json && typeof v !== 'string') return typeof v === 'object' ? JSON.stringify(v) : (v as string | number);
+  return v as string | number;
+}
 
 export const DEVICE_COLS: Record<string, ColDef[]> = {
   vehicles: [
@@ -23,6 +49,9 @@ export const DEVICE_COLS: Record<string, ColDef[]> = {
     { col: 'make', prop: 'make', type: 'string' },
     { col: 'model', prop: 'model', type: 'string' },
     { col: 'year', prop: 'year', type: 'number' },
+    // Server-owned column that was missing from the device: an offline edit
+    // pushed without it and the sync upsert nullified engine_cc server-side.
+    { col: 'engine_cc', prop: 'engineCc', type: 'string' },
     { col: 'license_plate', prop: 'licensePlate', type: 'string' },
     { col: 'initial_odometer', prop: 'initialOdometer', type: 'number' },
     { col: 'current_odometer', prop: 'currentOdometer', type: 'number' },
@@ -47,7 +76,7 @@ export const DEVICE_COLS: Record<string, ColDef[]> = {
     { col: 'odometer', prop: 'odometer', type: 'number' },
     { col: 'service_type', prop: 'serviceType', type: 'string' },
     { col: 'title', prop: 'title', type: 'string' },
-    { col: 'parts_list', prop: 'partsList', type: 'string' },
+    { col: 'parts_list', prop: 'partsList', type: 'string', json: true },
     { col: 'parts_cost', prop: 'partsCost', type: 'number' },
     { col: 'labor_cost', prop: 'laborCost', type: 'number' },
     { col: 'total_cost', prop: 'totalCost', type: 'number' },
@@ -77,9 +106,16 @@ function wmColumns(tableName: string) {
     { name: 'updated_at_sync', type: 'number' as ColType }, // LWW timestamp (updatedAt)
     { name: '_dirty', type: 'string' as ColType },
     { name: '_deleted_at', type: 'number' as ColType },
+    // Set when the server refuses a pushed row per-row (sync remarkRejected);
+    // carries the refusal reason so UI can surface it. Cleared on ack/edit.
+    { name: 'rejected_reason', type: 'string' as ColType },
   ];
 }
 
+// NOTE: version stays 1 — no shipped build has ever persisted this device schema
+// (the prototype was never bundled into the APK), so there are no v1 databases to
+// migrate. WP5 packaging wires the real SQLite adapter; only then do schema
+// changes require version bumps + migrations.
 export const deviceSchema = appSchema({
   version: 1,
   tables: [

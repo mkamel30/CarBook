@@ -13,6 +13,7 @@ export class VehicleModel extends Model {
   @text('make') make!: string;
   @text('model') model!: string;
   @field('year') year!: number;
+  @text('engine_cc') engineCc?: string;
   @text('license_plate') licensePlate?: string;
   @field('initial_odometer') initialOdometer!: number;
   @field('current_odometer') currentOdometer!: number;
@@ -24,6 +25,7 @@ export class VehicleModel extends Model {
   @field('updated_at_sync') syncTs!: number;
   @text('_dirty') dirty?: string;
   @field('_deleted_at') deletedAt!: number;
+  @text('rejected_reason') rejectedReason?: string;
 }
 
 export class MaintenanceScheduleModel extends Model {
@@ -41,6 +43,7 @@ export class MaintenanceScheduleModel extends Model {
   @field('updated_at_sync') syncTs!: number;
   @text('_dirty') dirty?: string;
   @field('_deleted_at') deletedAt!: number;
+  @text('rejected_reason') rejectedReason?: string;
 }
 
 export class MaintenanceLogModel extends Model {
@@ -64,6 +67,7 @@ export class MaintenanceLogModel extends Model {
   @field('updated_at_sync') syncTs!: number;
   @text('_dirty') dirty?: string;
   @field('_deleted_at') deletedAt!: number;
+  @text('rejected_reason') rejectedReason?: string;
 }
 
 export class FuelLogModel extends Model {
@@ -82,6 +86,7 @@ export class FuelLogModel extends Model {
   @field('updated_at_sync') syncTs!: number;
   @text('_dirty') dirty?: string;
   @field('_deleted_at') deletedAt!: number;
+  @text('rejected_reason') rejectedReason?: string;
 }
 
 export const MODELS: Record<string, typeof Model> = {

@@ -18,7 +18,9 @@
     "baseUrl": ".",
     "paths": {
       "@device/*": ["src/device/*"],
-      "@sync/*": ["src/sync/*"]
+      "@sync/*": ["../src/sync/*"],
+      "@app/*": ["../src/*"],
+      "@/*": ["../src/*"]
     }
   },
   "include": ["src", "vite.config.ts"]
