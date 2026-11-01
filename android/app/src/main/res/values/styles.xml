@@ -13,10 +13,17 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Dark window behind the edge-to-edge WebView: no white flash on
+             launch and no light strip behind the status/gesture bars. -->
+        <item name="android:windowBackground">#090D16</item>
     </style>
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <!-- androidx core-splashscreen: branded splash on the app's own navy,
+             then hand off to the real theme (MainActivity installs it). -->
+        <item name="windowSplashScreenBackground">#090D16</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

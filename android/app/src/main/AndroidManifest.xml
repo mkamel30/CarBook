@@ -30,6 +30,24 @@
                 <data android:scheme="carbook" />
             </intent-filter>
 
+            <!--
+              Verified App Link: the OAuth callback redirects the browser to
+              https://<server>/app-login?code=... and Android hands that URL
+              straight to this activity (no browser page, no user gesture) when
+              /.well-known/assetlinks.json on the host lists this signing cert.
+              Host must stay in sync with res/values/config.xml server_url.
+              Unverified installs fall back to the /app-login tap-to-open page.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="carbook.141.147.136.170.sslip.io"
+                    android:pathPrefix="/app-login" />
+            </intent-filter>
+
         </activity>
 
         <provider
