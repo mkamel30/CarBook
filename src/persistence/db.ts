@@ -206,6 +206,23 @@ export async function getDatabase(dbFilePath?: string) {
     await client.execute('CREATE INDEX IF NOT EXISTS idx_auth_codes_user ON auth_codes(user_id);');
   } catch (e) {}
 
+  // Server-side revocation list for web session JWTs (T6). Only tokens minted
+  // with a `jti` claim can appear here; verifySessionToken consults it only
+  // when a jti is present, so legacy jti-less tokens keep verifying normally.
+  // `exp` mirrors the revoked token's own expiry so old rows can be GC'd once
+  // the revocation can no longer matter.
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS revocations (
+      jti TEXT PRIMARY KEY,
+      exp INTEGER NOT NULL
+    );`);
+  } catch (e) {
+    // Table already exists
+  }
+  try {
+    await client.execute('CREATE INDEX IF NOT EXISTS idx_revocations_exp ON revocations(exp);');
+  } catch (e) {}
+
   // Sync columns for pre-existing databases (new databases get them via CREATE above).
   const syncTables = ['vehicles', 'maintenance_schedules', 'maintenance_logs', 'fuel_logs'];
   for (const t of syncTables) {

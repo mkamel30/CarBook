@@ -249,3 +249,65 @@ export async function linkGuestToUser(
   const session = await issue(client, real, guestDeviceId);
   return { ...session, movedVehicles: vehicleIds.length };
 }
+
+/**
+ * One-time OAuth handoff codes for the mobile deep link.
+ *
+ * The old flow put a 30-day session JWT straight into `carbook://login?token=…`,
+ * which leaks into the OS intent log, browser history and any WebView chrome —
+ * a durable credential in a URL. Instead the callback mints a random 256-bit
+ * code, stores only SHA-256(code) -> userId in `auth_codes`, and hands the raw
+ * code to the app once. Redemption is atomic (the UPDATE is guarded on
+ * `used = 0` and its change count is checked), short-lived, and useless without
+ * the row, so a captured URL dies after a single use or on expiry.
+ */
+
+export const AUTH_CODE_TTL_SECONDS = 10 * 60;
+
+/** Mint a single-use code for `userId` and return the raw code (never persisted). */
+export async function issueOneTimeCode(
+  userId: string,
+  opts?: { dbPath?: string },
+): Promise<string> {
+  const code = newToken();
+  const { client } = await getDatabase(opts?.dbPath);
+  const exp = Math.floor(Date.now() / 1000) + AUTH_CODE_TTL_SECONDS;
+  await client.execute({
+    sql: 'INSERT INTO auth_codes (id, user_id, exp, used) VALUES (?, ?, ?, 0)',
+    args: [hashToken(code), userId, exp],
+  });
+  return code;
+}
+
+/**
+ * Redeem a handoff code, returning its owner's user id, or null when the code
+ * is unknown, already spent, or past its expiry.
+ */
+export async function redeemOneTimeCode(
+  code: string,
+  opts?: { dbPath?: string },
+): Promise<string | null> {
+  if (typeof code !== 'string' || code.length < 32) return null;
+  const { client } = await getDatabase(opts?.dbPath);
+  const id = hashToken(code);
+  const now = Math.floor(Date.now() / 1000);
+
+  const res = await client.execute({
+    sql: 'SELECT user_id, exp, used FROM auth_codes WHERE id = ?',
+    args: [id],
+  });
+  const row = res.rows[0] as any;
+  if (!row) return null;
+  if (Number(row.used) !== 0) return null;
+  if (Number(row.exp) < now) return null;
+
+  // Atomic claim: exactly one concurrent caller can flip used 0 -> 1.
+  const upd = await client.execute({
+    sql: 'UPDATE auth_codes SET used = 1 WHERE id = ? AND used = 0',
+    args: [id],
+  });
+  if (Number(upd.rowsAffected) !== 1) return null;
+
+  return String(row.user_id);
+}
+

@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOrFetchVehicleManual } from '@/services/aiOrchestrator';
 import { StorageRepository } from '@/persistence/repository';
 import { authErrorResponse, requireUser } from '@/services/authz';
+import { aiRateGuard } from '@/services/rateLimit';
 
 export async function POST(req: NextRequest) {
   try {
+    // T6 abuse throttle: 10/min per user. Additive guard only — the auth and
+    // ownership flow below is untouched.
+    const limited = await aiRateGuard(req, 'manual');
+    if (limited) return limited;
+
     const { vehicleId, forceRefresh } = await req.json();
     if (!vehicleId) {
       return NextResponse.json({ success: false, error: 'vehicleId is required' }, { status: 400 });

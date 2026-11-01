@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOrFetchVehicleSchedules } from '@/services/aiOrchestrator';
 import { StorageRepository } from '@/persistence/repository';
 import { authErrorResponse, requireUser } from '@/services/authz';
+import { aiRateGuard } from '@/services/rateLimit';
 
 export async function POST(req: NextRequest) {
   try {
+    // T6 abuse throttle: 10/min per user. Additive guard only — the auth and
+    // ownership flow below is untouched.
+    const limited = await aiRateGuard(req, 'lookup');
+    if (limited) return limited;
+
     requireUser(req);
     const { make, model, year, engineCc, forceRefresh } = await req.json();
     if (!make || !model || !year) {

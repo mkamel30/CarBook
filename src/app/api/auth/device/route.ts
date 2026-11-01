@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/services/auth';
 import { linkGuestToUser, refreshDeviceSession, registerDevice, revokeDeviceSession } from '@/services/deviceAuth';
+import { buildRateLimitResponse, getClientIp, deviceAuthLimiter } from '@/services/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +11,12 @@ function bad(message: string) {
 
 /** POST {deviceId} — first launch, or re-register after the keystore was wiped. */
 export async function POST(req: NextRequest) {
+  // In-route abuse throttle (T6): 20 register/refresh attempts per minute per
+  // IP. Higher than login because several phones behind one household NAT
+  // legitimately refresh together.
+  const limited = await deviceAuthLimiter.check(getClientIp(req));
+  if (!limited.allowed) return buildRateLimitResponse(limited);
+
   try {
     const { deviceId, refreshToken } = await req.json();
 
