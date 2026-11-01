@@ -26,9 +26,10 @@ export interface ResolvedAiConfig extends AILookupConfig {
  * 3. Server OpenRouter Key (SERVER_OPENROUTER_API_KEY / OPENROUTER_API_KEY)
  * 4. Fallback in DB settings
  */
-export async function resolveAiConfig(repo: StorageRepository): Promise<ResolvedAiConfig> {
-  // 1. User BYOK key
-  const userKey = await repo.getSetting('ai_api_key');
+export async function resolveAiConfig(repo: StorageRepository, userId?: string): Promise<ResolvedAiConfig> {
+  // 1. User BYOK key (per-user row first, legacy global row as fallback;
+  //    without a userId this behaves exactly like the old global-only read)
+  const userKey = await repo.getSetting('ai_api_key', userId);
   const userProvider = ((await repo.getSetting('ai_provider')) as 'gemini' | 'openrouter') || 'gemini';
   if (userKey && userKey.trim().length > 0) {
     return {

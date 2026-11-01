@@ -26,6 +26,8 @@ export interface SyncResponseData {
   serverSeq: number;
   pulled: Record<string, PulledTable>;
   rejected?: Array<{ table: string; id: string; reason: string }>;
+  /** Per-row push results (additive; older servers omit it). */
+  applied?: Array<{ table: string; id: string; kind: 'upsert' | 'delete' }>;
 }
 
 /** A device's local datastore, expressed as the minimum the sync loop needs. */
@@ -38,6 +40,12 @@ export interface LocalStore {
   applyPulled(pulled: Record<string, PulledTable>): void | Promise<void>;
   /** Commit the new cursor + clear dirty flags. Called only after a clean response. */
   markSynced(serverSeq: number): void | Promise<void>;
+  /**
+   * Optional (additive): after markSynced cleared the dirty set, re-mark exactly
+   * the rows the server rejected per-row, so a refused change is retried later
+   * instead of being silently dropped.
+   */
+  remarkRejected?(rejected: NonNullable<SyncResponseData['rejected']>): void | Promise<void>;
 }
 
 export interface SyncClientOptions {
@@ -102,6 +110,11 @@ export async function syncOnce(
   // crash mid-apply leaves `since` unchanged and the pull is safely re-fetched.
   await store.applyPulled(data.pulled || {});
   await store.markSynced(data.serverSeq);
+  // markSynced cleared the whole dirty set; hand the per-row refusals back so a
+  // rejected row stays dirty and is retried, never blindly acknowledged.
+  if (data.rejected?.length && store.remarkRejected) {
+    await store.remarkRejected(data.rejected);
+  }
 
   return {
     serverSeq: data.serverSeq,

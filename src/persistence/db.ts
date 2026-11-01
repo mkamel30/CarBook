@@ -107,11 +107,16 @@ export async function getDatabase(dbFilePath?: string) {
       deleted INTEGER NOT NULL DEFAULT 0,
       sync_ts INTEGER NOT NULL DEFAULT 0
     );`,
+    // Per-user settings: user_id '' means a global (legacy/default) row.
+    // (key, user_id) is the composite primary key so two users can hold the
+    // same key. Legacy single-key rows are migrated into user_id = ''.
     `CREATE TABLE IF NOT EXISTS app_settings (
-      key TEXT PRIMARY KEY,
+      key TEXT NOT NULL,
       value TEXT NOT NULL,
       is_encrypted INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      user_id TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (key, user_id)
     );`,
     `CREATE TABLE IF NOT EXISTS global_vehicle_specs_cache (
       id TEXT PRIMARY KEY,
@@ -124,10 +129,9 @@ export async function getDatabase(dbFilePath?: string) {
       source TEXT NOT NULL DEFAULT 'server_gemini',
       created_at TEXT NOT NULL,
       hit_count INTEGER NOT NULL DEFAULT 1,
-      UNIQUE(make_normalized, model_normalized, year)
+      owner_user_id TEXT NOT NULL DEFAULT '',
+      UNIQUE(make_normalized, model_normalized, year, owner_user_id)
     );`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS idx_specs_cache_lookup 
-    ON global_vehicle_specs_cache(make_normalized, model_normalized, year);`,
     // Global monotonic op counter used to assign sync `seq` for cursor-based pull.
     `CREATE TABLE IF NOT EXISTS sync_counter (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -184,6 +188,24 @@ export async function getDatabase(dbFilePath?: string) {
     // Column already exists or table was just created
   }
 
+  // One-time OAuth handoff codes for the mobile deep link. The raw code is
+  // returned to the app once and never stored; only SHA-256(code) is kept, keyed
+  // by that hash, so a database dump cannot be replayed for a session. Codes are
+  // short-lived and single-use (used flips to 1 on redemption).
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS auth_codes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      exp INTEGER NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0
+    );`);
+  } catch (e) {
+    // Table already exists
+  }
+  try {
+    await client.execute('CREATE INDEX IF NOT EXISTS idx_auth_codes_user ON auth_codes(user_id);');
+  } catch (e) {}
+
   // Sync columns for pre-existing databases (new databases get them via CREATE above).
   const syncTables = ['vehicles', 'maintenance_schedules', 'maintenance_logs', 'fuel_logs'];
   for (const t of syncTables) {
@@ -212,6 +234,71 @@ export async function getDatabase(dbFilePath?: string) {
       }
     } catch (e) {}
   }
+
+  // Per-user app_settings migration: legacy databases have `key TEXT PRIMARY KEY`
+  // with no user_id. Add the column, then rebuild with (key, user_id) as the
+  // composite key. Legacy rows become global defaults (user_id = ''), which stay
+  // readable as fallback for every user (additive, backward compatible).
+  try {
+    await client.execute(`ALTER TABLE app_settings ADD COLUMN user_id TEXT;`);
+  } catch (e) {}
+  try {
+    const shape = await client.execute({
+      sql: `SELECT COUNT(*) AS c FROM sqlite_master WHERE type = 'table' AND name = 'app_settings' AND sql LIKE '%PRIMARY KEY (key, user_id)%'`,
+      args: [],
+    });
+    if (Number((shape.rows[0] as any).c || 0) === 0) {
+      await client.batch([
+        { sql: `CREATE TABLE app_settings_new (
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            is_encrypted INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            user_id TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (key, user_id)
+          );`, args: [] },
+        { sql: `INSERT OR IGNORE INTO app_settings_new (key, value, is_encrypted, updated_at, user_id)
+                SELECT key, value, is_encrypted, updated_at, COALESCE(user_id, '') FROM app_settings;`, args: [] },
+        { sql: `DROP TABLE app_settings;`, args: [] },
+        { sql: `ALTER TABLE app_settings_new RENAME TO app_settings;`, args: [] },
+      ], 'write');
+    }
+  } catch (e) {}
+
+  // Spec-cache per-owner migration: legacy table is globally unique on
+  // (make, model, year) with no owner column. Rebuild so 'ai'-derived rows can be
+  // scoped to their owner while official/seeded rows (owner_user_id = '') stay global.
+  try {
+    const shape = await client.execute({
+      sql: `SELECT COUNT(*) AS c FROM sqlite_master WHERE type = 'table' AND name = 'global_vehicle_specs_cache' AND sql LIKE '%UNIQUE(make_normalized, model_normalized, year, owner_user_id)%'`,
+      args: [],
+    });
+    if (Number((shape.rows[0] as any).c || 0) === 0) {
+      try { await client.execute('ALTER TABLE global_vehicle_specs_cache ADD COLUMN owner_user_id TEXT;'); } catch (e) {}
+      await client.batch([
+        { sql: `CREATE TABLE global_vehicle_specs_cache_new (
+            id TEXT PRIMARY KEY,
+            make_normalized TEXT NOT NULL,
+            model_normalized TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            specs_json TEXT NOT NULL,
+            schedules_json TEXT,
+            recommended_oil TEXT,
+            source TEXT NOT NULL DEFAULT 'server_gemini',
+            created_at TEXT NOT NULL,
+            hit_count INTEGER NOT NULL DEFAULT 1,
+            owner_user_id TEXT NOT NULL DEFAULT '',
+            UNIQUE(make_normalized, model_normalized, year, owner_user_id)
+          );`, args: [] },
+        { sql: `INSERT OR IGNORE INTO global_vehicle_specs_cache_new
+                  (id, make_normalized, model_normalized, year, specs_json, schedules_json, recommended_oil, source, created_at, hit_count, owner_user_id)
+                SELECT id, make_normalized, model_normalized, year, specs_json, schedules_json, recommended_oil, source, created_at, hit_count, COALESCE(owner_user_id, '')
+                FROM global_vehicle_specs_cache;`, args: [] },
+        { sql: `DROP TABLE global_vehicle_specs_cache;`, args: [] },
+        { sql: `ALTER TABLE global_vehicle_specs_cache_new RENAME TO global_vehicle_specs_cache;`, args: [] },
+      ], 'write');
+    }
+  } catch (e) {}
 
   if (!dbFilePath) {
     _db = db;

@@ -1,5 +1,12 @@
 import { getDatabase } from './db';
+import { z } from 'zod';
 import type { Client } from '@libsql/client';
+import {
+  vehicleSchema,
+  maintenanceScheduleSchema,
+  maintenanceLogSchema,
+  fuelLogSchema,
+} from '../domain/schemas';
 
 /**
  * Server side of the offline-first sync contract.
@@ -12,7 +19,7 @@ import type { Client } from '@libsql/client';
  *
  * Protocol per call:
  *   request  { deviceId, since, pushed: { <table>: { upsert: [row], delete: [{id, updatedAt}] } } }
- *   response { serverSeq, pulled: { <table>: { upsert: [row], deleted: [id] } }, rejected }
+ *   response { serverSeq, pulled: { <table>: { upsert: [row], deleted: [id] } }, rejected, applied }
  *
  * Table and column identifiers below are hard-coded and never taken from the
  * request; only values are parameterised.
@@ -42,6 +49,12 @@ export interface SyncResponse {
   serverSeq: number;
   pulled: Record<string, PulledTable>;
   rejected: Array<{ table: string; id: string; reason: string }>;
+  /**
+   * Per-row results of the push (additive; older clients ignore it). Lets a
+   * device keep exactly the rows that were refused dirty instead of blindly
+   * clearing every pending change after a successful HTTP response.
+   */
+  applied?: Array<{ table: string; id: string; kind: 'upsert' | 'delete' }>;
 }
 
 interface TableDef {
@@ -97,14 +110,98 @@ function toBoolInt(v: any): number {
   return v === true || v === 1 || v === '1' ? 1 : 0;
 }
 
+// Coercion ceiling for int/real columns: junk that cannot become a finite
+// number is left untouched so the Zod validator below rejects the row instead
+// of a NaN reaching the database.
+function coerceNumber(v: any, int: boolean): any {
+  if (v === null || v === undefined) return v;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return v;
+  return int ? Math.trunc(n) : n;
+}
+
 function readColumn(row: SyncRow, name: string, def: TableDef): any {
   let v = row[name];
   if (v === undefined) v = null;
   if (def.boolColumns?.includes(name)) v = toBoolInt(v);
   else if (v === true) v = 1;
   else if (v === false) v = 0;
-  else if (v === undefined) v = null;
+  if (v !== null && def.intColumns?.includes(name)) v = coerceNumber(v, true);
+  else if (v !== null && def.realColumns?.includes(name)) v = coerceNumber(v, false);
   return v;
+}
+
+/**
+ * Row validators for the push path, built from the shared domain schemas with
+ * only the transport-level fields relaxed: sync row ids are client-generated
+ * strings (not necessarily RFC-4122), TEXT columns like `specs` and timestamps
+ * arrive as strings or epoch numbers. Every business constraint (nonnegative
+ * odometer, positive liters/costs, year range, service-type enum, ...) stays
+ * exactly as the REST layer enforces it.
+ */
+const looseScalar = z.union([z.string(), z.number()]).optional().nullable();
+const SYNC_VALIDATORS: Record<string, z.ZodTypeAny> = {
+  vehicles: vehicleSchema.extend({
+    id: z.string().min(1).optional(),
+    specs: z.unknown().optional(),
+    createdAt: looseScalar,
+    updatedAt: looseScalar,
+  }),
+  maintenance_schedules: maintenanceScheduleSchema.extend({
+    id: z.string().min(1).optional(),
+    vehicleId: z.string().min(1),
+  }),
+  maintenance_logs: maintenanceLogSchema.extend({
+    id: z.string().min(1).optional(),
+    vehicleId: z.string().min(1),
+    createdAt: looseScalar,
+  }),
+  fuel_logs: fuelLogSchema.extend({
+    id: z.string().min(1).optional(),
+    vehicleId: z.string().min(1),
+    createdAt: looseScalar,
+  }),
+};
+
+/**
+ * Business columns with a NOT NULL database constraint. Zod alone cannot cover
+ * these (timestamps are optional in the domain schema), and a null here would
+ * abort the whole write batch, so a row missing one is refused per-row instead.
+ */
+const REQUIRED_COLUMNS: Record<string, string[]> = {
+  vehicles: ['name', 'make', 'model', 'year', 'created_at'],
+  maintenance_schedules: ['vehicle_id', 'item_code', 'title_ar', 'title_en', 'interval_km'],
+  maintenance_logs: ['vehicle_id', 'service_date', 'odometer', 'service_type', 'title', 'total_cost', 'created_at'],
+  fuel_logs: ['vehicle_id', 'fill_date', 'odometer', 'liters', 'price_per_liter', 'total_cost', 'created_at'],
+};
+
+function toCamel(name: string): string {
+  return name.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+}
+
+/** Build a camelCase candidate from the coerced business columns for Zod. */
+function buildCandidate(raw: SyncRow, def: TableDef): SyncRow {
+  const out: SyncRow = { id: String(raw.id) };
+  for (const c of def.columns) {
+    let v = readColumn(raw, c, def);
+    if (def.boolColumns?.includes(c)) v = v === 1;
+    out[toCamel(c)] = v;
+  }
+  return out;
+}
+
+// A client clock may run fast, but never faster than the server plus plausible
+// skew: anything beyond that is treated as untrustworthy and clamped so it
+// cannot outrank the current server state (LWW ties resolve to the server).
+const CLOCK_SKEW_MS = 60_000;
+
+function clampClientTs(rawTs: number, serverNow: number, existingSyncTs: number | null): number {
+  if (!Number.isFinite(rawTs)) return serverNow;
+  if (rawTs > serverNow + CLOCK_SKEW_MS) {
+    return existingSyncTs === null ? serverNow : existingSyncTs;
+  }
+  if (rawTs > serverNow) return serverNow;
+  return rawTs;
 }
 
 async function scalar(client: Client, sql: string, args: any[]): Promise<any> {
@@ -113,7 +210,9 @@ async function scalar(client: Client, sql: string, args: any[]): Promise<any> {
 }
 
 // Atomically reserve a contiguous block of `n` seq numbers, returning the first one.
-async function reserveSeq(client: Client, n: number): Promise<number> {
+// Shared by the sync push path and every REST mutation (see repository.ts) so all
+// writes to sync-visible tables land in one global order.
+export async function reserveSeq(client: Client, n: number): Promise<number> {
   if (n <= 0) return 0;
   const res = await client.batch(
     [
@@ -145,6 +244,7 @@ export async function runSync(
   const { client } = await getDatabase(opts?.dbPath);
   const since = Number.isFinite(req.since) ? Math.max(0, Math.floor(req.since)) : 0;
   const rejected: SyncResponse['rejected'] = [];
+  const applied: NonNullable<SyncResponse['applied']> = [];
 
   // 1) Collect candidate ops and decide which are accepted (ownership + LWW).
   const accepted: PendingOp[] = [];
@@ -163,13 +263,22 @@ export async function runSync(
         rejected.push({ table, id: String(raw?.id ?? ''), reason: 'missing_id' });
         continue;
       }
-      const ts = Number(raw.updatedAt ?? raw.sync_ts ?? Date.now());
-
       const existing = await client.execute({
-        sql: `SELECT sync_ts${def.owner === 'user' ? ', user_id' : ', vehicle_id'} FROM ${table} WHERE id = ?`,
+        sql: `SELECT sync_ts, deleted${def.owner === 'user' ? ', user_id' : ', vehicle_id'} FROM ${table} WHERE id = ?`,
         args: [raw.id],
       });
       const ex = existing.rows[0] as any;
+
+      // The server is the tombstone authority: a stale client that has not seen
+      // the delete must not resurrect the row by pushing an older copy of it.
+      if (ex && Number(ex.deleted || 0) === 1) continue;
+
+      // Never trust a future-dated client clock (see clampClientTs).
+      const ts = clampClientTs(
+        Number(raw.updatedAt ?? raw.sync_ts ?? Date.now()),
+        Date.now(),
+        ex ? Number(ex.sync_ts || 0) : null,
+      );
 
       if (ex && Number(ex.sync_ts || 0) >= ts) continue; // server already newer/equal — drop, not an error
 
@@ -190,12 +299,34 @@ export async function runSync(
         }
       }
 
+      // Domain validation before insert: one dirty row must not poison the batch,
+      // and a rejected row is reported per-row so the client keeps it dirty.
+      const missing = (REQUIRED_COLUMNS[table] || []).find(
+        c => readColumn(raw, c, def) === null || readColumn(raw, c, def) === undefined,
+      );
+      if (missing) {
+        rejected.push({ table, id: raw.id, reason: `invalid_payload:${missing}:required` });
+        continue;
+      }
+      const validator = SYNC_VALIDATORS[table];
+      if (validator) {
+        const parsed = validator.safeParse(buildCandidate(raw, def));
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          rejected.push({
+            table,
+            id: raw.id,
+            reason: `invalid_payload:${issue ? issue.path.join('.') : '?'}:${issue ? issue.message : 'invalid'}`,
+          });
+          continue;
+        }
+      }
+
       accepted.push({ table, row: raw, kind: 'upsert', ts });
     }
 
     for (const entry of payload.delete || []) {
       const id = typeof entry === 'string' ? entry : entry?.id;
-      const ts = typeof entry === 'string' ? Date.now() : Number(entry?.updatedAt ?? Date.now());
       if (!id) continue;
 
       const existing = await client.execute({
@@ -205,6 +336,13 @@ export async function runSync(
       const ex = existing.rows[0] as any;
       if (!ex) continue; // nothing to tombstone — idempotent
 
+      const ts = clampClientTs(
+        typeof entry === 'string' ? Date.now() : Number(entry?.updatedAt ?? Date.now()),
+        Date.now(),
+        Number(ex.sync_ts || 0),
+      );
+
+      // Ownership
       if (def.owner === 'user') {
         const owner = ex?.user_id;
         if (owner && owner !== userId && owner !== 'default') {
@@ -229,6 +367,7 @@ export async function runSync(
     for (const op of accepted) {
       const def = SYNC_TABLES[op.table];
       const seq = seqCursor + i++;
+      applied.push({ table: op.table, id: String(op.row.id), kind: op.kind });
       if (op.kind === 'delete') {
         stmts.push({
           sql: `UPDATE ${op.table} SET deleted = 1, rev = rev + 1, seq = ?, sync_ts = ? WHERE id = ?`,
@@ -276,5 +415,5 @@ export async function runSync(
     if (upsert.length || deleted.length) pulled[table] = { upsert, deleted };
   }
 
-  return { serverSeq, pulled, rejected };
+  return { serverSeq, pulled, rejected, applied };
 }

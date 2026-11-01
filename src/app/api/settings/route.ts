@@ -2,21 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { StorageRepository } from '@/persistence/repository';
 import { resolveAiConfig } from '@/services/aiOrchestrator';
 import { authErrorResponse, requireUser } from '@/services/authz';
+import { getFuelPresetsByCountry } from '@/services/geoPricing';
 
 export async function GET(req: NextRequest) {
   try {
-    requireUser(req);
+    const user = requireUser(req);
     const repo = new StorageRepository();
-    const aiConfig = await resolveAiConfig(repo);
-    const userApiKey = await repo.getSetting('ai_api_key');
-    const fuelTypesRaw = await repo.getSetting('fuel_types');
-    const defaultFuelTypes = [
-      { id: 'gasoline_92', name: 'بنزين 92', price: 15.25 },
-      { id: 'gasoline_95', name: 'بنزين 95', price: 17.00 },
-      { id: 'gasoline_80', name: 'بنزين 80', price: 13.75 },
-      { id: 'diesel', name: 'سولار', price: 13.50 },
-      { id: 'cng', name: 'غاز طبيعي', price: 7.00 },
-    ];
+    // aiConfig reflects this user's BYOK row when present (userId is additive;
+    // without it resolveAiConfig behaves like the old global-only read).
+    const aiConfig = await resolveAiConfig(repo, user.id);
+    // Per-user settings first, legacy global row as fallback (see repository).
+    const userApiKey = await repo.getSetting('ai_api_key', user.id);
+    const fuelTypesRaw = await repo.getSetting('fuel_types', user.id);
+    // Single source of truth: the official geoPricing country presets, so the
+    // server fallback can never drift from the client defaults again.
+    const defaultFuelTypes = getFuelPresetsByCountry('EG').fuelTypes;
     const fuelTypes = fuelTypesRaw ? JSON.parse(fuelTypesRaw) : defaultFuelTypes;
 
     return NextResponse.json({
@@ -40,18 +40,23 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    requireUser(req);
+    const user = requireUser(req);
     const { provider, apiKey, fuelTypes } = await req.json();
     const repo = new StorageRepository();
 
     if (provider) {
+      // ai_provider stays a global setting: it is the legacy server-wide fallback
+      // consumed by resolveAiConfig and existing tests; per-user rows would make
+      // a global read (getSetting('ai_provider')) return null for everyone else.
       await repo.setSetting('ai_provider', provider);
     }
     if (apiKey !== undefined) {
-      await repo.setSetting('ai_api_key', apiKey, true);
+      // Stored per user. NOTE: plaintext-at-rest in app_settings — is_encrypted is
+      // deliberately false; nothing here encrypts, and claiming otherwise was cosmetic.
+      await repo.setSetting('ai_api_key', apiKey, false, user.id);
     }
     if (fuelTypes !== undefined) {
-      await repo.setSetting('fuel_types', JSON.stringify(fuelTypes));
+      await repo.setSetting('fuel_types', JSON.stringify(fuelTypes), false, user.id);
     }
 
     return NextResponse.json({ success: true, message: 'Settings saved successfully' });
