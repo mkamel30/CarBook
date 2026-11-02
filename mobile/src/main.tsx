@@ -17,6 +17,7 @@ import {
 } from './offline/syncBoot';
 import {
   createBearerFetch,
+  isBearerExpired,
   runAccountHandoff,
   type AccountBearer,
   type BearerStore,
@@ -68,11 +69,48 @@ function bootstrap() {
   const db = getSharedDatabase();
   const settings = createSettingsStore();
   const bearerStore = makeWebBearerStore();
+  const sessionStore = makeWebSessionStore();
+
+  // Guest trial mode: with no account bearer the app still presents its device
+  // session token, so server features like the vehicle "search & suggest"
+  // lookup work for a signed-out user instead of surfacing a bogus
+  // "session expired". The server accepts device JWTs (guest identities are
+  // rate-limited per device like any user). A 401 on the fallback burns only
+  // the account store — the device session must survive so offline sync can
+  // refresh it. `lastUsedGuestFallback` lets the 401 note tell guests
+  // "sign in to use this" rather than "your session ended".
+  let lastUsedGuestFallback = false;
+  const trialAwareBearerStore: BearerStore = {
+    async load() {
+      const account = await bearerStore.load();
+      if (account && !isBearerExpired(account)) {
+        lastUsedGuestFallback = false;
+        return account;
+      }
+      const device = await sessionStore.load();
+      if (device && device.expiresAt > Date.now()) {
+        lastUsedGuestFallback = true;
+        return {
+          token: device.accessToken,
+          userId: device.userId,
+          email: '',
+          name: '',
+          picture: null,
+          expiresAt: device.expiresAt,
+        };
+      }
+      lastUsedGuestFallback = false;
+      return account;
+    },
+    save: (bearer) => bearerStore.save(bearer),
+    clear: () => bearerStore.clear(),
+  };
 
   const networkFetch = createBearerFetch(originalFetch, {
-    store: bearerStore,
+    store: trialAwareBearerStore,
     serverBaseUrl: SERVER_BASE_URL,
-    onUnauthorized: (reason) => noteHandoff({ kind: 'unauthorized', reason }),
+    onUnauthorized: (reason) =>
+      noteHandoff({ kind: 'unauthorized', reason, guest: lastUsedGuestFallback }),
   });
 
   const bridge = createFetchBridge({
