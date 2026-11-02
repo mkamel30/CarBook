@@ -18,6 +18,14 @@ export function useDialogBehaviour(
 ) {
   const { autoFocusFirst = true } = opts;
 
+  // Callers pass inline arrows (`onClose={() => setOpen(false)}`), so the prop
+  // identity changes on every parent render — including each keystroke in a
+  // dialog form. Keeping it in a ref keeps the effect below keyed on `open`
+  // only; otherwise its cleanup/re-run steals focus from the field being typed
+  // in and the Android soft keyboard dismisses after every character.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
     const panel = panelRef.current;
@@ -32,7 +40,7 @@ export function useDialogBehaviour(
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab') return;
@@ -63,7 +71,7 @@ export function useDialogBehaviour(
       document.removeEventListener('keydown', onKeyDown, true);
       previouslyFocused?.focus?.();
     };
-  }, [open, panelRef, onClose, autoFocusFirst]);
+  }, [open, panelRef, autoFocusFirst]);
 }
 
 export interface ModalProps {
