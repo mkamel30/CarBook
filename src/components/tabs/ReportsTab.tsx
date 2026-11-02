@@ -8,7 +8,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
-import { formatDate } from '@/i18n/util';
+import { formatDate, localeFor, localizedField } from '@/i18n/util';
 import { exportVehicleDossierToExcel } from '@/services/exportExcel';
 
 export interface ReportsTabProps {
@@ -40,6 +40,9 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     }
   }
 
+  // Arabic-first spec value with its optional `*En` twin, read in the UI language.
+  const specText = (key: string) => localizedField(lang, specs[key], specs[`${key}En`]);
+
   let tirePressure = selectedVehicle?.tirePressureSpec || '—';
   if (specs.tirePressurePsiFront || specs.tirePressurePsiRear) {
     if (
@@ -47,12 +50,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       specs.tirePressurePsiRear &&
       specs.tirePressurePsiFront === specs.tirePressurePsiRear
     ) {
-      tirePressure = specs.tirePressurePsiFront;
+      tirePressure = specText('tirePressurePsiFront');
     } else {
-      tirePressure =
-        lang === 'ar'
-          ? `أمام: ${specs.tirePressurePsiFront || '—'} | خلف: ${specs.tirePressurePsiRear || '—'}`
-          : `Front: ${specs.tirePressurePsiFront || '—'} | Rear: ${specs.tirePressurePsiRear || '—'}`;
+      tirePressure = t('rep_tire_front_rear', {
+        front: specText('tirePressurePsiFront') || '—',
+        rear: specText('tirePressurePsiRear') || '—',
+      });
     }
   }
 
@@ -101,7 +104,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <h1 className="text-lg font-bold text-slate-100 print:text-slate-950">{t('rep_heading')}</h1>
             <p className="text-xs text-slate-400 print:text-slate-600">
               {t('rep_date')}{' '}
-              {new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US', {
+              {new Date().toLocaleDateString(localeFor(lang), {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',
@@ -141,7 +144,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           </div>
           <div className="print-card-subtle bg-slate-900 p-3 rounded border border-slate-800">
             <div className="text-[11px] text-slate-400 print:text-slate-600">
-              {lang === 'ar' ? 'إجمالي تكاليف الصيانة' : 'Total Service Costs'}
+              {t('rep_total_costs')}
             </div>
             <div className="text-base font-bold text-slate-200 print:text-slate-900 font-mono mt-0.5">
               {maintenanceLogs.reduce((acc, m) => acc + (Number(m.totalCost) || 0), 0).toLocaleString()}{' '}
@@ -155,7 +158,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold text-slate-300 print:text-slate-900 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
-              {lang === 'ar' ? 'المواصفات الفنية وسوائل المحرك المعتمدة' : 'OEM Technical & Fluid Specifications'}
+              {t('rep_oem_specs_title')}
             </h3>
             {!hasSpecs && (
               <button
@@ -165,7 +168,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 className="print:hidden text-[11px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded flex items-center gap-1 transition font-medium"
               >
                 {manualLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                {lang === 'ar' ? 'جلب بذكاء الاصطناعي' : 'Fetch with AI'}
+                {t('rep_fetch_ai_btn')}
               </button>
             )}
           </div>
@@ -173,23 +176,23 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
             <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
               <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">
-                {lang === 'ar' ? 'سائل التبريد:' : 'Coolant:'}
+                {t('manual_field_coolant')}
               </span>
               <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">
-                {specs.coolantType || selectedVehicle.coolantSpec || '—'}
+                {specText('coolantType') || selectedVehicle.coolantSpec || '—'}
               </span>
             </div>
             <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
               <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">
-                {lang === 'ar' ? 'زيت القير:' : 'Trans Fluid:'}
+                {t('manual_field_trans_fluid')}
               </span>
               <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">
-                {specs.transmissionFluidType || selectedVehicle.transmissionSpec || '—'}
+                {specText('transmissionFluidType') || selectedVehicle.transmissionSpec || '—'}
               </span>
             </div>
             <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
               <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">
-                {lang === 'ar' ? 'ضغط الإطارات:' : 'Tire Pressure:'}
+                {t('manual_field_tire_front')}
               </span>
               <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">
                 {tirePressure}
@@ -197,7 +200,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             </div>
             <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
               <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">
-                {lang === 'ar' ? 'سعة الخزان:' : 'Tank Capacity:'}
+                {t('manual_field_tank_capacity')}
               </span>
               <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">
                 {specs.fuelTankCapacityLiters || (selectedVehicle.fuelTankCapacity ? `${selectedVehicle.fuelTankCapacity} L` : '—')}
@@ -205,42 +208,42 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             </div>
             <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
               <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">
-                {lang === 'ar' ? 'شمعات الاحتراق:' : 'Spark Plugs:'}
+                {t('manual_field_spark_plugs')}
               </span>
               <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">
-                {specs.sparkPlugType || selectedVehicle.sparkPlugsSpec || '—'}
+                {specText('sparkPlugType') || selectedVehicle.sparkPlugsSpec || '—'}
               </span>
             </div>
             <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
               <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">
-                {lang === 'ar' ? 'مواصفة البطارية:' : 'Battery:'}
+                {t('manual_field_battery')}
               </span>
               <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">
-                {specs.batterySpec || selectedVehicle.batterySpec || '—'}
+                {specText('batterySpec') || selectedVehicle.batterySpec || '—'}
               </span>
             </div>
             <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
               <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">
-                {lang === 'ar' ? 'لزوجة زيت المحرك:' : 'Engine Oil:'}
+                {t('manual_field_oil_viscosity')}
               </span>
               <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">
-                {specs.engineOilViscosity || selectedVehicle.recommendedOil || '—'}
+                {specText('engineOilViscosity') || selectedVehicle.recommendedOil || '—'}
               </span>
             </div>
             <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
               <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">
-                {lang === 'ar' ? 'سعة زيت المحرك:' : 'Oil Capacity:'}
+                {t('manual_field_oil_capacity')}
               </span>
               <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">
-                {specs.engineOilCapacityLiters || '—'}
+                {specText('engineOilCapacityLiters') || '—'}
               </span>
             </div>
             <div className="flex flex-col border-b border-slate-800 print:border-slate-300 py-1.5">
               <span className="text-[11px] text-slate-400 print:text-slate-600 mb-0.5">
-                {lang === 'ar' ? 'سائل الفرامل:' : 'Brake Fluid:'}
+                {t('manual_field_brake_fluid')}
               </span>
               <span className="font-semibold text-slate-200 print:text-slate-900 break-words leading-tight">
-                {specs.brakeFluidType || '—'}
+                {specText('brakeFluidType') || '—'}
               </span>
             </div>
           </div>
@@ -248,9 +251,9 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           {specs.generalNotesAr && (
             <div className="text-[11px] text-slate-300 print:text-slate-800 bg-slate-950/60 p-2.5 rounded border border-slate-800 print:border-slate-300 leading-relaxed mt-2">
               <span className="font-bold text-amber-400 print:text-slate-900 block mb-0.5">
-                {lang === 'ar' ? '💡 إرشادات وتوصيات المصنع:' : '💡 Key OEM Guidelines:'}
+                {t('rep_oem_guidelines')}
               </span>
-              {specs.generalNotesAr}
+              {localizedField(lang, specs.generalNotesAr, specs.generalNotesEn)}
             </div>
           )}
         </div>
@@ -279,7 +282,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                 {maintenanceLogs.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-4 text-center text-slate-500 italic">
-                      {lang === 'ar' ? 'لا توجد سجلات صيانة مسجلة حتى الآن' : 'No maintenance records logged yet'}
+                      {t('rep_no_records')}
                     </td>
                   </tr>
                 ) : (
@@ -307,13 +310,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
                                   className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-slate-900 print:bg-slate-100 border border-slate-800 print:border-slate-300 text-slate-300 print:text-slate-800"
                                 >
                                   {p.name} (
-                                  {p.condition === 'used_import'
-                                    ? lang === 'ar'
-                                      ? 'استيراد'
-                                      : 'Used'
-                                    : lang === 'ar'
-                                    ? 'جديد'
-                                    : 'New'}
+                                  {p.condition === 'used_import' ? t('rep_part_used') : t('rep_part_new')}
                                   : {p.cost} {t('unit_currency')})
                                 </span>
                               ))}

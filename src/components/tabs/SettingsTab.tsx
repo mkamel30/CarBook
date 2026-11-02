@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Globe, Check, Fuel, PlusCircle, Trash2, Settings, Bell, BellRing, UserCheck, LogOut, Palette, DatabaseBackup, Download, Upload, MapPin, Sparkles } from 'lucide-react';
 import { detectCountryFromTimezone, getFuelPresetsByCountry, listSupportedCountries } from '@/services/geoPricing';
 import { useTranslation } from '@/i18n/context';
+import { localizedField } from '@/i18n/util';
 import { useTheme } from '@/theme/context';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
 import { pushToast } from '@/components/ui/Toast';
@@ -30,11 +31,11 @@ interface BackupPreview {
   file: unknown;
 }
 
-const BACKUP_TABLES: Array<[string, Record<string, string>]> = [
-  ['vehicles', { ar: 'سيارات', en: 'vehicles', pl: 'pojazdy' }],
-  ['maintenance_schedules', { ar: 'مواعيد صيانة', en: 'schedules', pl: 'harmonogramy' }],
-  ['maintenance_logs', { ar: 'سجل صيانة', en: 'service logs', pl: 'serwisy' }],
-  ['fuel_logs', { ar: 'سجل وقود', en: 'fuel logs', pl: 'paliwo' }],
+const BACKUP_TABLES: Array<[string, string]> = [
+  ['vehicles', 'set_backup_tbl_vehicles'],
+  ['maintenance_schedules', 'set_backup_tbl_schedules'],
+  ['maintenance_logs', 'set_backup_tbl_service_logs'],
+  ['fuel_logs', 'set_backup_tbl_fuel_logs'],
 ];
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -73,7 +74,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       ...settings,
       fuelTypes: preset.fuelTypes,
     });
-    setGeoMsg(`${preset.flag} ${lang === 'ar' ? preset.nameAr : preset.nameEn} (${preset.currencySymbol})`);
+    setGeoMsg(`${preset.flag} ${localizedField(lang, preset.nameAr, preset.nameEn)} (${preset.currencySymbol})`);
     setTimeout(() => setGeoMsg(''), 4000);
   };
 
@@ -84,7 +85,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       ...settings,
       fuelTypes: preset.fuelTypes,
     });
-    setGeoMsg(`${preset.flag} ${lang === 'ar' ? preset.nameAr : preset.nameEn} (${preset.currencySymbol})`);
+    setGeoMsg(`${preset.flag} ${localizedField(lang, preset.nameAr, preset.nameEn)} (${preset.currencySymbol})`);
     setTimeout(() => setGeoMsg(''), 4000);
   };
 
@@ -119,7 +120,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text());
-      if (parsed?.kind !== 'carbook-backup') throw new Error(lang === 'ar' ? 'ملف غير معروف.' : 'Unrecognised file.');
+      if (parsed?.kind !== 'carbook-backup') throw new Error(t('set_backup_unrecognised_file'));
       const counts: Record<string, number> = {};
       for (const [key] of BACKUP_TABLES) {
         counts[key] = Array.isArray(parsed.tables?.[key]) ? parsed.tables[key].length : 0;
@@ -144,7 +145,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
       const inserted = Object.values(json.data.tables as Record<string, { inserted: number }>)
         .reduce((n, s) => n + s.inserted, 0);
-      setBackupMsg(lang === 'ar' ? `تمت الاستعادة: ${inserted} سجل.` : `Restored: ${inserted} rows.`);
+      setBackupMsg(t('set_backup_restored', { count: inserted }));
       setBackupPreview(null);
       setReplaceArmed(false);
       onDataRestored?.();
@@ -163,38 +164,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     const granted = await requestNotificationPermission();
     setNotifStatus(checkNotificationSupport());
     if (granted) {
-      sendLocalNotification(
-        lang !== 'ar' ? '🚗 CarBook Notifications Activated' : '🚗 تم تفعيل إشعارات CarBook',
-        {
-          body:
-            lang !== 'ar'
-              ? 'You will now receive alerts when maintenance service is approaching.'
-              : 'ستصلك الآن تنبيهات دورية عند اقتراب مواعيد الصيانة وتغيير الزيوت.',
-        }
-      );
+      sendLocalNotification(t('set_enable_notif_title'), { body: t('set_enable_notif_body') });
     }
   };
 
   const handleTestNotification = () => {
-    const sent = sendLocalNotification(
-      lang !== 'ar' ? '🔔 CarBook Service Reminder' : '🔔 تذكير صيانة من CarBook',
-      {
-        body:
-          lang !== 'ar'
-            ? 'Test Alert: Engine oil change recommended soon!'
-            : 'إشعار تجريبي: اقترب موعد تغيير زيت المحرك وفحص الفلاتر!',
-      }
-    );
+    const sent = sendLocalNotification(t('set_test_notif_sent_title'), { body: t('set_test_notif_sent_body') });
     if (sent) {
       setTestSent(true);
       setTimeout(() => setTestSent(false), 3500);
     } else {
-      pushToast(
-        lang !== 'ar'
-          ? 'Please enable notification permissions in your browser or device first.'
-          : 'يرجى السماح بالإشعارات من إعدادات المتصفح أو الجهاز أولاً.',
-        'error'
-      );
+      pushToast(t('set_notif_perm_hint'), 'error');
     }
   };
 
@@ -206,7 +186,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="flex items-center gap-2">
             <UserCheck className="w-5 h-5 text-amber-500" />
             <h2 className="text-sm font-bold text-slate-100">
-              {lang === 'ar' ? 'حساب المستخدم والمزامنة السحابية' : lang === 'pl' ? 'Konto użytkownika i synchronizacja' : 'User Account & Cloud Sync'}
+              {t('set_account_title')}
             </h2>
           </div>
           <span
@@ -221,9 +201,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 currentUser ? 'bg-emerald-400' : 'bg-slate-500'
               }`}
             />
-            {currentUser
-              ? (lang === 'ar' ? 'مسجل الدخول' : lang === 'pl' ? 'Zalogowano' : 'Logged in')
-              : (lang === 'ar' ? 'غير مسجل' : lang === 'pl' ? 'Niezalogowany' : 'Not logged in')}
+            {currentUser ? t('set_logged_in') : t('set_not_logged_in')}
           </span>
         </div>
 
@@ -252,17 +230,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               className="self-start sm:self-auto px-4 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-300 hover:text-rose-400 border border-slate-700 hover:border-rose-900 text-xs font-semibold flex items-center gap-2 transition"
             >
               <LogOut className="w-4 h-4" />
-              <span>{lang === 'ar' ? 'تسجيل الخروج' : lang === 'pl' ? 'Wyloguj' : 'Sign out'}</span>
+              <span>{t('set_sign_out')}</span>
             </button>
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-slate-400 leading-relaxed">
-              {lang === 'ar'
-                ? 'قم بتسجيل الدخول بحساب Google لربط سياراتك تلقائياً بحسابك وحفظ بياناتك وسجلاتك ومزامنتها بأمان عبر السيرفر والهاتف.'
-                : lang === 'pl'
-                ? 'Zaloguj się kontem Google, aby powiązać pojazdy ze swoim kontem i bezpiecznie synchronizować dane między urządzeniami.'
-                : 'Sign in with your Google account to associate your vehicles with your account and sync data across devices securely.'}
+              {t('set_login_desc')}
             </p>
             <button
               type="button"
@@ -270,7 +244,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               className="bg-white hover:bg-slate-100 text-slate-900 font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2.5 shadow-md active:scale-95 transition"
             >
               <GoogleIcon />
-              <span>{lang === 'ar' ? 'تسجيل الدخول بحساب Google' : lang === 'pl' ? 'Zaloguj się przez Google' : 'Sign in with Google'}</span>
+              <span>{t('btn_login_google')}</span>
             </button>
           </div>
         )}
@@ -281,15 +255,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
           <DatabaseBackup className="w-5 h-5 text-amber-500" />
           <h2 className="text-sm font-bold text-slate-100">
-            {lang === 'ar' ? 'النسخة الاحتياطية واستعادة البيانات' : lang === 'pl' ? 'Kopia zapasowa i przywracanie' : 'Backup & Restore'}
+            {t('set_backup_title')}
           </h2>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed">
-          {lang === 'ar'
-            ? 'نزّل نسخة كاملة من سياراتك وسجلاتها كملف JSON واحد. استعِده على أي جهاز أو بعد إعادة تثبيت التطبيق.'
-            : lang === 'pl'
-            ? 'Pobierz pełną kopię pojazdów i historii jako jeden plik JSON. Przywróć go na dowolnym urządzeniu.'
-            : 'Download every vehicle and log as a single JSON file, and restore it on any device or after a reinstall.'}
+          {t('set_backup_desc')}
         </p>
 
         <button
@@ -299,19 +269,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           className="bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:hover:bg-amber-500 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition active:scale-95"
         >
           <Download className="w-4 h-4" />
-          <span>{lang === 'ar' ? 'تنزيل نسخة احتياطية' : lang === 'pl' ? 'Pobierz kopię' : 'Download backup'}</span>
+          <span>{t('set_backup_download')}</span>
         </button>
 
         {!currentUser && (
           <p className="text-[11px] text-slate-500">
-            {lang === 'ar' ? 'سجّل الدخول أولاً لاستخدام النسخ الاحتياطي.' : lang === 'pl' ? 'Zaloguj się, aby używać kopii zapasowych.' : 'Sign in first to use backup and restore.'}
+            {t('set_backup_login_first')}
           </p>
         )}
 
         {currentUser && (
           <div className="space-y-3 pt-1 border-t border-slate-800">
             <label className="block text-xs font-medium text-slate-300">
-              {lang === 'ar' ? 'استعادة من ملف' : lang === 'pl' ? 'Przywróć z pliku' : 'Restore from file'}
+              {t('set_backup_restore_from_file')}
             </label>
             <input
               type="file"
@@ -324,7 +294,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <div className="space-y-3 bg-slate-900/70 border border-slate-800 p-3 rounded-lg">
                 <div className="text-[11px] text-slate-400 font-mono">
                   {backupPreview.exportedAt ? backupPreview.exportedAt.slice(0, 10) : '—'} ·{' '}
-                  {BACKUP_TABLES.map(([key, label]) => `${label[lang]}: ${backupPreview.counts[key] ?? 0}`).join(' · ')}
+                  {BACKUP_TABLES.map(([key, labelKey]) => `${t(labelKey)}: ${backupPreview.counts[key] ?? 0}`).join(' · ')}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -341,22 +311,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       }`}
                     >
                       <span className={`block text-xs font-bold ${restoreMode === m ? 'text-amber-400' : 'text-slate-200'}`}>
-                        {m === 'merge'
-                          ? (lang === 'ar' ? 'دمج (آمن)' : lang === 'pl' ? 'Scal (bezpieczne)' : 'Merge (safe)')
-                          : (lang === 'ar' ? 'استبدال كامل' : lang === 'pl' ? 'Zastąp wszystko' : 'Full replace')}
+                        {m === 'merge' ? t('set_backup_merge_title') : t('set_backup_replace_title')}
                       </span>
                       <span className="block text-[11px] text-slate-400 leading-snug mt-0.5">
-                        {m === 'merge'
-                          ? (lang === 'ar'
-                              ? 'يضيف ما فقدته فقط ويترك كل ما هو موجود حالياً كما هو.'
-                              : lang === 'pl'
-                              ? 'Dopełnia brakujące wiersze, niczego nie nadpisuje.'
-                              : 'Adds back only what is missing; never overwrites anything you already have.')
-                          : (lang === 'ar'
-                              ? 'يحذف بياناتك الحالية ويستبدلها بمحتوى الملف. لا يمكن التراجع.'
-                              : lang === 'pl'
-                              ? 'Usuwa bieżące dane i zastępuje je zawartością pliku. Nieodwracalne.'
-                              : 'Deletes your current data and puts the file in its place. Cannot be undone.')}
+                        {m === 'merge' ? t('set_backup_merge_desc') : t('set_backup_replace_desc')}
                       </span>
                     </button>
                   ))}
@@ -371,11 +329,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       className="mt-0.5 accent-rose-500"
                     />
                     <span>
-                      {lang === 'ar'
-                        ? 'أفهم أن الاستبدال الكامل سيمسح سجلاتي الحالية على هذا الحساب.'
-                        : lang === 'pl'
-                        ? 'Rozumiem, że zastąpienie usunie moją bieżącą historię.'
-                        : 'I understand that a full replace wipes the history on this account.'}
+                      {t('set_backup_replace_ack')}
                     </span>
                   </label>
                 )}
@@ -389,7 +343,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-100 border border-slate-700 px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition active:scale-95"
                 >
                   <Upload className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'استعادة الآن' : lang === 'pl' ? 'Przywróć teraz' : 'Restore now'}</span>
+                  <span>{t('set_backup_restore_btn')}</span>
                 </button>
               </div>
             )}
@@ -409,15 +363,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
           <Globe className="w-5 h-5 text-amber-500" />
           <h2 className="text-sm font-bold text-slate-100">
-            {lang === 'ar' ? 'لغة التطبيق (App Language)' : lang === 'pl' ? 'Język aplikacji' : 'App Language'}
+            {t('set_lang_title')}
           </h2>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed">
-          {lang === 'ar'
-            ? 'يدعم CarBook نظام اللغات المتعددة عبر ملفات .cfg البسيطة. يمكنك التبديل بين اللغات أو إضافة لغة جديدة بسهولة.'
-            : lang === 'pl'
-            ? 'CarBook obsługuje wiele języków skonfigurowanych za pomocą plików .cfg. Zmień język w dowolnym momencie.'
-            : 'CarBook supports multiple languages configured via simple .cfg files. Switch your language or easily drop new language files.'}
+          {t('set_lang_desc')}
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {languages.map((l) => (
@@ -443,15 +393,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
           <Palette className="w-5 h-5 text-amber-500" />
           <h2 className="text-sm font-bold text-slate-100">
-            {lang === 'ar' ? 'مظهر التطبيق (Theme)' : lang === 'pl' ? 'Motyw aplikacji' : 'App Theme'}
+            {t('set_theme_title')}
           </h2>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed">
-          {lang === 'ar'
-            ? 'اختر أحد المظاهر الأربعة. يتم حفظ اختيارك على هذا الجهاز ويُطبَّق فوراً على كامل التطبيق.'
-            : lang === 'pl'
-            ? 'Wybierz jeden z czterech motywów. Wybór jest zapisywany na tym urządzeniu i stosowany natychmiast.'
-            : 'Pick one of four themes. Your choice is saved on this device and applied instantly across the app.'}
+          {t('set_theme_desc')}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {themes.map((th) => {
@@ -523,7 +469,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               {listSupportedCountries().map((c) => (
                 <option key={c.countryCode} value={c.countryCode}>
-                  {c.flag} {lang === 'ar' ? c.nameAr : c.nameEn} ({c.currencySymbol} - {c.currency})
+                  {c.flag} {localizedField(lang, c.nameAr, c.nameEn)} ({c.currencySymbol} - {c.currency})
                 </option>
               ))}
             </select>
@@ -545,7 +491,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               <input
                 type="text"
-                placeholder="Gasoline 95 / بنزين 95"
+                placeholder={t('set_fuel_name_placeholder')}
                 className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-amber-500"
                 value={ft.name}
                 onChange={(e) => {
@@ -559,7 +505,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   type="number"
                   step="any"
                   min="0"
-                  placeholder="Price"
+                  placeholder={t('ph_price')}
                   className="w-16 sm:w-20 bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 font-mono outline-none focus:border-amber-500 text-center"
                   value={ft.price}
                   onChange={(e) => {
@@ -596,7 +542,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   ...settings.fuelTypes,
                   {
                     id: newId,
-                    name: lang !== 'ar' ? 'New Fuel Grade' : 'نوع وقود جديد',
+                    name: t('set_new_fuel_name'),
                     price: 15.0,
                   },
                 ],
@@ -675,13 +621,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            {lang === 'ar' ? 'الذكاء الاصطناعي مُدار وجاهز (مجاني 100%)' : 'AI Ready & Server Managed (100% Free)'}
+            {t('set_ai_badge')}
           </span>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed">
-          {lang === 'ar'
-            ? 'تطبيق CarBook مجهّز بمحرك ذكاء اصطناعي وقاعدة بيانات هندسية مُدارة من السيرفر تعمل مجاناً وتلقائياً. إدخال مفتاح API خاص بك هو خيار إضافي اختياري تماماً.'
-            : 'CarBook is equipped with a server-managed AI engine and automotive knowledge base that operates automatically for free. Providing your own API key is completely optional.'}
+          {t('set_ai_desc')}
         </p>
 
         {settingsMsg && (
@@ -710,7 +654,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              {lang === 'ar' ? 'مفتاح API الخاص بك (اختياري)' : 'Personal API Key (Optional)'}{' '}
+              {t('set_api_key_label')}{' '}
               {settings.hasApiKey && (
                 <span className="text-emerald-400">
                   ({t('set_ai_key_saved')} {settings.maskedApiKey})
@@ -719,7 +663,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <input
               type="password"
-              placeholder={settings.hasApiKey ? t('set_ai_key_placeholder') : (lang === 'ar' ? 'اتركه فارغاً للاستخدام المجاني التلقائي أو أدخل مفتاحك' : 'Leave empty for automatic free mode, or paste custom key')}
+              placeholder={settings.hasApiKey ? t('set_ai_key_placeholder') : t('set_api_key_placeholder')}
               className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
               value={settings.apiKey}
               onChange={(e) => setSettings((prev: any) => ({ ...prev, apiKey: e.target.value }))}

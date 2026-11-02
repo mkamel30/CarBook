@@ -75,7 +75,7 @@ export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
               <input
                 required
                 type="text"
-                placeholder="Toyota / Hyundai"
+                placeholder={t('ph_make_example')}
                 className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                 value={vehicleForm.make}
                 onChange={(e) => setVehicleForm({ ...vehicleForm, make: e.target.value })}
@@ -86,7 +86,7 @@ export const AddVehicleModal: React.FC<AddVehicleModalProps> = ({
               <input
                 required
                 type="text"
-                placeholder="Corolla / Tucson"
+                placeholder={t('ph_model_example')}
                 className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
                 value={vehicleForm.model}
                 onChange={(e) => setVehicleForm({ ...vehicleForm, model: e.target.value })}

@@ -11,6 +11,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { localizedField } from '@/i18n/util';
 
 export interface ManualTabProps {
   selectedVehicle: any;
@@ -25,7 +26,7 @@ export const ManualTab: React.FC<ManualTabProps> = ({
   manualError,
   onFetchManual,
 }) => {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   const specs = typeof selectedVehicle?.specs === 'string'
     ? (() => {
@@ -38,6 +39,12 @@ export const ManualTab: React.FC<ManualTabProps> = ({
     : selectedVehicle?.specs || {};
 
   const hasSpecs = Boolean(selectedVehicle?.specs && Object.keys(specs).length > 0);
+
+  // Spec rows are Arabic-first with an optional `*En` twin (see the AI/manual
+  // schema): non-Arabic users read the English side, and rows that predate the
+  // twins still show their Arabic value instead of an empty cell.
+  const specText = (key: string) =>
+    localizedField(lang, specs[key], specs[`${key}En`]) || t('manual_not_specified');
 
   return (
     <div className="space-y-6">
@@ -97,13 +104,13 @@ export const ManualTab: React.FC<ManualTabProps> = ({
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_oil_viscosity')}</span>
                   <span className="font-bold text-slate-100">
-                    {specs.engineOilViscosity || t('manual_not_specified')}
+                    {specText('engineOilViscosity')}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_oil_capacity')}</span>
                   <span className="font-bold text-slate-100">
-                    {specs.engineOilCapacityLiters || t('manual_not_specified')}
+                    {specText('engineOilCapacityLiters')}
                   </span>
                 </div>
               </div>
@@ -118,16 +125,16 @@ export const ManualTab: React.FC<ManualTabProps> = ({
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_trans_fluid')}</span>
                   <span className="font-bold text-slate-100">
-                    {specs.transmissionFluidType || t('manual_not_specified')}
+                    {specText('transmissionFluidType')}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_coolant')}</span>
-                  <span className="font-bold text-slate-100">{specs.coolantType || t('manual_not_specified')}</span>
+                  <span className="font-bold text-slate-100">{specText('coolantType')}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_brake_fluid')}</span>
-                  <span className="font-bold text-slate-100">{specs.brakeFluidType || t('manual_not_specified')}</span>
+                  <span className="font-bold text-slate-100">{specText('brakeFluidType')}</span>
                 </div>
               </div>
             </div>
@@ -141,13 +148,13 @@ export const ManualTab: React.FC<ManualTabProps> = ({
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_tire_front')}</span>
                   <span className="font-bold text-emerald-400 font-mono">
-                    {specs.tirePressurePsiFront || t('manual_not_specified')}
+                    {specText('tirePressurePsiFront')}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_tire_rear')}</span>
                   <span className="font-bold text-emerald-400 font-mono">
-                    {specs.tirePressurePsiRear || t('manual_not_specified')}
+                    {specText('tirePressurePsiRear')}
                   </span>
                 </div>
               </div>
@@ -162,18 +169,18 @@ export const ManualTab: React.FC<ManualTabProps> = ({
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_tank_capacity')}</span>
                   <span className="font-bold text-slate-100">
-                    {specs.fuelTankCapacityLiters || t('manual_not_specified')}
+                    {specText('fuelTankCapacityLiters')}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_octane')}</span>
                   <span className="font-bold text-amber-300">
-                    {specs.recommendedFuelOctane || t('manual_not_specified')}
+                    {specText('recommendedFuelOctane')}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_spark_plugs')}</span>
-                  <span className="font-bold text-slate-100">{specs.sparkPlugType || t('manual_not_specified')}</span>
+                  <span className="font-bold text-slate-100">{specText('sparkPlugType')}</span>
                 </div>
               </div>
             </div>
@@ -186,7 +193,7 @@ export const ManualTab: React.FC<ManualTabProps> = ({
               <div className="space-y-2 text-xs">
                 <div>
                   <span className="text-slate-400 block text-[11px]">{t('manual_field_battery')}</span>
-                  <span className="font-bold text-slate-100">{specs.batterySpec || t('manual_not_specified')}</span>
+                  <span className="font-bold text-slate-100">{specText('batterySpec')}</span>
                 </div>
               </div>
             </div>
@@ -199,7 +206,7 @@ export const ManualTab: React.FC<ManualTabProps> = ({
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" /> {t('manual_card_oem_tips')}
               </div>
               <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
-                {specs.generalNotesAr}
+                {localizedField(lang, specs.generalNotesAr, specs.generalNotesEn)}
               </p>
             </div>
           )}

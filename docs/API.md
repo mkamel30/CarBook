@@ -454,10 +454,11 @@ Same resolution, but persists the result onto the vehicle.
 
 ### `POST /api/ai/doctor`
 ```json
-{ "vehicleId": "uuid", "query": "Rattling noise from the front at low speed over bumps" }
+{ "vehicleId": "uuid", "query": "Rattling noise from the front at low speed over bumps", "lang": "en" }
 ```
 - **Returns:** `{ success: true, data: { advice: "…" } }`
 - The prompt is grounded in the vehicle's make, model, year, current odometer and last five services, so the advice is about *this* car. With no provider key it returns heuristic advice built from the same context, labelled as such.
+- `lang` (`ar` | `en` | `pl`) is the caller's UI language and fixes the answer language — provider prompt and the offline heuristic report labels alike. Anything else (missing, unsupported, or a crafted string) normalises to `ar`, the product default, because the value is interpolated into an external prompt. Vehicle-specification lookups stay bilingual by design: their rows are cached per make/model/year and shared across accounts.
 
 ---
 

@@ -12,10 +12,51 @@ export function nextLang(lang: string): string {
   return LANGUAGE_CYCLE[(index + 1) % LANGUAGE_CYCLE.length];
 }
 
-function localeFor(lang: string): string {
+/** Intl locale tag for a language code. */
+export function localeFor(lang: string): string {
   if (lang === 'ar') return 'ar-EG';
   if (lang === 'pl') return 'pl-PL';
   return 'en-GB';
+}
+
+/** Text direction for a language code (mirrors SUPPORTED_LANGUAGES in config.ts). */
+export function dirFor(lang: string): 'rtl' | 'ltr' {
+  return lang === 'ar' ? 'rtl' : 'ltr';
+}
+
+/**
+ * Active language outside of React.
+ *
+ * The I18nProvider persists every choice to localStorage 'carbook_lang' (and a
+ * cookie), so non-React modules — the sync boot wrapper, the export services —
+ * resolve the same value the UI is rendering with. Falls back to 'ar', the
+ * product default, when no storage is available.
+ */
+export function getCurrentLang(): string {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('carbook_lang');
+      if (saved === 'ar' || saved === 'en' || saved === 'pl') return saved;
+    }
+  } catch {
+    // Storage can throw in private-mode WebViews; the default below still works.
+  }
+  return 'ar';
+}
+
+/**
+ * Read one side of a bilingual (Arabic/English) content pair stored on a row —
+ * schedule titles, OEM spec twins — in the active language, falling back to the
+ * other side when a row predates the second column so a record never renders
+ * blank. Polish has no third column of its own: like every other bilingual
+ * label in the app, it reads the English side.
+ */
+export function localizedField(
+  lang: string,
+  ar: string | null | undefined,
+  en: string | null | undefined,
+): string {
+  return (lang === 'ar' ? ar || en : en || ar) || '';
 }
 
 /**

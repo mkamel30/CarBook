@@ -16,7 +16,9 @@ export interface MobileTopBarProps {
   urgentCount?: number;
 }
 
-const LANG_SHORT: Record<string, string> = { ar: 'عربي', en: 'EN', pl: 'PL' };
+// Endonyms (each language written in its own script) live in the dictionaries;
+// the button shows what the NEXT language is called, not the current one.
+const LANG_SHORT_KEY: Record<string, string> = { ar: 'lang_short_ar', en: 'lang_short_en', pl: 'lang_short_pl' };
 
 export const MobileTopBar: React.FC<MobileTopBarProps> = ({
   vehicles,
@@ -74,7 +76,7 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
             <button
               onClick={onLogout}
               className="p-1 rounded-full text-slate-400 hover:text-rose-400 active:scale-95 transition"
-              title="Logout"
+              title={t('set_sign_out')}
             >
               <LogOut className="w-3 h-3" />
             </button>
@@ -109,10 +111,10 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
         <button
           onClick={() => setLang(nextCode)}
           className="flex items-center gap-1 px-2 py-1 rounded-full border border-slate-700 bg-slate-900 text-slate-200 text-[10px] font-bold active:scale-95 transition"
-          title="Change Language"
+          title={t('set_lang_title')}
         >
           <Globe className="w-3 h-3 text-amber-400" />
-          <span>{LANG_SHORT[nextCode] ?? nextCode.toUpperCase()}</span>
+          <span>{LANG_SHORT_KEY[nextCode] ? t(LANG_SHORT_KEY[nextCode]) : nextCode.toUpperCase()}</span>
         </button>
         <button
           onClick={() => onSelectTab('alerts')}

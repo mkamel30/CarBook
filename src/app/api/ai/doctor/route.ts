@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { consultAiDoctor } from '@/services/aiOrchestrator';
+import { normalizeAiLang } from '@/services/aiLang';
 import { StorageRepository } from '@/persistence/repository';
 import { authErrorResponse, requireUser } from '@/services/authz';
 import { aiRateGuard } from '@/services/rateLimit';
@@ -12,7 +13,7 @@ async function POSTHandler(req: NextRequest) {
     const limited = await aiRateGuard(req, 'doctor');
     if (limited) return limited;
 
-    const { vehicleId, query } = await req.json();
+    const { vehicleId, query, lang } = await req.json();
     if (!vehicleId || !query) {
       return NextResponse.json({ success: false, error: 'vehicleId and query are required' }, { status: 400 });
     }
@@ -36,7 +37,12 @@ async function POSTHandler(req: NextRequest) {
       },
       query,
       maintenanceLogs,
-      repo
+      repo,
+      vehicle.engineCc,
+      false,
+      // The reply language is the UI language of the request; anything unrecognised
+      // normalises to Arabic, so a crafted body value can never reach the provider prompt.
+      normalizeAiLang(lang)
     );
 
     return NextResponse.json({

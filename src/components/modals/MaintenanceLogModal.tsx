@@ -50,7 +50,7 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
   setPartsList,
   onSaveMaintenance, saving, minOdometer,
 }) => {
-  const { t, lang } = useTranslation();
+  const { t } = useTranslation();
 
   if (!isOpen) return null;
 
@@ -110,18 +110,18 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs text-slate-300 mb-1">{lang !== 'ar' ? 'Service Type' : 'نوع الخدمة'}</label>
+            <label className="block text-xs text-slate-300 mb-1">{t('maint_service_type_label')}</label>
             <select
               className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
               value={maintenanceForm.serviceType}
               onChange={e => setMaintenanceForm({ ...maintenanceForm, serviceType: e.target.value })}
             >
-              <option value="oil_change">{lang !== 'ar' ? 'Oil & Filters Change' : 'تغيير زيت وفلاتر'}</option>
-              <option value="periodic">{lang !== 'ar' ? 'Periodic Maintenance' : 'صيانة دورية'}</option>
-              <option value="brakes">{lang !== 'ar' ? 'Brakes & Pads' : 'فرامل وتيل'}</option>
-              <option value="tires">{lang !== 'ar' ? 'Tires & Alignment' : 'إطارات وضبط زوايا'}</option>
-              <option value="repair">{lang !== 'ar' ? 'Mechanical Repair' : 'إصلاح عطل'}</option>
-              <option value="other">{lang !== 'ar' ? 'Other' : 'أخرى'}</option>
+              <option value="oil_change">{t('maint_type_oil')}</option>
+              <option value="periodic">{t('maint_type_periodic')}</option>
+              <option value="brakes">{t('maint_type_brakes')}</option>
+              <option value="tires">{t('maint_type_tires')}</option>
+              <option value="repair">{t('maint_type_repair')}</option>
+              <option value="other">{t('maint_type_other')}</option>
             </select>
           </div>
 
@@ -145,9 +145,7 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
 
             {partsList.length === 0 ? (
               <div className="text-[11px] text-slate-400 text-center py-2 border border-dashed border-slate-800 rounded">
-                {lang !== 'ar'
-                  ? 'No spare parts added yet. Click "Add Spare Part" to detail components (New or OEM Import).'
-                  : 'لم تتم إضافة قطع غيار بعد. اضغط "إضافة قطعة غيار" لتفصيل القطع (جديدة أو استيراد).'}
+                {t('maint_parts_empty')}
               </div>
             ) : (
               <div className="space-y-2">
@@ -318,7 +316,7 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
             <label className="block text-xs text-slate-300 mb-1">{t('modal_maint_workshop')}</label>
             <input
               type="text"
-              placeholder="Official Service Center / Garage"
+              placeholder={t('ph_workshop')}
               className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
               value={maintenanceForm.workshop}
               onChange={e => setMaintenanceForm({ ...maintenanceForm, workshop: e.target.value })}
@@ -329,7 +327,7 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
             <label className="block text-xs text-slate-300 mb-1">{t('modal_maint_next_odo')}</label>
             <input
               type="number"
-              placeholder="e.g. 60000"
+              placeholder={t('ph_odo_example')}
               className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500 font-mono"
               value={maintenanceForm.nextDueOdometer || ''}
               onChange={e => setMaintenanceForm({ ...maintenanceForm, nextDueOdometer: Number(e.target.value) })}

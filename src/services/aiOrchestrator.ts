@@ -13,6 +13,7 @@ import {
   generateHeuristicSchedules,
   generateHeuristicDoctorAdvice,
 } from './automotiveDatabase';
+import { DEFAULT_AI_LANG, type AiAnswerLang } from './aiLang';
 
 export interface ResolvedAiConfig extends AILookupConfig {
   isServerManaged: boolean;
@@ -214,19 +215,21 @@ export async function consultAiDoctor(
   recentMaintenance: any[] = [],
   repo: StorageRepository,
   engineCc?: string | null,
-  forceRefresh = false
+  forceRefresh = false,
+  lang: AiAnswerLang = DEFAULT_AI_LANG
 ): Promise<{ advice: string; source: string }> {
   const config = await resolveAiConfig(repo);
   if (config.hasKey && config.apiKey) {
     try {
-      const advice = await askAiCarDoctor(vehicle, userQuery, recentMaintenance, config);
+      const advice = await askAiCarDoctor(vehicle, userQuery, recentMaintenance, config, fetch, engineCc, lang);
       return { advice, source: config.isServerManaged ? 'server_ai' : 'user_ai' };
     } catch (err) {
       console.warn('External AI Doctor failed, falling back to rule-based diagnostic engine:', err);
     }
   }
 
-  // Fallback to rule-based engineering diagnostic engine
-  const advice = generateHeuristicDoctorAdvice(vehicle, userQuery, recentMaintenance);
+  // Fallback to the rule-based engineering diagnostic engine, which carries the
+  // same Arabic/English knowledge the UI shows offline.
+  const advice = generateHeuristicDoctorAdvice(vehicle, userQuery, recentMaintenance, lang);
   return { advice, source: 'expert_rule_engine' };
 }

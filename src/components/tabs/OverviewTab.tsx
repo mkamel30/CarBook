@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AlertTriangle, Fuel, Wrench, Pencil, Trash2, Car, MoreVertical, Plus } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
-import { formatDate } from '@/i18n/util';
+import { formatDate, localizedField } from '@/i18n/util';
 
 export interface OverviewTabProps {
   selectedVehicle: any;
@@ -109,7 +109,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     className="w-full text-start px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800/80 hover:text-amber-400 flex items-center gap-2.5 transition"
                   >
                     <Plus className="w-4 h-4 text-emerald-400" />
-                    <span>{t('action_add_vehicle') || 'إضافة سيارة أخرى'}</span>
+                    <span>{t('action_add_vehicle')}</span>
                   </button>
                 )}
 
@@ -208,16 +208,16 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             >
               <div>
                 <div className="font-semibold">
-                  {lang !== 'ar' ? s.schedule.titleEn || s.schedule.titleAr : s.schedule.titleAr}
+                  {localizedField(lang, s.schedule.titleAr, s.schedule.titleEn)}
                 </div>
                 <div className="text-[11px] opacity-80">
-                  {lang !== 'ar'
-                    ? s.status === 'overdue'
-                      ? t('alerts_overdue_by', { km: Math.abs(s.remainingKm || 0).toLocaleString() })
-                      : s.status === 'due_soon'
-                      ? t('alerts_due_soon_remaining', { km: s.remainingKm?.toLocaleString() ?? 0 })
-                      : t('alerts_good_remaining', { km: s.remainingKm?.toLocaleString() ?? 0 })
-                    : s.alertMessageAr}
+                  {lang === 'ar'
+                    ? s.alertMessageAr
+                    : s.status === 'overdue'
+                    ? t('alerts_overdue_by', { km: Math.abs(s.remainingKm || 0).toLocaleString() })
+                    : s.status === 'due_soon'
+                    ? t('alerts_due_soon_remaining', { km: s.remainingKm?.toLocaleString() ?? 0 })
+                    : t('alerts_good_remaining', { km: s.remainingKm?.toLocaleString() ?? 0 })}
                 </div>
               </div>
               <span

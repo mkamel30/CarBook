@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useReducer, useState } from 'react';
+import { useTranslation } from '@/i18n/context';
 import { CheckCircle2, XCircle, X } from 'lucide-react';
 
 export type ToastVariant = 'success' | 'error';
@@ -38,6 +39,7 @@ export function pushToast(message: string, variant: ToastVariant = 'success', tt
 }
 
 export const ToastViewport: React.FC = () => {
+  const { t: translateToast } = useTranslation();
   const [, forceRender] = useReducer((n: number) => n + 1, 0);
   const [dir, setDir] = useState<'rtl' | 'ltr'>('ltr');
 
@@ -82,7 +84,7 @@ export const ToastViewport: React.FC = () => {
           <button
             type="button"
             onClick={() => dismissToast(t.id)}
-            aria-label="Dismiss"
+            aria-label={translateToast('aria_dismiss')}
             className={`shrink-0 p-0.5 rounded transition hover:bg-white/10 ${
               t.variant === 'error' ? 'text-rose-300' : 'text-emerald-300'
             }`}

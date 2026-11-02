@@ -38,7 +38,7 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
   settings,
   onSaveFuel, saving, minOdometer,
 }) => {
-  const { t, lang } = useTranslation();
+  const { t } = useTranslation();
 
   if (!isOpen) return null;
 
@@ -85,7 +85,7 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
                 }}
               >
                 <option value="custom" disabled={Boolean(selectedFuelType && selectedFuelType !== 'custom')}>
-                  {lang !== 'ar' ? 'Select fuel grade...' : 'اختر نوع الوقود...'}
+                  {t('fuel_select_grade')}
                 </option>
                 {settings.fuelTypes.map((ft: any) => (
                   <option key={ft.id} value={ft.id}>
@@ -93,7 +93,7 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
                   </option>
                 ))}
                 <option value="custom">
-                  {lang !== 'ar' ? 'Custom price / other' : 'سعر مخصص / نوع آخر'}
+                  {t('fuel_custom_price')}
                 </option>
               </select>
             </div>
@@ -206,7 +206,7 @@ export const FuelLogModal: React.FC<FuelLogModalProps> = ({
             <label className="block text-xs text-slate-300 mb-1">{t('modal_fuel_notes_label')}</label>
             <input
               type="text"
-              placeholder="Gas station / Fuel note"
+              placeholder={t('ph_station_note')}
               className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
               value={fuelForm.notes}
               onChange={(e) => setFuelForm({ ...fuelForm, notes: e.target.value })}

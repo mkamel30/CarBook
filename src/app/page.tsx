@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Car, PlusCircle, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { tStatic } from '@/i18n/staticTranslate';
 import { evaluateAndNotifySchedules } from '@/services/notifications';
 
 // Layout Components
@@ -41,8 +42,8 @@ type Envelope = { success: true; data?: any } | { success: false; error: string 
  * open with no message even though the write may already have landed.
  */
 async function readEnvelope(res: Response): Promise<Envelope> {
-  const httpFailure = `Request failed (${res.status})`;
-  if (res.status === 401) return { success: false, error: 'Session expired — please sign in again' };
+  const httpFailure = tStatic('err_http_status', { status: res.status });
+  if (res.status === 401) return { success: false, error: tStatic('err_session_expired') };
 
   let body: any = null;
   try {
@@ -384,7 +385,7 @@ export default function WorkbenchPage() {
         pushToast(data.error, 'error');
       }
     } catch (e: any) {
-      pushToast(e.message || 'Failed to delete vehicle', 'error');
+      pushToast(e.message || t('err_delete_vehicle'), 'error');
     } finally {
       setDeletingVehicleId(null);
     }
@@ -450,7 +451,7 @@ export default function WorkbenchPage() {
         pushToast(data.error, 'error');
       }
     } catch (err: any) {
-      pushToast(err?.message || 'Request failed', 'error');
+      pushToast(err?.message || t('err_request_failed'), 'error');
     } finally {
       setSavingVehicle(false);
     }
@@ -562,7 +563,7 @@ export default function WorkbenchPage() {
         pushToast(data.error, 'error');
       }
     } catch (e: any) {
-      pushToast(e?.message || 'Failed to delete fuel log', 'error');
+      pushToast(e?.message || t('err_delete_fuel'), 'error');
     } finally {
       setDeletingFuelId(null);
     }
@@ -602,7 +603,7 @@ export default function WorkbenchPage() {
         pushToast(data.error, 'error');
       }
     } catch (err: any) {
-      pushToast(err?.message || 'Request failed', 'error');
+      pushToast(err?.message || t('err_request_failed'), 'error');
     } finally {
       setSavingFuel(false);
     }
@@ -676,7 +677,7 @@ export default function WorkbenchPage() {
         pushToast(data.error, 'error');
       }
     } catch (e: any) {
-      pushToast(e?.message || 'Failed to delete maintenance record', 'error');
+      pushToast(e?.message || t('err_delete_maint'), 'error');
     } finally {
       setDeletingMaintenanceId(null);
     }
@@ -726,7 +727,7 @@ export default function WorkbenchPage() {
         pushToast(data.error, 'error');
       }
     } catch (err: any) {
-      pushToast(err?.message || 'Request failed', 'error');
+      pushToast(err?.message || t('err_request_failed'), 'error');
     } finally {
       setSavingMaintenance(false);
     }
@@ -770,6 +771,7 @@ export default function WorkbenchPage() {
         body: JSON.stringify({
           vehicleId: selectedVehicle.id,
           query: queryText,
+          lang,
         }),
       });
       const data = await readEnvelope(res);
@@ -783,7 +785,7 @@ export default function WorkbenchPage() {
         pushToast(data.error, 'error');
       }
     } catch (e: any) {
-      pushToast(e.message || 'Request failed', 'error');
+      pushToast(e.message || t('err_request_failed'), 'error');
     } finally {
       setDoctorLoading(false);
     }
@@ -810,10 +812,10 @@ export default function WorkbenchPage() {
         setTimeout(() => setSettingsMsg(''), 3000);
         loadSettings();
       } else {
-        setSettingsError(data.error || 'Request failed');
+        setSettingsError(data.error || t('err_request_failed'));
       }
     } catch (err: any) {
-      setSettingsError(err?.message || 'Request failed');
+      setSettingsError(err?.message || t('err_request_failed'));
     }
   };
 

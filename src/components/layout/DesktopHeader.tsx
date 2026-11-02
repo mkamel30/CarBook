@@ -80,7 +80,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
         <button
           onClick={() => setLang(nextCode)}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-          title="Change Language"
+          title={t('btn_change_language')}
         >
           <Globe className="w-3.5 h-3.5 text-amber-400" />
           <span>{nextName}</span>
@@ -123,7 +123,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
             <button
               onClick={onLogout}
               className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-900 rounded-full transition"
-              title={lang === 'ar' ? 'تسجيل الخروج' : 'Sign out'}
+              title={t('set_sign_out')}
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>

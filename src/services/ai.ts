@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AiAnswerLang, DEFAULT_AI_LANG, DOCTOR_FRAMING } from './aiLang';
 
 export const aiProposalItemSchema = z.object({
   itemCode: z.string(),
@@ -23,6 +24,19 @@ export interface AILookupConfig {
   model?: string;
 }
 
+/**
+ * Arabic-first, English-overlaid OEM spec record.
+ *
+ * The plain fields are the values of record and follow the app's existing
+ * `*Ar`/`*En` pair convention (see schedule `titleAr`/`titleEn`): Arabic-first,
+ * because CarBook is an Arabic product. Each one carries an optional `*En` twin
+ * with the same facts written for an English/Polish workshop, which is what the
+ * Manual and Report tabs show when the UI language is not Arabic.
+ *
+ * They are optional because spec rows cached before this existed — and the
+ * preseeded/heuristic engines for a car nobody has translated — carry Arabic
+ * only; readers fall back to the main value rather than showing a blank.
+ */
 export const vehicleManualSpecsSchema = z.object({
   engineOilViscosity: z.string(),
   engineOilCapacityLiters: z.string(),
@@ -36,6 +50,16 @@ export const vehicleManualSpecsSchema = z.object({
   sparkPlugType: z.string(),
   batterySpec: z.string(),
   generalNotesAr: z.string(),
+  generalNotesEn: z.string().optional(),
+  engineOilViscosityEn: z.string().optional(),
+  engineOilCapacityLitersEn: z.string().optional(),
+  transmissionFluidTypeEn: z.string().optional(),
+  coolantTypeEn: z.string().optional(),
+  brakeFluidTypeEn: z.string().optional(),
+  fuelTankCapacityLitersEn: z.string().optional(),
+  recommendedFuelOctaneEn: z.string().optional(),
+  sparkPlugTypeEn: z.string().optional(),
+  batterySpecEn: z.string().optional(),
 });
 
 export type VehicleManualSpecs = z.infer<typeof vehicleManualSpecsSchema>;
@@ -273,24 +297,41 @@ export async function lookupFullVehicleManual(
   fetchFn = fetch,
   engineCc?: string | null
 ): Promise<VehicleManualSpecs> {
+  // The manual result is cached GLOBALLY per make/model/year and shared by
+  // every user and language, so it must stay language-neutral: the schema is
+  // bilingual (each Arabic-first value plus its `*En` twin) and the UI picks one
+  // side at render time. Threading a request language through here would bake
+  // the first caller's language into everyone else's cache row.
   const prompt = `You are a certified master automotive engineer with access to official OEM factory service manuals.
 For a ${year} ${make} ${model}${engineCc ? ` (Engine / Motor CC: ${engineCc})` : ''}, provide exact factory technical specifications and fluid capacities.
 
 Respond with ONLY valid JSON with no markdown and no backticks:
 {
-  "engineOilViscosity": "0W-20 Full Synthetic (API SP / ILSAC GF-6)",
-  "engineOilCapacityLiters": "4.2 لتر مع الفلتر (4.0 لتر بدون فلتر)",
-  "transmissionFluidType": "Toyota Genuine CVT Fluid FE (أو المعيار المعتمد للموديل)",
-  "coolantType": "Super Long Life Coolant (وردي مخفف 50/50)",
+  "engineOilViscosity": "0W-20 Full Synthetic (API SP / ILSAC GF-6) أو 5W-30",
+  "engineOilViscosityEn": "same facts written for an English-speaking workshop",
+  "engineOilCapacityLiters": "4.2 لتر مع الفلتر (3.9 لتر بدون فلتر)",
+  "engineOilCapacityLitersEn": "4.2 L with filter (3.9 L without filter)",
+  "transmissionFluidType": "زيت ناقل الحركة المعتمد للموديل",
+  "transmissionFluidTypeEn": "the approved transmission fluid, in English",
+  "coolantType": "سائل التبريد المعتمد",
+  "coolantTypeEn": "the approved coolant, in English",
   "brakeFluidType": "DOT 4 أو DOT 5.1",
+  "brakeFluidTypeEn": "DOT 4 or DOT 5.1",
   "tirePressurePsiFront": "32 PSI (2.2 Bar)",
   "tirePressurePsiRear": "32 PSI (2.2 Bar)",
   "fuelTankCapacityLiters": "50 لتر",
+  "fuelTankCapacityLitersEn": "50 L",
   "recommendedFuelOctane": "بنزين 92 أو 95 خالٍ من الرصاص",
-  "sparkPlugType": "إيريديوم أصلي (Iridium Long Life) بفاصل 0.8 مم",
-  "batterySpec": "12V 45Ah - 60Ah مع دينامو شحن ذكي",
-  "generalNotesAr": "نصائح وإرشادات صيانة هامة لهذا الموديل بالتحديد باللغة العربية"
-}`;
+  "recommendedFuelOctaneEn": "unleaded 92 or 95",
+  "sparkPlugType": "اسم القطعة الأصلي مع الفجوة بالمليمتر",
+  "sparkPlugTypeEn": "the same part spec in English",
+  "batterySpec": "مواصفات البطارية",
+  "batterySpecEn": "the same battery spec in English",
+  "generalNotesAr": "نصائح وإرشادات صيانة هامة لهذا الموديل بالتحديد باللغة العربية",
+  "generalNotesEn": "the same maintenance advice for this exact model, in English"
+}
+
+Arabic is the primary value; every *En field is the English rewrite of the SAME facts. Keep part numbers, viscosity grades, pressures and standards verbatim in both languages — they are not translatable.`;
 
   return withAiRetries('Manual lookup', config, async (currentModel) => {
     const endpoint = resolveEndpoint(config);
@@ -328,28 +369,34 @@ export async function askAiCarDoctor(
   recentMaintenance: any[] = [],
   config: AILookupConfig,
   fetchFn = fetch,
-  engineCc?: string | null
+  engineCc?: string | null,
+  lang: AiAnswerLang = DEFAULT_AI_LANG
 ): Promise<string> {
+  // The instruction block is English for every language and only the required
+  // ANSWER language varies: one prompt to maintain, and Arabic behaviour is
+  // unchanged (it was always "answer in Arabic"). The history lines are labelled
+  // in the answer language so a Polish/English reply is not quoting Arabic rows.
+  const framing = DOCTOR_FRAMING[lang];
   const maintSummary = (recentMaintenance || []).slice(0, 5).map(m =>
-    `- ${m.serviceDate}: ${m.title} عند عداد ${m.odometer} كم`
-  ).join('\n') || 'لا توجد صيانات مسجلة بعد';
+    `- ${m.serviceDate}: ${m.title}${framing.atOdometer} ${m.odometer} ${framing.km}`
+  ).join('\n') || framing.noHistory;
 
-  const prompt = `أنت مهندس وخبير صيانة سيارات معتمد ومستشار فني شخصي.
-بيانات سيارة المستخدم الحالية:
-- الماركة والموديل: ${vehicle.make} ${vehicle.model} (${vehicle.year})${vehicle.engineCc ? ` - سعة المحرك: ${vehicle.engineCc}` : ''}
-- قراءة العداد الحالية: ${vehicle.currentOdometer.toLocaleString()} كم
-- أحدث الصيانات المنفذة في السجل:
+  const prompt = `You are a certified automotive maintenance engineer acting as a personal technical advisor.
+Current user vehicle data:
+- Make and model: ${vehicle.make} ${vehicle.model} (${vehicle.year})${vehicle.engineCc ? ` - ${framing.engineCapacity}: ${vehicle.engineCc}` : ''}
+- ${framing.odometer}: ${vehicle.currentOdometer.toLocaleString()} ${framing.km}
+- ${framing.recentServices}:
 ${maintSummary}
 
-استفسار أو شكوى المستخدم:
+The user's question or complaint:
 "${userQuery}"
 
-المطلوب:
-1. تشخيص السبب المحتمل بدقة مع ربطه بقراءة العداد وسجل الصيانة الموضح أعلاه.
-2. نصيحة عملية محددة: ماذا يفحص الفني أولاً؟ وهل العطل آمن للسير أم يستلزم التوقف الفوري؟
-3. أرقام أو مواصفات القطع المتوقع استبدالها (إن وُجدت).
+Required:
+1. Diagnose the most probable cause, tied to the odometer reading and the service history above.
+2. Give concrete practical advice: what should the technician check first, and is the car safe to drive or must it stop immediately?
+3. List the part numbers or specifications of any parts likely to be replaced.
 
-أجب باللغة العربية بأسلوب هندسي واضح، نقاط منسقة، ومباشرة وموثوقة.`;
+${framing.answerInstruction} Use a clear, direct engineering style with formatted bullet points.`;
 
   return withAiRetries('Doctor query', config, async (currentModel) => {
     const endpoint = resolveEndpoint(config);
@@ -369,8 +416,8 @@ ${maintSummary}
 
     const rawJson = await res.json();
     return config.provider === 'openrouter'
-      ? rawJson.choices?.[0]?.message?.content || 'لم يتم استلام رد من المساعد'
-      : rawJson.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام رد من المساعد';
+      ? rawJson.choices?.[0]?.message?.content || framing.noReply
+      : rawJson.candidates?.[0]?.content?.parts?.[0]?.text || framing.noReply;
   });
 }
 
