@@ -42,6 +42,30 @@ describe('sync client', () => {
     expect(out.pushedCount).toBe(1);
   });
 
+  // Regression guard: the bundled app calls this cross-origin from the
+  // Capacitor `https://localhost` scheme, where the server's scoped CORS
+  // deliberately omits Access-Control-Allow-Credentials. A credentialed
+  // ('include') fetch would therefore be blocked by the WebView as an opaque
+  // network error, so the request must stay at the default same-origin mode
+  // (web keeps its cookie; the app authenticates with the bearer header).
+  it('never sends a credentialed cross-origin fetch', async () => {
+    let captured: any;
+    const fetchImpl = (async (_url: any, init: any) => {
+      captured = { url: _url, init };
+      return jsonResponse({ success: true, data: { serverSeq: 1, pulled: {}, rejected: [] } });
+    }) as any;
+
+    await syncOnce(new MemoryStore(), {
+      baseUrl: 'https://vps',
+      deviceId: 'd1',
+      authToken: 'at-token',
+      fetchImpl,
+    });
+
+    expect(captured.init.credentials ?? 'same-origin').toBe('same-origin');
+    expect(captured.init.headers.Authorization).toBe('Bearer at-token');
+  });
+
   it('applies pulled rows (including tombstones) before advancing', async () => {
     const fetchImpl = (async () => jsonResponse({
       success: true,

@@ -91,8 +91,12 @@ export async function syncOnce(
   const res = await doFetch(`${opts.baseUrl.replace(/\/$/, '')}/api/sync`, {
     method: 'POST',
     headers,
-    // cookie auth also works same-origin; bearer covers the bundled cross-origin client
-    credentials: 'include',
+    // Credentials stay at the default ('same-origin'): the web app rides its
+    // cookie same-origin and the bundled app authenticates with the bearer
+    // header. NEVER 'include' — a credentialed cross-origin fetch requires
+    // Access-Control-Allow-Credentials, which this server deliberately never
+    // sends (see services/mobileCors), so the WebView would block the reply
+    // as an opaque network error.
     body: JSON.stringify({ deviceId: opts.deviceId, since, pushed }),
   });
 
