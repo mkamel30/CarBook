@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/services/auth';
 import { runSync, type SyncRequest } from '@/persistence/sync';
-import { withMobileCors } from '@/services/mobileCors';
+import { mobilePreflight, withMobileCors } from '@/services/mobileCors';
 
 export const runtime = 'nodejs';
 
@@ -33,3 +33,4 @@ async function POSTHandler(req: NextRequest) {
 }
 
 export const POST = withMobileCors(POSTHandler);
+export const OPTIONS = mobilePreflight;

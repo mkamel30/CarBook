@@ -54,6 +54,30 @@ describe('scoped mobile CORS (bundled Capacitor origin)', () => {
     expect(res.status).toBe(204);
     expect(res.headers.get('access-control-allow-credentials')).toBeNull();
   });
+
+  // Regression guard: Next.js App Router answers OPTIONS itself (bare 204, no
+  // CORS headers) unless the route EXPORTS an OPTIONS handler, so the preflight
+  // never reaches withMobileCors and the WebView fetch fails opaquely. The
+  // tests above call the wrapper directly and cannot catch a missing export.
+  it('every mobile-facing route exports OPTIONS so preflights reach the wrapper', async () => {
+    const routes = [
+      '@/app/api/auth/me/route',
+      '@/app/api/auth/logout/route',
+      '@/app/api/auth/device/route',
+      '@/app/api/auth/token-login/route',
+      '@/app/api/sync/route',
+      '@/app/api/ai/doctor/route',
+      '@/app/api/ai/lookup/route',
+      '@/app/api/ai/manual/route',
+    ];
+    for (const spec of routes) {
+      const mod = await import(spec);
+      expect(typeof mod.OPTIONS, `${spec} must export OPTIONS`).toBe('function');
+      const res = await mod.OPTIONS(req('https://srv/probe', { method: 'OPTIONS', headers: { origin: MOBILE } }));
+      expect(res.status, `${spec} preflight status`).toBe(204);
+      expect(res.headers.get('access-control-allow-origin'), `${spec} preflight ACAO`).toBe(MOBILE);
+    }
+  });
 });
 
 afterAll(() => {

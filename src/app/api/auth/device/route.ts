@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/services/auth';
 import { linkGuestToUser, refreshDeviceSession, registerDevice, revokeDeviceSession } from '@/services/deviceAuth';
 import { buildRateLimitResponse, getClientIp, deviceAuthLimiter } from '@/services/rateLimit';
-import { withMobileCors } from '@/services/mobileCors';
+import { mobilePreflight, withMobileCors } from '@/services/mobileCors';
 
 export const runtime = 'nodejs';
 
@@ -67,3 +67,4 @@ async function DELETEHandler(req: NextRequest) {
 export const POST = withMobileCors(POSTHandler);
 export const PUT = withMobileCors(PUTHandler);
 export const DELETE = withMobileCors(DELETEHandler);
+export const OPTIONS = mobilePreflight;

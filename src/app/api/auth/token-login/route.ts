@@ -3,7 +3,7 @@ import { StorageRepository } from '@/persistence/repository';
 import { signSessionToken, verifySessionToken, WEB_SESSION_TTL_DAYS } from '@/services/auth';
 import { isGuestUserId, redeemOneTimeCode } from '@/services/deviceAuth';
 import { buildRateLimitResponse, getClientIp, tokenLoginLimiter } from '@/services/rateLimit';
-import { withMobileCors } from '@/services/mobileCors';
+import { mobilePreflight, withMobileCors } from '@/services/mobileCors';
 
 function reject401(reason: string) {
   return NextResponse.json({ success: false, error: reason }, { status: 401 });
@@ -197,4 +197,5 @@ async function POSTHandler(req: NextRequest) {
 
 export const GET = withMobileCors(GETHandler);
 export const POST = withMobileCors(POSTHandler);
+export const OPTIONS = mobilePreflight;
 

@@ -3,7 +3,7 @@ import { getOrFetchVehicleSchedules } from '@/services/aiOrchestrator';
 import { StorageRepository } from '@/persistence/repository';
 import { authErrorResponse, requireUser } from '@/services/authz';
 import { aiRateGuard } from '@/services/rateLimit';
-import { withMobileCors } from '@/services/mobileCors';
+import { mobilePreflight, withMobileCors } from '@/services/mobileCors';
 
 async function POSTHandler(req: NextRequest) {
   try {
@@ -41,3 +41,4 @@ async function POSTHandler(req: NextRequest) {
 }
 
 export const POST = withMobileCors(POSTHandler);
+export const OPTIONS = mobilePreflight;

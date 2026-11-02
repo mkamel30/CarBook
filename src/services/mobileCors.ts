@@ -54,3 +54,14 @@ export function withMobileCors(handler: MobileCorsHandler): WrappedCorsHandler {
     return origin ? applyCors(res, origin, false) : res;
   };
 }
+
+/**
+ * Next.js App Router answers an OPTIONS request itself — a bare 204 with an
+ * `Allow` header and NO CORS headers — whenever a route does not export an
+ * OPTIONS handler, so the preflight never reaches `withMobileCors` and the
+ * WebView's CORS check fails with an opaque network error. Every mobile-facing
+ * route must export this next to its wrapped method handlers.
+ */
+export const mobilePreflight: WrappedCorsHandler = withMobileCors(
+  async () => new NextResponse(null, { status: 204 }),
+);

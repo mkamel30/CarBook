@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revokeSessionByToken } from '@/services/auth';
-import { withMobileCors } from '@/services/mobileCors';
+import { mobilePreflight, withMobileCors } from '@/services/mobileCors';
 
 /**
  * Clear the session cookie and — for tokens minted with a `jti` (T6+) —
@@ -34,3 +34,4 @@ async function POSTHandler(req: NextRequest) {
 
 export const GET = withMobileCors(GETHandler);
 export const POST = withMobileCors(POSTHandler);
+export const OPTIONS = mobilePreflight;

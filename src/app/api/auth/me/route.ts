@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/services/auth';
-import { withMobileCors } from '@/services/mobileCors';
+import { mobilePreflight, withMobileCors } from '@/services/mobileCors';
 
 async function GETHandler(req: NextRequest) {
   const user = getAuthenticatedUser(req);
@@ -15,3 +15,4 @@ async function GETHandler(req: NextRequest) {
 }
 
 export const GET = withMobileCors(GETHandler);
+export const OPTIONS = mobilePreflight;
