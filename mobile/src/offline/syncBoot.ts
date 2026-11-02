@@ -5,7 +5,8 @@
 // backoff (MAX_SYNC_ATTEMPTS) and an explicit SyncFailedError state. This
 // wrapper only adds what the shell UI needs on top: an offline gate (skip
 // before burning retry attempts when there is no server / no connectivity),
-// human-readable bilingual status messages, and subscribe() for the chip.
+// language-neutral status labels (a dictionary key + vars, resolved by the chip
+// in the user's current language), and subscribe() for the chip.
 // All side effects (fetch, timers, network events) stay injectable so the
 // whole flow runs under Node/vitest.
 
@@ -14,6 +15,9 @@ import { WMDBLocalStore } from '@device/localStore';
 import { createRuntime } from '@device/runtime';
 import type { SessionStore, StoredSession } from '@device/session';
 import type { SyncOutcome } from '@sync/client';
+import { DICTIONARIES } from '@app/i18n/config';
+import { translate, type TranslateVars } from '@app/i18n/resolve';
+import { getCurrentLang } from '@app/i18n/util';
 
 export interface DeviceIdStore {
   load(): Promise<string | null>;
@@ -24,6 +28,15 @@ export type SyncPhase = 'idle' | 'offline' | 'syncing' | 'synced' | 'error';
 
 export interface SyncState {
   phase: SyncPhase;
+  /**
+   * Dictionary key of the status line (sync_ready / sync_offline / …). The chip
+   * renders it with the CURRENT language, so switching languages re-labels the
+   * idle state too — a baked-in string would freeze the old language.
+   */
+  messageKey: string;
+  /** {placeholder} values for `messageKey`. */
+  messageVars?: TranslateVars;
+  /** `messageKey` resolved at transition time — a readable fallback for consumers without the provider. */
   message: string;
   lastSyncedAt: number | null;
   lastOutcome: SyncOutcome | null;
@@ -67,8 +80,18 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
   const isOnline = deps.isOnline ?? defaultOnline;
   const addOnlineListener = deps.addOnlineListener ?? defaultAddOnlineListener;
 
+  // Status lines are carried as a dictionary key + vars (see SyncState) so the
+  // chip always renders them in the language the user has selected right now.
+  function label(messageKey: string, messageVars?: TranslateVars): Pick<SyncState, 'messageKey' | 'messageVars' | 'message'> {
+    return {
+      messageKey,
+      messageVars,
+      message: translate(DICTIONARIES, getCurrentLang(), messageKey, messageVars),
+    };
+  }
+
   let state: SyncState = {
-    phase: 'idle', message: 'جاهز · Ready', lastSyncedAt: null, lastOutcome: null, guest: false,
+    phase: 'idle', ...label('sync_ready'), lastSyncedAt: null, lastOutcome: null, guest: false,
   };
   const listeners = new Set<(s: SyncState) => void>();
   let inFlight: Promise<SyncOutcome | null> | null = null;
@@ -116,19 +139,19 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
 
   async function run(): Promise<SyncOutcome | null> {
     if (!deps.baseUrl) {
-      set({ phase: 'offline', message: 'وضع محلي · Local only (no server)' });
+      set({ phase: 'offline', ...label('sync_local_only') });
       return null;
     }
     if (!isOnline()) {
-      set({ phase: 'offline', message: 'غير متصل · Offline' });
+      set({ phase: 'offline', ...label('sync_offline') });
       return null;
     }
-    set({ phase: 'syncing', message: 'جارٍ المزامنة… · Syncing…' });
+    set({ phase: 'syncing', ...label('sync_syncing') });
     try {
       const outcome = await runtime.syncNow();
       set({
         phase: 'synced',
-        message: `تمت المزامنة · Synced (+${outcome.pushedCount}/↓${outcome.pulledCount})`,
+        ...label('sync_synced', { pushed: outcome.pushedCount, pulled: outcome.pulledCount }),
         lastSyncedAt: Date.now(),
         lastOutcome: outcome,
         guest,
@@ -136,7 +159,7 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
       return outcome;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      set({ phase: 'error', message: `فشل المزامنة · Retry pending: ${message}` });
+      set({ phase: 'error', ...label('sync_failed', { message }) });
       throw err;
     }
   }

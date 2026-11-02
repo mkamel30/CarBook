@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@app/i18n/context';
 import type { SyncBoot, SyncState, SyncPhase } from '../offline/syncBoot';
 
 // A tiny offline/synced status chip for the app shell. The shared web UI is
@@ -21,9 +22,12 @@ const PALETTE: Record<SyncPhase, Palette> = {
   error: { dot: '#f43f5e', border: 'rgba(244,63,94,0.55)', text: '#fecdd3' },
 };
 
+type ChipNote = { key: string; vars?: Record<string, string | number> };
+
 export function StatusChip({ boot }: { boot: SyncBoot }) {
+  const { t } = useTranslation();
   const [state, setState] = useState<SyncState>(boot.getStatus());
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<ChipNote | null>(null);
 
   useEffect(
     () =>
@@ -35,16 +39,17 @@ export function StatusChip({ boot }: { boot: SyncBoot }) {
   );
 
   // Auth handoff outcomes (mobile/src/main.tsx): a failed code redemption or a
-  // burned bearer must be visible, never a silent half-login.
+  // burned bearer must be visible, never a silent half-login. Held as a
+  // dictionary key so switching language re-labels the chip immediately.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
-        | { kind?: string; stage?: string; reason?: string }
+        | { kind?: string; stage?: string; reason?: string; guest?: boolean }
         | undefined;
       if (detail?.kind === 'failed') {
-        setNote(`فشل تسجيل الدخول · Login failed (${detail.stage}: ${detail.reason})`);
+        setNote({ key: 'handoff_login_failed', vars: { stage: detail.stage ?? '', reason: detail.reason ?? '' } });
       } else if (detail?.kind === 'unauthorized') {
-        setNote('انتهت الجلسة · Session ended — sign in again');
+        setNote({ key: detail.guest ? 'handoff_signin_required' : 'handoff_session_ended' });
       } else if (detail?.kind === 'signedin') {
         setNote(null);
       }
@@ -61,10 +66,12 @@ export function StatusChip({ boot }: { boot: SyncBoot }) {
       type="button"
       onClick={() => boot.syncNow().catch(() => {})}
       aria-live="polite"
-      title="Tap to sync now"
+      title={t('sync_tap_hint')}
       style={{
         position: 'fixed',
-        top: 'calc(0.5rem + env(safe-area-inset-top))',
+        // Below the sticky top bar AND the content's pill row, so the chip
+        // never covers interactive UI (it used to sit on the header row).
+        top: 'calc(6.5rem + env(safe-area-inset-top))',
         insetInlineEnd: 'calc(0.75rem + env(safe-area-inset-right))',
         zIndex: 80,
         display: 'inline-flex',
@@ -97,7 +104,7 @@ export function StatusChip({ boot }: { boot: SyncBoot }) {
         }}
       />
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {note ?? state.message}
+        {note ? t(note.key, note.vars) : t(state.messageKey, state.messageVars)}
       </span>
     </button>
   );
