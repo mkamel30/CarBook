@@ -138,10 +138,9 @@ export async function getDatabase(dbFilePath?: string) {
       value INTEGER NOT NULL DEFAULT 0
     );`,
     `INSERT OR IGNORE INTO sync_counter (id, value) VALUES (1, 0);`,
-    `CREATE INDEX IF NOT EXISTS idx_vehicles_seq ON vehicles(seq);`,
-    `CREATE INDEX IF NOT EXISTS idx_schedules_seq ON maintenance_schedules(seq);`,
-    `CREATE INDEX IF NOT EXISTS idx_logs_seq ON maintenance_logs(seq);`,
-    `CREATE INDEX IF NOT EXISTS idx_fuel_seq ON fuel_logs(seq);`,
+    // The `seq` indexes are NOT created here: on a database that predates sync the
+    // tables already exist without a `seq` column, so indexing it in this batch
+    // would abort the whole migration. They are created after the ALTER loop below.
     // One row per signed-in device, so a phone login never signs the desktop out.
     // Only the SHA-256 of the refresh token is stored; the token itself is never persisted.
     // Rotated rows are kept with revoked_at set: replaying one is the signal that the
