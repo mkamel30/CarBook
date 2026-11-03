@@ -87,7 +87,17 @@ jobs:
 
       - name: Build Release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+        run: |
+          set +e
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon > gradle-build.log 2>&1
+          code=$?
+          tail -n 200 gradle-build.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::assembleRelease failed (exit $code)"
+            tail -n 25 gradle-build.log | while IFS= read -r line; do echo "::error::${line}"; done
+            exit "$code"
+          fi
 
       - name: Prepare Release Asset
         run: |
