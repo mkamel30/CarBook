@@ -61,7 +61,20 @@ jobs:
         run: pnpm --prefix mobile build
 
       - name: Sync Capacitor Android
-        run: pnpm exec cap sync android
+        run: |
+          set +e
+          pnpm exec cap sync android > cap-sync.log 2>&1
+          code=$?
+          cat cap-sync.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::cap sync android failed (exit $code)"
+            # Surface the log tail as annotations (readable via the check-runs
+            # API without auth) so a CI-only failure is diagnosable.
+            tail -n 25 cap-sync.log | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            exit "$code"
+          fi
 
       - name: Decode Release Keystore
         env:
