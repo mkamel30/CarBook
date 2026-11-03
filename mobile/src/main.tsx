@@ -146,7 +146,15 @@ if (shell) {
   // the WebView itself must never embed accounts.google.com.
   (window as unknown as { carbookShell?: unknown }).carbookShell = {
     openLogin: () => {
-      if (!SERVER_BASE_URL) return;
+      // A missing server origin means the bundle was built without
+      // VITE_CARBOOK_SERVER_URL (see release-apk.yml / mobile/.env). Do NOT
+      // return silently: a button that "does nothing" is indistinguishable from
+      // a broken browser handoff. Surface it through the same failed-handoff
+      // channel the status chip already renders (rule 8 — explicit failure).
+      if (!SERVER_BASE_URL) {
+        noteHandoff({ kind: 'failed', stage: 'config', reason: 'no_server_configured' });
+        return;
+      }
       window.location.href = `${SERVER_BASE_URL.replace(/\/$/, '')}/api/auth/login?source=app`;
     },
     clearSession: () => {

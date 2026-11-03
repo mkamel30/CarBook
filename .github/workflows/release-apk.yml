@@ -57,6 +57,26 @@ jobs:
           pnpm test
           pnpm --prefix mobile test
 
+      - name: Bake server origin into the mobile bundle
+        run: |
+          # mobile/.env is gitignored, so a CI build would otherwise bake an
+          # empty SERVER_BASE_URL and every auth/AI call silently no-ops.
+          # config.xml is the committed single source of truth — derive from it
+          # so the JS bundle and the native handoff can never point at different
+          # hosts. Fail loudly (rule 8) rather than ship a login that does nothing.
+          URL=$(sed -n 's:.*<string name="server_url"[^>]*>\(.*\)</string>.*:\1:p' \
+                android/app/src/main/res/values/config.xml | head -n1 | tr -d '[:space:]')
+          if [ -z "$URL" ]; then
+            echo "::error::Could not read <string name=\"server_url\"> from config.xml"
+            exit 1
+          fi
+          case "$URL" in
+            https://*) ;;
+            *) echo "::error::server_url is not an https origin: $URL"; exit 1 ;;
+          esac
+          echo "VITE_CARBOOK_SERVER_URL=$URL" > mobile/.env
+          echo "Baking mobile bundle against $URL"
+
       - name: Build Mobile Bundle
         run: pnpm --prefix mobile build
 

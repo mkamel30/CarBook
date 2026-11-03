@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { semverToVersionCode, CURRENT_CLIENT_VERSION } from '@/services/version';
 
 // The Gradle build derives versionCode = major*10000 + minor*100 + patch from
@@ -25,7 +26,13 @@ describe('semverToVersionCode (mirrors the Gradle formula)', () => {
   });
 
   it('keeps the installed client version consistent with package.json', () => {
-    expect(CURRENT_CLIENT_VERSION).toBe('1.0.0');
-    expect(semverToVersionCode(CURRENT_CLIENT_VERSION)).toBe(10000);
+    // Read the real source of truth instead of pinning a literal, so a future
+    // release bump never silently breaks this — and forgetting to bump
+    // CURRENT_CLIENT_VERSION alongside package.json fails here.
+    const pkgVersion = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ).version as string;
+    expect(CURRENT_CLIENT_VERSION).toBe(pkgVersion);
+    expect(semverToVersionCode(CURRENT_CLIENT_VERSION)).toBe(semverToVersionCode(pkgVersion));
   });
 });

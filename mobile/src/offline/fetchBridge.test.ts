@@ -222,11 +222,13 @@ describe('offline fetch bridge: network passthrough', () => {
 
     await remote('/api/auth/me');
     await remote('/api/ai/manual', { method: 'POST', body: '{}' });
+    await remote('/api/app-version');
     await remote('/icons/icon.svg');
 
     expect(forwarded).toEqual([
       'https://srv.test/api/auth/me',
       'https://srv.test/api/ai/manual',
+      'https://srv.test/api/app-version',
       '/icons/icon.svg',
     ]);
 
@@ -260,6 +262,7 @@ describe('offline fetch bridge: needs-connection state for auth/AI', () => {
       ['/api/ai/doctor', { method: 'POST', body: '{}' }],
       ['/api/ai/manual', { method: 'POST', body: '{}' }],
       ['/api/ai/lookup', { method: 'POST', body: '{}' }],
+      ['/api/app-version', undefined],
       ['/api/auth/me', undefined],
     ] as Array<[string, RequestInit | undefined]>) {
       const res = await remote(url, init);

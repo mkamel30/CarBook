@@ -7,6 +7,7 @@
 // are forwarded to the real server because they genuinely need network:
 //   /api/auth/*  — Google login / device session
 //   /api/ai/*    — Gemini/OpenRouter manual + doctor lookups
+//   /api/app-version — the latest-GitHub-Release check the device cannot run itself
 // Both fail LOUDLY offline: with no connectivity the bridge short-circuits them
 // into a structured 503 {error, code:'NETWORK_REQUIRED'} instead of letting a
 // transport exception escape, and a transport error is converted to the same
@@ -680,7 +681,15 @@ export function createFetchBridge(deps: BridgeDeps): FetchHandler {
       return forward(input, init, false);
     }
 
-    if (pathname.startsWith('/api/auth/') || pathname.startsWith('/api/ai/')) {
+    if (
+      pathname.startsWith('/api/auth/')
+      || pathname.startsWith('/api/ai/')
+      // The update check reads the latest GitHub Release server-side; the device
+      // has no GitHub client, so /api/app-version must reach the server too. Left
+      // local it hit the `default: notImplemented` branch and the Settings
+      // "Check for updates" always reported failure.
+      || pathname === '/api/app-version'
+    ) {
       return forward(pathname + search.toString(), init, true);
     }
 
