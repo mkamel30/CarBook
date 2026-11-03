@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -35,6 +35,15 @@ describe('POST /api/ai/doctor forwards the request language', () => {
     try {
       await repo.close();
     } catch { /* ignore */ }
+  });
+
+  // The route calls `new StorageRepository()` with no path, which caches the
+  // connection in a process-global `_db` against the first path it resolves.
+  // Deleting the file between cases would leave that cached handle pointing at a
+  // removed inode (404 on Linux CI; Windows defers the delete so it passes
+  // locally). Remove it once, at the end of the file, so the cached handle stays
+  // valid across every case.
+  afterAll(() => {
     for (const ext of ['', '-wal', '-shm']) {
       try {
         fs.rmSync(dbPath + ext, { force: true });
