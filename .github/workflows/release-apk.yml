@@ -61,7 +61,7 @@ jobs:
         run: pnpm --prefix mobile build
 
       - name: Sync Capacitor Android
-        run: npx cap sync android
+        run: pnpm exec cap sync android
 
       - name: Decode Release Keystore
         env:
