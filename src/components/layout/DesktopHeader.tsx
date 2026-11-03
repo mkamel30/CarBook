@@ -1,7 +1,7 @@
 import React from 'react';
-import { Fuel, Wrench, Globe, LogOut, Bell } from 'lucide-react';
+import { Bell, Fuel, Globe, LogOut, Settings, User, Wrench } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
-import { nextLang } from '@/i18n/util';
+import { Menu, MenuItem } from '@/components/ui/Menu';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
 
 export interface DesktopHeaderProps {
@@ -25,16 +25,17 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   urgentCount = 0,
   onSelectTab,
 }) => {
-  const { t, lang, setLang, dir, languages } = useTranslation();
-  const nextCode = nextLang(lang);
-  const nextName = languages.find((l) => l.code === nextCode)?.name ?? nextCode;
+  const { t, dir, lang, setLang, languages } = useTranslation();
+  // The trigger shows the ENDONYM of the active language; the list below is the
+  // context `languages` array, so a fourth language appears automatically.
+  const currentName = languages.find((l: { code: string; name: string }) => l.code === lang)?.name ?? lang;
 
   return (
-    <header className="hidden md:flex h-14 border-b border-slate-800 bg-slate-950/60 px-6 items-center justify-between shrink-0">
-      <div className="flex items-center gap-4">
+    <header className="hidden md:flex h-14 border-b border-slate-800 bg-slate-950/60 px-6 items-center justify-between gap-4 shrink-0">
+      <div className="flex items-center gap-4 min-w-0">
         {selectedVehicle ? (
-          <div className="flex items-center gap-3">
-            <span className="font-semibold text-sm">{selectedVehicle.name}</span>
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="font-semibold text-sm truncate">{selectedVehicle.name}</span>
             <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">
               {selectedVehicle.make} {selectedVehicle.model} ({selectedVehicle.year})
             </span>
@@ -59,13 +60,15 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        {/* Urgent Alerts Bell */}
+      {/* Utility cluster first (alerts, language, settings), then the quick-add
+          actions, and the account control last. */}
+      <div className="flex items-center gap-2 shrink-0">
         {onSelectTab && (
           <button
             onClick={() => onSelectTab('alerts')}
             className="relative p-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 transition"
             title={t('nav_alerts')}
+            aria-label={t('nav_alerts')}
           >
             <Bell className="w-3.5 h-3.5 text-amber-400" />
             {urgentCount > 0 && (
@@ -76,15 +79,37 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
           </button>
         )}
 
-        {/* Language Switcher */}
-        <button
-          onClick={() => setLang(nextCode)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-          title={t('btn_change_language')}
+        <Menu
+          triggerLabel={t('lang_menu_title')}
+          ariaLabel={t('aria_language_menu')}
+          title={t('lang_menu_title')}
+          hint={t('lang_menu_hint')}
+          align="end"
+          triggerClassName="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+          triggerContent={
+            <>
+              <Globe className="w-3.5 h-3.5 text-amber-400" />
+              <span>{currentName}</span>
+            </>
+          }
         >
-          <Globe className="w-3.5 h-3.5 text-amber-400" />
-          <span>{nextName}</span>
-        </button>
+          {languages.map((l: { code: string; name: string }) => (
+            <MenuItem key={l.code} selected={l.code === lang} onClick={() => setLang(l.code)}>
+              {l.name}
+            </MenuItem>
+          ))}
+        </Menu>
+
+        {onSelectTab && (
+          <button
+            onClick={() => onSelectTab('settings')}
+            className="p-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 transition"
+            title={t('nav_settings')}
+            aria-label={t('nav_settings')}
+          >
+            <Settings className="w-3.5 h-3.5" />
+          </button>
+        )}
 
         {selectedVehicle && (
           <>
@@ -103,40 +128,37 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
           </>
         )}
 
-        {/* User Identity / Google Login */}
-        {currentUser ? (
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-            {currentUser.picture ? (
-              <img
-                src={currentUser.picture}
-                alt={currentUser.name}
-                className="w-7 h-7 rounded-full border border-amber-500/40 object-cover"
-              />
+        <Menu
+          triggerLabel={t('aria_open_menu')}
+          ariaLabel={t('nav_account')}
+          title={t('nav_account')}
+          align="end"
+          triggerClassName="flex items-center gap-2 rounded-full p-0.5 hover:bg-slate-800/70 transition active:scale-95"
+          triggerContent={
+            currentUser?.picture ? (
+              <img src={currentUser.picture} alt={currentUser.name} className="w-7 h-7 rounded-full object-cover" />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center">
-                {currentUser.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <span className="text-xs text-slate-200 max-w-[110px] truncate font-medium">
-              {currentUser.name}
-            </span>
-            <button
-              onClick={onLogout}
-              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-900 rounded-full transition"
-              title={t('set_sign_out')}
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={onLoginGoogle}
-            className="flex items-center gap-2 bg-slate-100 hover:bg-white text-slate-900 font-semibold px-3 py-1.5 rounded-full text-xs shadow-sm transition active:scale-95 ml-1"
-          >
-            <GoogleIcon className="w-3.5 h-3.5" />
-            <span>{t('btn_login_google')}</span>
-          </button>
-        )}
+              <span className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center">
+                {currentUser ? currentUser.name.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
+              </span>
+            )
+          }
+        >
+          {currentUser ? (
+            <>
+              <MenuItem icon={<User className="w-3.5 h-3.5 text-amber-400" />}>
+                {t('menu_signed_in_as', { name: currentUser.name })}
+              </MenuItem>
+              <MenuItem danger icon={<LogOut className="w-3.5 h-3.5" />} onClick={() => onLogout?.()}>
+                {t('set_sign_out')}
+              </MenuItem>
+            </>
+          ) : (
+            <MenuItem icon={<GoogleIcon className="w-3.5 h-3.5" />} onClick={() => onLoginGoogle?.()}>
+              {t('btn_login_google')}
+            </MenuItem>
+          )}
+        </Menu>
       </div>
     </header>
   );

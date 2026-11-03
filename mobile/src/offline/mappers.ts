@@ -204,13 +204,18 @@ export function schedulePatchFields(body: Raw): Fields {
   return f;
 }
 
-/** Fields for seeding one preset schedule onto a freshly-created vehicle. */
+/**
+ * Fields for seeding one factory preset onto a vehicle.
+ *
+ * NO baseline is written: a preset the owner never serviced must surface as
+ * "service record required" (needs_record). Seeding the vehicle's initial
+ * odometer/date here used to fabricate a service that never happened, and km
+ * maths from a 0/absent baseline is what made a brand-new car look serviced.
+ */
 export function scheduleSeedFields(
   preset: { itemCode: string; titleAr: string; titleEn: string; intervalKm: number; intervalMonths?: number },
   vehicleId: string,
-  vehicleRaw: Raw,
 ): Fields {
-  const createdIso = vehicleRaw.created_at_iso || new Date().toISOString();
   return {
     vehicle_id: vehicleId,
     item_code: preset.itemCode,
@@ -218,7 +223,27 @@ export function scheduleSeedFields(
     title_en: preset.titleEn,
     interval_km: preset.intervalKm,
     interval_months: preset.intervalMonths ?? null,
-    last_done_odometer: nn(vehicleRaw.initial_odometer),
-    last_done_date: createdIso.split('T')[0],
+    last_done_odometer: null,
+    last_done_date: null,
+  };
+}
+
+/**
+ * Fields for a user-defined item created through POST /api/schedules — the same
+ * row shape as a preset, with a `custom_…` item_code and no baseline.
+ */
+export function scheduleCreateFields(
+  item: { itemCode: string; titleAr: string; titleEn: string; intervalKm: number; intervalMonths?: number | null },
+  vehicleId: string,
+): Fields {
+  return {
+    vehicle_id: vehicleId,
+    item_code: item.itemCode,
+    title_ar: item.titleAr,
+    title_en: item.titleEn,
+    interval_km: item.intervalKm,
+    interval_months: item.intervalMonths ?? null,
+    last_done_odometer: null,
+    last_done_date: null,
   };
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Wrench, PlusCircle, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { localizedField } from '@/i18n/util';
 import { Modal } from '@/components/ui/Modal';
 import { deriveMaintenanceTotal } from '@/components/tabs/maintenanceTotals';
 
@@ -15,6 +16,7 @@ export interface MaintenanceFormData {
   serviceDate: string;
   odometer: number;
   serviceType: string;
+  linkedItemCode?: string;
   title: string;
   partsCost: number;
   laborCost: number;
@@ -34,6 +36,7 @@ export interface MaintenanceLogModalProps {
   partsList: MaintenancePartItem[];
   setPartsList: React.Dispatch<React.SetStateAction<MaintenancePartItem[]>>;
   onSaveMaintenance: (e: React.FormEvent) => void;
+  schedules?: any[];
   /** Lower bound for a brand new record: the odometer cannot run backwards. */
   minOdometer?: number;
   /** Blocks a second submit while the first is still in flight. */
@@ -48,9 +51,12 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
   setMaintenanceForm,
   partsList,
   setPartsList,
-  onSaveMaintenance, saving, minOdometer,
+  onSaveMaintenance,
+  schedules,
+  saving,
+  minOdometer,
 }) => {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   if (!isOpen) return null;
 
@@ -109,20 +115,41 @@ export const MaintenanceLogModal: React.FC<MaintenanceLogModalProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block text-xs text-slate-300 mb-1">{t('maint_service_type_label')}</label>
-            <select
-              className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
-              value={maintenanceForm.serviceType}
-              onChange={e => setMaintenanceForm({ ...maintenanceForm, serviceType: e.target.value })}
-            >
-              <option value="oil_change">{t('maint_type_oil')}</option>
-              <option value="periodic">{t('maint_type_periodic')}</option>
-              <option value="brakes">{t('maint_type_brakes')}</option>
-              <option value="tires">{t('maint_type_tires')}</option>
-              <option value="repair">{t('maint_type_repair')}</option>
-              <option value="other">{t('maint_type_other')}</option>
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">{t('maint_service_type_label')}</label>
+              <select
+                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                value={maintenanceForm.serviceType}
+                onChange={e => setMaintenanceForm({ ...maintenanceForm, serviceType: e.target.value })}
+              >
+                <option value="oil_change">{t('maint_type_oil')}</option>
+                <option value="periodic">{t('maint_type_periodic')}</option>
+                <option value="brakes">{t('maint_type_brakes')}</option>
+                <option value="tires">{t('maint_type_tires')}</option>
+                <option value="repair">{t('maint_type_repair')}</option>
+                <option value="other">{t('maint_type_other')}</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">{t('maint_linked_item_label')}</label>
+              <select
+                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 outline-none focus:border-amber-500"
+                value={maintenanceForm.linkedItemCode || ''}
+                onChange={e => setMaintenanceForm({ ...maintenanceForm, linkedItemCode: e.target.value })}
+              >
+                <option value="">{t('maint_linked_item_auto')}</option>
+                {schedules?.map((item: any) => {
+                  const s = item.schedule || item;
+                  return (
+                    <option key={s.id || s.itemCode} value={s.itemCode}>
+                      {localizedField(lang, s.titleAr, s.titleEn)}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           </div>
 
           {/* Parts Items List */}

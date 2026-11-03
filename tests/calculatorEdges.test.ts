@@ -186,10 +186,14 @@ describe('evaluateMaintenanceStatus — date-only edges', () => {
     expect(s.status).toBe('ok');
   });
 
-  it('null lastDoneOdometer is treated as a zero baseline (never NaN)', () => {
+  it('null lastDoneOdometer leaves remainingKm as null rather than fabricating a zero baseline', () => {
     const s = evaluateMaintenanceStatus({ ...base, lastDoneOdometer: null }, 5000, new Date('2026-02-01'));
-    expect(s.remainingKm).toBe(5000);
-    expect(Number.isFinite(s.remainingKm)).toBe(true);
+    expect(s.remainingKm).toBeNull();
+    expect(s.remainingDays).toBeGreaterThan(0);
     expect(s.status).toBe('ok');
+
+    const unrecorded = evaluateMaintenanceStatus({ ...base, lastDoneOdometer: null, lastDoneDate: null }, 5000);
+    expect(unrecorded.status).toBe('needs_record');
+    expect(unrecorded.remainingKm).toBeNull();
   });
 });

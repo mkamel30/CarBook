@@ -231,17 +231,20 @@ Returns the vehicle and its evaluated schedules:
 }
 ```
 
-If the vehicle has no schedules yet, this call seeds the nine presets from `src/services/presets.ts` first, using `initialOdometer` and the vehicle's creation date as the baseline. Seeding happens on read, not on vehicle creation, so a vehicle created through sync or restore is seeded on first view too.
+Idempotent factory seeding happens on read: every preset from `src/services/presets.ts` the vehicle does not already have (including presets added by a later release) is inserted, and rows the owner deliberately removed stay removed. A seeded row carries **no baseline** (`lastDoneOdometer` / `lastDoneDate` are `null`), so an item that was never serviced reports `needs_record` ("service record required") instead of a fabricated "serviced at the initial odometer" reading.
+
+Each evaluated schedule also carries `linkedFromLog` (`{ date, odo }`) when its baseline matches a recorded maintenance log — the badge that proves the baseline came from a real service record.
 
 `status` is one of:
 
 | `status` | Condition |
 | :--- | :--- |
-| `overdue` | `remainingKm ≤ 0`, or a date interval is configured and `remainingDays ≤ 0`. Checked first. |
+| `needs_record` | Neither a baseline odometer nor a baseline date exists — nothing can be computed. Checked first. |
+| `overdue` | `remainingKm ≤ 0`, or a date interval is configured and `remainingDays ≤ 0`. |
 | `due_soon` | `remainingKm ≤ 1000`, or a date interval is configured and `remainingDays ≤ 14`. |
-| `ok` | Neither of the above. |
+| `ok` | None of the above. |
 
-`remainingDays` is `null` when the schedule has no `lastDoneDate` or no `intervalMonths`, and a `null` never triggers a time-based status — such a schedule is evaluated on mileage alone.
+`remainingKm` / `remainingDays` are `null` when their axis has no baseline; a missing baseline is never read as 0.
 
 ### `PATCH /api/schedules`
 Sets the baseline by hand — for a car bought used, or a part replaced outside the app.
@@ -254,7 +257,23 @@ Sets the baseline by hand — for a car bought used, or a part replaced outside 
   "intervalMonths": 12
 }
 ```
-Requires ownership of `maintenance_schedules`.
+An explicit `null` or `""` for `lastDoneOdometer` / `lastDoneDate` clears the baseline (back to `needs_record`). Requires ownership of `maintenance_schedules`.
+
+### `POST /api/schedules`
+Adds a user-defined preventive item (e.g. transmission oil for an unusual car). The row lives in `maintenance_schedules` like any factory item, under a `custom_…` item code, and starts with **no baseline**.
+```json
+{
+  "vehicleId": "vehicle-uuid",
+  "titleAr": "تغيير زيت الفتيس",
+  "titleEn": "Transmission Fluid Change",
+  "intervalKm": 50000,
+  "intervalMonths": 36
+}
+```
+When only one title is given it is reused for both languages. Requires ownership of the parent vehicle.
+
+### `DELETE /api/schedules?id=<id>`
+Soft-removes one item (factory or custom). Tombstoned, so sync peers receive the removal through their pull cursor instead of resurrecting the row. Requires ownership of `maintenance_schedules`.
 
 ---
 
@@ -462,9 +481,21 @@ Same resolution, but persists the result onto the vehicle.
 
 ---
 
+## App version — `/api/app-version`
+
+### `GET /api/app-version`
+No auth. Reports the newest published Android build so the client can show the update banner.
+- **Returns:** `{ success: true, data: { version, versionCode, apkUrl, releaseDate, notes, source } }`
+- Reads the latest GitHub Release (repo from `GITHUB_REPO` env, default `mkamel30/CarBook`), looks for a `.apk` asset, and maps the tag (e.g. `v1.0.1`) to `version`/`versionCode` with the same formula the Gradle build uses (`major*10000 + minor*100 + patch`).
+- Results are cached in memory for 5 minutes; the GitHub call has a 5s timeout.
+- `source` is `github` on success or `fallback` when GitHub is unreachable — the fallback reports the running `package.json` version with `apkUrl: null`, so the client stays "up to date" rather than erroring.
+- `apkUrl` is null until the first release is published; the client only offers the download when `apkUrl` is present and `versionCode` is strictly higher than the installed one.
+
+---
+
 ## Route index
 
-18 route files, 34 method handlers:
+18 route files, 36 method handlers:
 
 | Route | Methods | Auth |
 | :--- | :--- | :--- |
@@ -477,8 +508,9 @@ Same resolution, but persists the result onto the vehicle.
 | `/api/vehicles` | GET, POST, PUT, DELETE | session; PUT/DELETE + ownership |
 | `/api/fuel` | GET, POST, PUT, DELETE | session + ownership |
 | `/api/maintenance` | GET, POST, PUT, DELETE | session + ownership |
-| `/api/schedules` | GET, PATCH | session + ownership |
+| `/api/schedules` | GET, POST, PATCH, DELETE | session + ownership |
 | `/api/reports` | GET | session + ownership |
+| `/api/app-version` | GET | none |
 | `/api/settings` | GET, POST | session |
 | `/api/settings/fuel-prices` | GET | session |
 | `/api/backup` | GET, POST | session |

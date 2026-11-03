@@ -21,6 +21,25 @@ function businessCols(table: string) {
   return DEVICE_COLS[table];
 }
 
+/**
+ * READ-ONLY outbox size: how many rows still carry an unsent local change.
+ *
+ * Exists for the auto-sync watcher (offline/syncBoot.ts), which has to notice
+ * writes without hooking the fetch bridge. It deliberately does NOT reuse
+ * `WMDBLocalStore.collectDirty()`: that method re-snapshots `pending`/
+ * `lastPushed`, the bookkeeping the transport uses to decide which revisions are
+ * still unsent, so sampling it between or during syncs would corrupt it. This is
+ * a pure COUNT over the same `_dirty` predicate and touches no writes.
+ */
+export async function countDirtyRows(db: Database): Promise<number> {
+  let total = 0;
+  for (const table of SYNC_TABLE_NAMES) {
+    const c = db.collections.get(table as any);
+    total += await c.query(Q.where('_dirty', Q.oneOf(DIRTY_UNSYNCED))).fetchCount();
+  }
+  return total;
+}
+
 // Build the server-shaped push row (snake_case columns + numeric updatedAt) from a
 // device record's raw fields. `json` columns are parsed so the server's Zod
 // validators see real structures (parts_list must arrive as an array).

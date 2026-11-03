@@ -6,10 +6,14 @@ import { localizedField } from '@/i18n/util';
 import { useTheme } from '@/theme/context';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
 import { pushToast } from '@/components/ui/Toast';
+import { Browser } from '@capacitor/browser';
+import { CURRENT_CLIENT_VERSION, semverToVersionCode } from '@/services/version';
 import {
   checkNotificationSupport,
+  checkNotificationSupportAsync,
   requestNotificationPermission,
   sendLocalNotification,
+  type NotificationStatus,
 } from '@/services/notifications';
 
 export interface SettingsTabProps {
@@ -51,7 +55,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   const { t, lang, setLang, languages } = useTranslation();
   const { theme, setTheme, themes } = useTheme();
-  const [notifStatus, setNotifStatus] = useState<{ supported: boolean; permission: string }>({
+  const [notifStatus, setNotifStatus] = useState<NotificationStatus>({
     supported: false,
     permission: 'default',
   });
@@ -156,13 +160,45 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     }
   };
 
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatusMsg, setUpdateStatusMsg] = useState<string | null>(null);
+  const [availableUpdate, setAvailableUpdate] = useState<{ version: string; apkUrl: string } | null>(null);
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    setUpdateStatusMsg(null);
+    try {
+      const res = await fetch('/api/app-version');
+      const body = await res.json();
+      const info = body?.success ? body.data : null;
+      if (info?.version) {
+        const serverCode = semverToVersionCode(info.version);
+        const currentCode = semverToVersionCode(CURRENT_CLIENT_VERSION);
+        if (serverCode > currentCode && info.apkUrl) {
+          setAvailableUpdate(info);
+          setUpdateStatusMsg(t('update_available_title', { version: info.version }));
+        } else {
+          setAvailableUpdate(null);
+          setUpdateStatusMsg(t('update_up_to_date', { version: info.version }));
+        }
+      } else {
+        setUpdateStatusMsg(t('update_check_failed'));
+      }
+    } catch {
+      setUpdateStatusMsg(t('update_check_failed'));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
   useEffect(() => {
-    setNotifStatus(checkNotificationSupport());
+    checkNotificationSupportAsync().then(setNotifStatus);
   }, []);
 
   const handleEnableNotifications = async () => {
     const granted = await requestNotificationPermission();
-    setNotifStatus(checkNotificationSupport());
+    const status = await checkNotificationSupportAsync();
+    setNotifStatus(status);
     if (granted) {
       sendLocalNotification(t('set_enable_notif_title'), { body: t('set_enable_notif_body') });
     }
@@ -575,7 +611,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               }`}
             />
             {notifStatus.permission === 'granted'
-              ? t('notif_status_enabled')
+              ? (notifStatus.isNative ? t('notif_status_native') : t('notif_status_enabled'))
               : t('notif_status_disabled')}
           </span>
         </div>
@@ -597,7 +633,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition active:scale-95 shadow-sm"
             >
               <BellRing className="w-4 h-4" />
-              <span>{t('notif_btn_enable')}</span>
+              <span>{notifStatus.isNative ? t('notif_btn_enable_system') : t('notif_btn_enable')}</span>
             </button>
           )}
 
@@ -677,6 +713,49 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             {t('set_save_btn')}
           </button>
         </form>
+      </div>
+
+      {/* App Version & APK Updates Card */}
+      <div className="bg-slate-950 border border-slate-800 p-6 rounded-lg space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <Download className="w-5 h-5 text-amber-500" />
+            <h2 className="text-sm font-bold text-slate-100">
+              {t('update_current_version', { version: CURRENT_CLIENT_VERSION })}
+            </h2>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-400 leading-relaxed">
+          {updateStatusMsg || t('update_available_body')}
+        </p>
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            type="button"
+            onClick={handleCheckUpdate}
+            disabled={checkingUpdate}
+            className="bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-600 px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition active:scale-95 disabled:opacity-50"
+          >
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span>{checkingUpdate ? '...' : t('update_check_btn')}</span>
+          </button>
+
+          {availableUpdate && (
+            <button
+              type="button"
+              onClick={() =>
+                Browser.open({ url: availableUpdate.apkUrl }).catch(() =>
+                  window.open(availableUpdate.apkUrl, '_blank'),
+                )
+              }
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition active:scale-95 shadow-sm"
+            >
+              <Download className="w-4 h-4" />
+              <span>{t('update_btn_download')}</span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

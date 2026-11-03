@@ -323,7 +323,6 @@ sync_failed = فشل المزامنة: {message}
 handoff_login_failed = فشل تسجيل الدخول ({stage}: {reason})
 handoff_session_ended = انتهت الجلسة — سجّل الدخول مجدداً
 handoff_signin_required = تسجيل الدخول مطلوب لهذه الميزة
-sync_tap_hint = اضغط للمزامنة الآن
 
 # Settings card titles & account section (settings tab)
 set_account_title = حساب المستخدم والمزامنة السحابية
@@ -423,6 +422,70 @@ err_request_generic = فشل الطلب
 
 # 401 envelope message
 err_session_expired = انتهت الجلسة — يرجى تسجيل الدخول مرة أخرى
+
+# Schedules: items with no service record yet
+alerts_status_needs_record = مطلوب تسجيل الصيانة
+alerts_needs_record_hint = لا يوجد سجل صيانة لهذا البند بعد، لذلك لا يمكن حساب الاستحقاق. سجّل الصيانة أو اضغط «ضبط آخر صيانة» لإدخال القراءة يدوياً.
+alerts_last_done_none = غير مسجّل
+alerts_link_badge = مرتبط بسجل صيانة
+alerts_linked_from_log = آخر إجراء تم من سجل الصيانة بتاريخ {date} عند عداد {odo} كم
+
+# Schedules: adding and removing items
+alerts_btn_add_item = إضافة بند صيانة
+alerts_add_item_title = إضافة بند صيانة وقائية جديد
+alerts_item_title_ar_label = اسم البند بالعربية
+alerts_item_title_en_label = اسم البند بالإنجليزية
+alerts_item_interval_km_label = الفاصل الدوري بالكيلومتر
+alerts_item_interval_months_label = الفاصل الدوري بالشهور (اختياري)
+alerts_item_add = إضافة
+alerts_item_added = تم إضافة البند إلى الجدول
+alerts_item_invalid = أدخل اسم البند وفاصل بالكيلومتر أكبر من صفر
+alerts_item_badge_custom = بند مخصص
+alerts_btn_delete_item = حذف البند
+alerts_delete_item_confirm = هل تريد حذف بند «{title}» من جدول الصيانة الوقائية؟
+alerts_item_deleted = تم حذف البند
+
+# Maintenance log linked to preventive items
+maint_linked_schedules = تم تحديث {count} من بنود الجدول تلقائياً من هذا السجل
+alerts_filter_needs_record = غير مسجّلة بعد
+maint_linked_item_label = بند الصيانة الوقائية المرتبط
+maint_linked_item_auto = تلقائي حسب نوع الصيانة
+
+# Header, account and menus
+nav_account = الحساب
+aria_open_menu = فتح القائمة
+menu_signed_in_as = مسجّل الدخول باسم {name}
+
+# Language menu
+lang_menu_title = تغيير اللغة
+aria_language_menu = قائمة اللغات المتاحة
+lang_menu_hint = اللغة المختارة تُطبّق على الواجهة وعلى ردود مساعد الصيانة.
+
+# Sync chip details and automatic sync
+sync_tap_hint = اضغط لعرض تفاصيل المزامنة
+sync_details_title = حالة المزامنة
+sync_collapse = إخفاء التفاصيل
+sync_last_at = آخر مزامنة: {time}
+sync_pending = عناصر بانتظار الرفع: {count}
+sync_btn_now = مزامنة الآن
+sync_auto_note = المزامنة التلقائية تعمل بعد كل إضافة أو تعديل وعند عودة الاتصال.
+
+# APK update channel
+update_available_title = تحديث جديد متاح ({version})
+update_available_body = صدر إصدار جديد من CarBook. حمّل الـ APK وثبّته للحصول على آخر التحسينات والإصلاحات.
+update_btn_download = تحميل التحديث
+update_btn_later = لاحقاً
+update_up_to_date = البرنامج محدّث لآخر إصدار ({version})
+update_check_failed = تعذّر التحقق من وجود تحديث
+update_check_btn = التحقق من وجود تحديث
+update_current_version = الإصدار المثبّت: {version}
+
+# Native Android notifications
+notif_channel_name = تنبيهات صيانة CarBook
+notif_status_native = إشعارات النظام على الجهاز مفعّلة
+notif_status_web = إشعارات المتصفح
+notif_native_permission_denied = صلاحية الإشعارات مرفوضة على الجهاز. فعّلها من إعدادات النظام ثم أعد التشغيل.
+notif_btn_enable_system = تفعيل إشعارات النظام
 `;
 
 export default arRaw;

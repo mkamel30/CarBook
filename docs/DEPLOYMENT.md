@@ -337,14 +337,39 @@ pnpm android:sync
 pnpm android:apk:release        # gradlew assembleRelease — signed if keystore.properties exists
 ```
 
-**Offline APK — in progress, not a promise.** The device data layer, sync runtime and shell (`mobile/`) are implemented and tested in-process; the offline fetch bridge that lets the bundled UI read and write WatermelonDB instead of the network is landing now (§12 of [ARCHITECTURE.md](ARCHITECTURE.md)). Until that program finishes and a genuine offline build is cut, the shipped APK loads the remote site through `server.url` — a working network is a prerequisite, and Google sign-in and the AI features require network by design. Do not distribute a release APK built on the assumption of offline until it is actually verified on a device.
+**Offline-first is shipped, not aspirational.** The shell bundles the static client (`webDir: 'mobile/dist'`, no `server.url` — see `capacitor.config.ts`), boots from local assets, and reads/writes WatermelonDB through the offline fetch bridge, syncing to the server when a connection exists. Google sign-in and the AI features are the two things that still require network by design.
 
-## 14. Roadmap
+## 14. Releasing APK updates (self-hosted update channel)
+
+The app checks `GET /api/app-version` and offers to download a newer APK straight to the device (API.md §"App version"). The APK itself is produced by a GitHub Actions workflow — the owner never builds or uploads it by hand.
+
+**Release flow.** Bump the version in the two places that must agree, tag, push:
+
+1. `version` in root `package.json` (single source of truth — `android/app/build.gradle` parses it for `versionName`/`versionCode`).
+2. `CURRENT_CLIENT_VERSION` in `src/services/version.ts` (what the installed bundle compares against).
+3. Commit, then `git tag v1.0.1` (tag must equal `v` + the package version) and `git push origin v1.0.1`.
+
+`.github/workflows/release-apk.yml` runs on `v*` tags (and `workflow_dispatch`), installs both workspaces, runs typecheck + `pnpm test` + `pnpm --prefix mobile test`, builds the mobile bundle, `cap sync android`, then `assembleRelease`. It fails fast if the tag does not match `package.json`'s version. The APK is uploaded as a release asset named `CarBook-v<VERSION>.apk` (with a `sha256` checksum). `/api/app-version` reads the latest release, so the next time a device checks, it sees the new version and the download URL — no manual step.
+
+**GitHub Secrets (set once, in the repo web UI → Settings → Secrets and variables → Actions):**
+
+| Secret | Value |
+| :--- | :--- |
+| `ANDROID_KEYSTORE_B64` | `base64 -w0 android/carbook-release.keystore` |
+| `KEYSTORE_PASSWORD` | the keystore password (storePassword = keyPassword) |
+
+The workflow decodes the base64 into the keystore and writes `keystore.properties` on the runner; neither secret is ever committed. **Keystore safety is all-or-nothing:** the keystore is the identity of the app. If it (or its password) is lost, future releases cannot be installed over existing ones — Android only upgrades an app when the new APK is signed by the *same* key. Keep the local copy and `CarBook-release-secrets.txt` somewhere backed up, and never paste the password into a chat log that gets committed.
+
+**One-time debug→release migration.** Everything installed so far was signed with the *debug* key; the first release APK is signed with the *release* key. Android treats the two signatures as different apps, so the release APK will **not** install over the debug one — the debug build must be uninstalled first, which discards its local (WatermelonDB) data. This happens exactly once, at the first release install; every later release upgrades in place. Do it on a device whose data has already been synced to the server (or exported via Settings → Backup), and restore/merge afterwards.
+
+---
+
+## 15. Roadmap
 
 Ordered by what unblocks what. Items marked ✅ were verified against the code, not against intentions.
 
 1. **Scheduled backups.** A `cron` entry plus an off-host destination.
-2. **Finish the offline-APK program** (§13): bundle a real static export into the shell, flip it off `server.url`, verify on a device, then cut the first release build with the owner's keystore. The server-side half is ready — the sync protocol, per-row refusals and the fetch bridge are all tested — the on-device verification is what is missing.
+2. **Cut the first release APK** (§14) with the owner's keystore and verify it on a device end to end — the sync protocol, per-row refusals and the fetch bridge are all tested in-process, and the offline bundle is built; the on-device verification (install over debug, data survives the merge) is what is missing.
 3. **Verify the one-time-code handoff against the live host** end to end on a real phone (the flow is unit- and route-tested in-process; the dual-read `?token=` window stays until 2026-12-01 at the earliest to cover installed older APKs meanwhile).
 4. ~~Remove the unused `better-sqlite3` dependency~~ **done 2026-11-01** (with `drizzle-kit`; full gates re-run).
 

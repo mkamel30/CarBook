@@ -2,6 +2,7 @@ import { getDatabase } from './db';
 import { reserveSeq } from './sync';
 import * as schema from './schema';
 import { eq, desc, and } from 'drizzle-orm';
+import { baselineMovesForward, bestLogForItem } from '../services/presets';
 import {
   vehicleSchema,
   maintenanceScheduleSchema,
@@ -436,6 +437,85 @@ export class StorageRepository {
     });
   }
 
+  /**
+   * Item codes this vehicle already has, INCLUDING tombstoned rows. The factory
+   * preset seeding compares against this so a preset the owner deliberately
+   * removed is not silently re-created on the next GET.
+   */
+  async getItemCodesByVehicle(vehicleId: string): Promise<string[]> {
+    const { client } = await this.getHandles();
+    const res = await client.execute({
+      sql: `SELECT item_code FROM maintenance_schedules WHERE vehicle_id = ?`,
+      args: [vehicleId],
+    });
+    return res.rows.map((r: any) => String(r.item_code));
+  }
+
+  /**
+   * Soft-remove a schedule item. Tombstoned (never hard deleted) so other
+   * devices receive the removal through their pull cursor instead of
+   * resurrecting the row.
+   */
+  async deleteMaintenanceSchedule(id: string): Promise<void> {
+    const { client } = await this.getHandles();
+    const seq = await reserveSeq(client, 1);
+    await client.execute({
+      sql: `UPDATE maintenance_schedules SET deleted = 1, rev = rev + 1, seq = ?, sync_ts = ? WHERE id = ? AND deleted = 0`,
+      args: [seq, Date.now(), id],
+    });
+  }
+
+  /**
+   * Drive the preventive schedule from recorded service (server side of the
+   * log→item link; the offline bridge mirrors it with the same pure rules).
+   *
+   * `itemCodes` scopes which items may change. For each live schedule row in
+   * scope the baseline comes from the newest live log that evidences it — or,
+   * for the item the owner picked explicitly in the log modal, from that very
+   * log. Baselines only ever move FORWARD (see presets.baselineMovesForward),
+   * and a link that cannot find a supporting log leaves the row untouched:
+   * deleting a log never invents, clears or rewinds a baseline.
+   *
+   * Returns the ids of the schedule rows it updated.
+   */
+  async linkSchedulesForItems(params: {
+    vehicleId: string;
+    itemCodes: string[];
+    sourceLog?: { odometer: number; serviceDate: string } | null;
+    explicitItemCode?: string | null;
+  }): Promise<string[]> {
+    const targets = Array.from(new Set((params.itemCodes || []).filter(Boolean)));
+    if (!targets.length) return [];
+
+    const schedules = (await this.getSchedulesByVehicle(params.vehicleId))
+      .filter(s => targets.includes(s.itemCode));
+    if (schedules.length === 0) return [];
+
+    const logs = await this.getMaintenanceLogsByVehicle(params.vehicleId);
+    const updated: string[] = [];
+
+    for (const schedule of schedules) {
+      const explicitHit = !!params.explicitItemCode && schedule.itemCode === params.explicitItemCode;
+      let candidate: { odometer: number; serviceDate: string } | null = null;
+      if (explicitHit && params.sourceLog) {
+        candidate = { odometer: params.sourceLog.odometer, serviceDate: params.sourceLog.serviceDate };
+      } else {
+        const best = bestLogForItem(logs, schedule.itemCode);
+        if (best) candidate = { odometer: best.odometer, serviceDate: best.serviceDate };
+      }
+      if (!candidate) continue;
+      if (!baselineMovesForward(schedule, candidate)) continue;
+
+      await this.updateMaintenanceSchedule(schedule.id!, {
+        lastDoneOdometer: candidate.odometer,
+        lastDoneDate: candidate.serviceDate,
+      });
+      updated.push(schedule.id!);
+    }
+
+    return updated;
+  }
+
   // Fuel Logs with Transactional Atomic Odometer Sync
   async addFuelLog(data: Omit<FuelLog, 'id' | 'createdAt'>): Promise<FuelLog> {
     const { client, db } = await this.getHandles();
@@ -710,11 +790,11 @@ export class StorageRepository {
     return validated;
   }
 
-  async deleteMaintenanceLog(id: string): Promise<void> {
+  async deleteMaintenanceLog(id: string): Promise<MaintenanceLog | null> {
     const { client, db } = await this.getHandles();
     const existing = await db.select().from(schema.maintenanceLogsTable)
       .where(and(eq(schema.maintenanceLogsTable.id, id), eq(schema.maintenanceLogsTable.deleted, 0)));
-    if (existing.length === 0) return;
+    if (existing.length === 0) return null;
     const vehicleId = existing[0].vehicleId;
     const now = new Date().toISOString();
     const ts = Date.now();
@@ -742,6 +822,33 @@ export class StorageRepository {
         args: [vehicleId, vehicleId, vehicleId, now, seqBase + 1, ts, vehicleId],
       },
     ], 'write');
+
+    // The caller (route) re-links the items this log evidenced, so returning the
+    // removed row's identity is what keeps update/delete consistent with create.
+    let partsList = null;
+    if (existing[0].partsList) {
+      try { partsList = JSON.parse(existing[0].partsList); } catch { /* keep null */ }
+    }
+    return maintenanceLogSchema.parse({ ...existing[0], partsList });
+  }
+
+  /**
+   * One live maintenance log by id, or null. The maintenance route needs the
+   * stored row BEFORE an edit/delete so it knows which vehicle and which
+   * preventive items to re-link afterwards.
+   */
+  async getMaintenanceLogById(id: string): Promise<MaintenanceLog | null> {
+    if (!id) return null;
+    const { db } = await this.getHandles();
+    const records = await db.select().from(schema.maintenanceLogsTable)
+      .where(and(eq(schema.maintenanceLogsTable.id, id), eq(schema.maintenanceLogsTable.deleted, 0)));
+    if (records.length === 0) return null;
+    const r = records[0];
+    let partsList = null;
+    if (r.partsList) {
+      try { partsList = JSON.parse(r.partsList); } catch { /* keep null */ }
+    }
+    return maintenanceLogSchema.parse({ ...r, partsList });
   }
 
   async getMaintenanceLogsByVehicle(vehicleId: string): Promise<MaintenanceLog[]> {

@@ -13,8 +13,12 @@ import {
   LogOut,
   Pencil,
   Trash2,
+  ChevronDown,
+  Globe,
+  User,
 } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { Menu, MenuItem } from '@/components/ui/Menu';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
 
 export interface SidebarProps {
@@ -46,7 +50,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onEditVehicle,
   onDeleteVehicle,
 }) => {
-  const { t, dir, lang } = useTranslation();
+  const { t, dir, lang, setLang, languages } = useTranslation();
+  const currentLangName = languages.find((l: { code: string; name: string }) => l.code === lang)?.name ?? lang;
 
   return (
     <aside
@@ -206,35 +211,75 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Bottom Actions */}
+      {/* Bottom Actions: language, account, settings. */}
       <div className="p-3 border-t border-slate-800 space-y-2">
+        {/* Language switcher — the sidebar used to import `lang` without ever
+            offering a way to change it. */}
+        <Menu
+          triggerLabel={t('lang_menu_title')}
+          ariaLabel={t('aria_language_menu')}
+          title={t('lang_menu_title')}
+          hint={t('lang_menu_hint')}
+          align="start"
+          drop="up"
+          containerClassName="w-full"
+          triggerClassName="w-full flex items-center gap-2 px-3 py-2 rounded text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 transition"
+          triggerContent={
+            <>
+              <Globe className="w-4 h-4 text-amber-500 shrink-0" />
+              <span className="flex-1 min-w-0 text-start truncate">{currentLangName}</span>
+              <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-70" />
+            </>
+          }
+        >
+          {languages.map((l: { code: string; name: string }) => (
+            <MenuItem key={l.code} selected={l.code === lang} onClick={() => setLang(l.code)}>
+              {l.name}
+            </MenuItem>
+          ))}
+        </Menu>
+
         {currentUser ? (
-          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800">
-            <div className="flex items-center gap-2 min-w-0">
-              {currentUser.picture ? (
-                <img
-                  src={currentUser.picture}
-                  alt={currentUser.name}
-                  className="w-7 h-7 rounded-full border border-amber-500/40 object-cover"
-                />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center shrink-0">
-                  {currentUser.name.charAt(0).toUpperCase()}
+          // Same contract as the header account control: an avatar row that
+          // opens a menu with the identity line and sign out.
+          <Menu
+            triggerLabel={t('aria_open_menu')}
+            ariaLabel={t('nav_account')}
+            title={t('nav_account')}
+            align="start"
+            drop="up"
+            containerClassName="w-full"
+            triggerClassName="w-full flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 transition text-start"
+            triggerContent={
+              <>
+                <div className="flex items-center gap-2 min-w-0">
+                  {currentUser.picture ? (
+                    <img
+                      src={currentUser.picture}
+                      alt={currentUser.name}
+                      className="w-7 h-7 rounded-full border border-amber-500/40 object-cover"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center shrink-0">
+                      {currentUser.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-xs text-slate-200 font-semibold truncate">{currentUser.name}</div>
+                    <div className="text-[10px] text-slate-400 truncate">{currentUser.email}</div>
+                  </div>
                 </div>
-              )}
-              <div className="min-w-0">
-                <div className="text-xs text-slate-200 font-semibold truncate">{currentUser.name}</div>
-                <div className="text-[10px] text-slate-400 truncate">{currentUser.email}</div>
-              </div>
-            </div>
-            <button
-              onClick={onLogout}
-              className="text-slate-400 hover:text-rose-400 p-1 hover:bg-slate-800 rounded transition"
-              title={t('set_sign_out')}
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              </>
+            }
+          >
+            <MenuItem icon={<User className="w-3.5 h-3.5 text-amber-400" />}>
+              {t('menu_signed_in_as', { name: currentUser.name })}
+            </MenuItem>
+            <MenuItem danger icon={<LogOut className="w-3.5 h-3.5" />} onClick={() => onLogout?.()}>
+              {t('set_sign_out')}
+            </MenuItem>
+          </Menu>
         ) : (
           <button
             onClick={onLoginGoogle}

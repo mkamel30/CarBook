@@ -1,7 +1,7 @@
 import React from 'react';
-import { Globe, Settings, LogOut, Bell } from 'lucide-react';
+import { Bell, ChevronDown, Globe, LogOut, Settings, User } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
-import { nextLang } from '@/i18n/util';
+import { Menu, MenuItem } from '@/components/ui/Menu';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
 
 export interface MobileTopBarProps {
@@ -16,9 +16,19 @@ export interface MobileTopBarProps {
   urgentCount?: number;
 }
 
-// Endonyms (each language written in its own script) live in the dictionaries;
-// the button shows what the NEXT language is called, not the current one.
+// Short codes for the compact trigger chip come from the dictionaries; the open
+// menu always lists the endonyms straight from the context `languages` array,
+// so adding a fourth language needs no change in this component.
 const LANG_SHORT_KEY: Record<string, string> = { ar: 'lang_short_ar', en: 'lang_short_en', pl: 'lang_short_pl' };
+
+const iconButton = (active: boolean) =>
+  `relative p-1.5 rounded-full border transition active:scale-95 ${
+    active
+      ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+      : 'bg-slate-900 border-slate-700 text-slate-300'
+  }`;
+
+const vehicleLine = (v: any) => `${v.name} • ${v.licensePlate || `${v.make} ${v.model}`}`;
 
 export const MobileTopBar: React.FC<MobileTopBarProps> = ({
   vehicles,
@@ -31,12 +41,13 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
   onLogout,
   urgentCount = 0,
 }) => {
-  const { t, lang, setLang } = useTranslation();
-  const nextCode = nextLang(lang);
+  const { t, lang, setLang, languages } = useTranslation();
+  const shortKey = LANG_SHORT_KEY[lang];
 
   return (
-    <header className="md:hidden sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 px-3.5 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 flex items-center justify-between shrink-0">
-      <div className="flex items-center gap-2 min-w-0">
+    <header className="md:hidden sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 px-3.5 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 flex items-center justify-between gap-2 shrink-0">
+      {/* Leading group: brand, odometer chip, vehicle identity + switcher. */}
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         <div className="w-8 h-8 rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center shrink-0">
           <img src="/logo.png" alt="CarBook" className="w-8 h-8 object-cover" />
         </div>
@@ -49,9 +60,39 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
               </span>
             )}
           </div>
-          {selectedVehicle ? (
+
+          {vehicles.length > 1 ? (
+            // Multi-vehicle switching stays a single tap, anchored to the
+            // vehicle identity instead of a dropdown picker in the actions row.
+            <Menu
+              triggerLabel={t('vehicle_actions_aria')}
+              ariaLabel={t('nav_current_vehicle')}
+              title={t('nav_current_vehicle')}
+              align="start"
+              containerClassName="min-w-0 max-w-full"
+              triggerClassName="flex items-center gap-1 max-w-full min-w-0 px-1.5 py-0.5 -mx-1 rounded-lg border border-slate-800 bg-slate-900/70 text-[11px] text-slate-300 font-medium active:scale-95 transition"
+              triggerContent={
+                <>
+                  <span className="min-w-0 truncate">
+                    {selectedVehicle ? vehicleLine(selectedVehicle) : t('app_select_prompt')}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-amber-400 shrink-0" />
+                </>
+              }
+            >
+              {vehicles.map((v) => (
+                <MenuItem
+                  key={v.id}
+                  selected={v.id === selectedVehicle?.id}
+                  onClick={() => onSelectVehicle(v)}
+                >
+                  {vehicleLine(v)}
+                </MenuItem>
+              ))}
+            </Menu>
+          ) : selectedVehicle ? (
             <span className="text-[11px] text-slate-300 font-medium truncate block">
-              {selectedVehicle.name} • {selectedVehicle.licensePlate || `${selectedVehicle.make} ${selectedVehicle.model}`}
+              {vehicleLine(selectedVehicle)}
             </span>
           ) : (
             <span className="text-[11px] text-slate-400">{t('app_select_prompt')}</span>
@@ -59,71 +100,13 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
         </div>
       </div>
 
+      {/* Trailing group, conventional priority: alerts, language, settings, account. */}
       <div className="flex items-center gap-1.5 shrink-0">
-        {currentUser ? (
-          <div className="flex items-center gap-1">
-            {currentUser.picture ? (
-              <img
-                src={currentUser.picture}
-                alt={currentUser.name}
-                className="w-6 h-6 rounded-full border border-amber-500/40 object-cover"
-              />
-            ) : (
-              <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 font-bold text-[10px] flex items-center justify-center">
-                {currentUser.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <button
-              onClick={onLogout}
-              className="p-1 rounded-full text-slate-400 hover:text-rose-400 active:scale-95 transition"
-              title={t('set_sign_out')}
-            >
-              <LogOut className="w-3 h-3" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={onLoginGoogle}
-            className="flex items-center gap-1 px-2 py-1 rounded-full border border-slate-700 bg-white text-slate-900 text-[10px] font-bold active:scale-95 transition shadow-sm"
-            title={t('btn_login_google')}
-          >
-            <GoogleIcon className="w-3 h-3" />
-            <span>{t('btn_login_short')}</span>
-          </button>
-        )}
-
-        {vehicles.length > 1 && (
-          <select
-            className="bg-slate-900 border border-slate-700 text-[11px] rounded-full px-2 py-1 text-slate-200 outline-none max-w-[80px] truncate"
-            value={selectedVehicle?.id || ''}
-            onChange={(e) => {
-              const v = vehicles.find((item) => item.id === e.target.value);
-              onSelectVehicle(v || null);
-            }}
-          >
-            {vehicles.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <button
-          onClick={() => setLang(nextCode)}
-          className="flex items-center gap-1 px-2 py-1 rounded-full border border-slate-700 bg-slate-900 text-slate-200 text-[10px] font-bold active:scale-95 transition"
-          title={t('set_lang_title')}
-        >
-          <Globe className="w-3 h-3 text-amber-400" />
-          <span>{LANG_SHORT_KEY[nextCode] ? t(LANG_SHORT_KEY[nextCode]) : nextCode.toUpperCase()}</span>
-        </button>
         <button
           onClick={() => onSelectTab('alerts')}
-          className={`relative p-1.5 rounded-full border transition active:scale-95 ${
-            activeTab === 'alerts'
-              ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
-              : 'bg-slate-900 border-slate-700 text-slate-300'
-          }`}
+          className={iconButton(activeTab === 'alerts')}
           title={t('nav_alerts')}
+          aria-label={t('nav_alerts')}
         >
           <Bell className="w-3.5 h-3.5" />
           {urgentCount > 0 && (
@@ -132,17 +115,70 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
             </span>
           )}
         </button>
+
+        {/* Language: Globe trigger that opens the full supported-language list. */}
+        <Menu
+          triggerLabel={t('lang_menu_title')}
+          ariaLabel={t('aria_language_menu')}
+          title={t('lang_menu_title')}
+          hint={t('lang_menu_hint')}
+          align="end"
+          triggerClassName="flex items-center gap-1 px-2 py-1 rounded-full border border-slate-700 bg-slate-900 text-slate-200 text-[10px] font-bold active:scale-95 transition"
+          triggerContent={
+            <>
+              <Globe className="w-3.5 h-3.5 text-amber-400" />
+              <span>{shortKey ? t(shortKey) : lang.toUpperCase()}</span>
+            </>
+          }
+        >
+          {languages.map((l: { code: string; name: string }) => (
+            <MenuItem key={l.code} selected={l.code === lang} onClick={() => setLang(l.code)}>
+              {l.name}
+            </MenuItem>
+          ))}
+        </Menu>
+
         <button
           onClick={() => onSelectTab('settings')}
-          className={`p-1.5 rounded-full border transition active:scale-95 ${
-            activeTab === 'settings'
-              ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
-              : 'bg-slate-900 border-slate-700 text-slate-300'
-          }`}
+          className={iconButton(activeTab === 'settings')}
           title={t('nav_settings')}
+          aria-label={t('nav_settings')}
         >
           <Settings className="w-3.5 h-3.5" />
         </button>
+
+        {/* Account: avatar menu with the identity line + sign out (or Google sign-in). */}
+        <Menu
+          triggerLabel={t('aria_open_menu')}
+          ariaLabel={t('nav_account')}
+          title={t('nav_account')}
+          align="end"
+          triggerClassName="rounded-full border border-slate-700 bg-slate-900 active:scale-95 transition overflow-hidden flex items-center justify-center"
+          triggerContent={
+            currentUser?.picture ? (
+              <img src={currentUser.picture} alt={currentUser.name} className="w-7 h-7 rounded-full object-cover" />
+            ) : (
+              <span className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold text-[11px] flex items-center justify-center">
+                {currentUser ? currentUser.name.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
+              </span>
+            )
+          }
+        >
+          {currentUser ? (
+            <>
+              <MenuItem icon={<User className="w-3.5 h-3.5 text-amber-400" />}>
+                {t('menu_signed_in_as', { name: currentUser.name })}
+              </MenuItem>
+              <MenuItem danger icon={<LogOut className="w-3.5 h-3.5" />} onClick={() => onLogout?.()}>
+                {t('set_sign_out')}
+              </MenuItem>
+            </>
+          ) : (
+            <MenuItem icon={<GoogleIcon className="w-3.5 h-3.5" />} onClick={() => onLoginGoogle?.()}>
+              {t('btn_login_google')}
+            </MenuItem>
+          )}
+        </Menu>
       </div>
     </header>
   );

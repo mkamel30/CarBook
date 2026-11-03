@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@capacitor/core": "^8.6.0",
+    "@capacitor/local-notifications": "8.3.1",
     "@nozbe/watermelondb": "^0.28.0",
     "lokijs": "^1.5.12",
     "lucide-react": "^0.475.0",

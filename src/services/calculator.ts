@@ -97,62 +97,107 @@ export function enrichFuelMetrics<T extends FuelLog>(logs: T[]): (T & FuelMetric
   return logs.map((log, index) => ({ ...log, ...(metrics.get(index) ?? NO_METRICS) }));
 }
 
-export type AlertSeverity = 'ok' | 'due_soon' | 'overdue';
+export type AlertSeverity = 'ok' | 'due_soon' | 'overdue' | 'needs_record';
 
 export interface MaintenanceStatus {
   schedule: MaintenanceSchedule;
-  remainingKm: number;
+  /**
+   * Kilometres until the next service, or null when no km math is possible:
+   * either the item has no service record at all (`needs_record`) or its
+   * baseline was recorded by date only. A missing baseline is NEVER read as 0 —
+   * that would fabricate "serviced at odometer 0" and report a fake distance.
+   */
+  remainingKm: number | null;
   remainingDays: number | null;
   status: AlertSeverity;
   alertMessageAr: string;
   alertMessageEn: string;
 }
 
+const NEEDS_RECORD_AR = 'لا يوجد سجل صيانة لهذا البند بعد';
+const NEEDS_RECORD_EN = 'No service record for this item yet';
+
 /**
  * Evaluates periodic maintenance status based on current vehicle odometer and dates.
  * Alert thresholds:
+ * - 'needs_record': neither a baseline odometer nor a baseline date exists, so
+ *   nothing can be computed. Not overdue, not good — it asks for a service record.
  * - 'overdue': remainingKm <= 0 or remainingDays <= 0
  * - 'due_soon': remainingKm <= 1000 km or remainingDays <= 14 days
  * - 'ok': otherwise
+ * An odometer baseline and a date baseline are independent: when only one is
+ * recorded, only that axis drives the verdict and the other stays null.
  */
 export function evaluateMaintenanceStatus(
   schedule: MaintenanceSchedule,
   currentOdometer: number,
   currentDate = new Date()
 ): MaintenanceStatus {
-  const lastOdo = schedule.lastDoneOdometer ?? 0;
-  const nextDueOdo = lastOdo + schedule.intervalKm;
-  const remainingKm = Math.round(nextDueOdo - currentOdometer);
+  const hasOdoBaseline =
+    schedule.lastDoneOdometer !== null &&
+    schedule.lastDoneOdometer !== undefined &&
+    Number.isFinite(schedule.lastDoneOdometer);
+  const hasDateBaseline = !!schedule.lastDoneDate;
+
+  if (!hasOdoBaseline && !hasDateBaseline) {
+    return {
+      schedule,
+      remainingKm: null,
+      remainingDays: null,
+      status: 'needs_record',
+      alertMessageAr: NEEDS_RECORD_AR,
+      alertMessageEn: NEEDS_RECORD_EN,
+    };
+  }
+
+  const remainingKm = hasOdoBaseline
+    ? Math.round(schedule.lastDoneOdometer! + schedule.intervalKm - currentOdometer)
+    : null;
 
   let remainingDays: number | null = null;
-  if (schedule.lastDoneDate && schedule.intervalMonths) {
-    const lastDate = new Date(schedule.lastDoneDate);
+  if (hasDateBaseline && schedule.intervalMonths) {
+    const lastDate = new Date(schedule.lastDoneDate!);
     const dueDate = new Date(lastDate);
     dueDate.setMonth(dueDate.getMonth() + schedule.intervalMonths);
     const diffTime = dueDate.getTime() - currentDate.getTime();
     remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   }
 
+  const isOverdue =
+    (remainingKm !== null && remainingKm <= 0) || (remainingDays !== null && remainingDays <= 0);
+  const isDueSoon =
+    !isOverdue &&
+    ((remainingKm !== null && remainingKm <= 1000) || (remainingDays !== null && remainingDays <= 14));
+
   let status: AlertSeverity = 'ok';
-  if (remainingKm <= 0 || (remainingDays !== null && remainingDays <= 0)) {
-    status = 'overdue';
-  } else if (remainingKm <= 1000 || (remainingDays !== null && remainingDays <= 14)) {
-    status = 'due_soon';
-  }
+  if (isOverdue) status = 'overdue';
+  else if (isDueSoon) status = 'due_soon';
 
   let alertMessageAr = '';
   let alertMessageEn = '';
 
   if (status === 'overdue') {
-    const kmOver = Math.abs(remainingKm);
-    alertMessageAr = `تجاوز موعد الصيانة بـ ${kmOver} كم! يجب الفحص فورا`;
-    alertMessageEn = `Service is overdue by ${kmOver} km! Immediate check recommended`;
+    if (remainingKm !== null) {
+      alertMessageAr = `تجاوز موعد الصيانة بـ ${Math.abs(remainingKm)} كم! يجب الفحص فورا`;
+      alertMessageEn = `Service is overdue by ${Math.abs(remainingKm)} km! Immediate check recommended`;
+    } else {
+      alertMessageAr = 'تجاوز موعد الصيانة الزمني المسجل! يجب الفحص فورا';
+      alertMessageEn = 'Service is overdue by the recorded date! Immediate check recommended';
+    }
   } else if (status === 'due_soon') {
-    alertMessageAr = `موعد الصيانة اقترب (متبقي ${remainingKm} كم)`;
-    alertMessageEn = `Service due soon (${remainingKm} km remaining)`;
-  } else {
+    if (remainingKm !== null) {
+      alertMessageAr = `موعد الصيانة اقترب (متبقي ${remainingKm} كم)`;
+      alertMessageEn = `Service due soon (${remainingKm} km remaining)`;
+    } else {
+      alertMessageAr = 'موعد الصيانة اقترب حسب التاريخ المسجل';
+      alertMessageEn = 'Service due soon by the recorded date';
+    }
+  } else if (remainingKm !== null) {
     alertMessageAr = `الحالة جيدة (متبقي ${remainingKm} كم)`;
     alertMessageEn = `Status good (${remainingKm} km remaining)`;
+  } else {
+    alertMessageAr = 'الحالة جيدة حسب تاريخ آخر صيانة المسجل';
+    alertMessageEn = 'Status good by the recorded service date';
   }
 
   return {

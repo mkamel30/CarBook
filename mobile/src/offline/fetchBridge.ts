@@ -29,6 +29,7 @@ import {
   fuelFields,
   maintenanceFields,
   schedulePatchFields,
+  scheduleCreateFields,
   scheduleSeedFields,
   type Raw,
 } from './mappers';
@@ -53,11 +54,21 @@ import {
 // Pure, runtime-agnostic helpers aliased straight from the shared web code so
 // aggregation can never drift from the server implementation.
 import { enrichFuelMetrics, evaluateMaintenanceStatus } from '@app/services/calculator';
+import {
+  CUSTOM_ITEM_CODE_PREFIX,
+  baselineMovesForward,
+  bestLogForItem,
+  derivedItemsForServiceType,
+  missingFactoryPresets,
+  scheduleLinkedFromLog,
+  type LinkedFromLog,
+} from '@app/services/presets';
 import { DEFAULT_MAINTENANCE_PRESETS } from '@app/services/presets';
 import {
   vehicleSchema,
   fuelLogSchema,
   maintenanceLogSchema,
+  maintenanceScheduleSchema,
 } from '@app/domain/schemas';
 
 export interface BridgeDeps {
@@ -325,8 +336,11 @@ async function handleMaintenance(
     }
     await localCreate(db, MAINT_TABLE, id, maintenanceFields(validated, 'create', nowIso), at);
     await recomputeVehicleOdometer(db, validated.vehicleId, at);
+    const explicit = body?.linkedItemCode ? String(body.linkedItemCode).trim() : null;
+    const itemCodes = explicit ? [explicit] : derivedItemsForServiceType(validated.serviceType);
+    const linked = await linkSchedulesInBridge(db, validated.vehicleId, itemCodes, validated, explicit, at);
     const rec: any = await db.collections.get(MAINT_TABLE as any).find(id);
-    return ok(maintenanceFromRaw(id, rec._raw));
+    return ok({ ...maintenanceFromRaw(id, rec._raw), linkedSchedules: linked });
   }
 
   if (method === 'PUT') {
@@ -347,8 +361,15 @@ async function handleMaintenance(
     }
     await localUpdate(db, MAINT_TABLE, id, maintenanceFields(merged, 'update', nowIso), at);
     await recomputeVehicleOdometer(db, merged.vehicleId, at);
+    const explicit = body?.linkedItemCode ? String(body.linkedItemCode).trim() : null;
+    const itemCodes = Array.from(new Set([
+      ...derivedItemsForServiceType(existing?.serviceType),
+      ...derivedItemsForServiceType(merged.serviceType),
+      explicit,
+    ].filter(Boolean) as string[]));
+    const linked = await linkSchedulesInBridge(db, merged.vehicleId, itemCodes, merged, explicit, at);
     const rec: any = await db.collections.get(MAINT_TABLE as any).find(id);
-    return ok(maintenanceFromRaw(id, rec._raw));
+    return ok({ ...maintenanceFromRaw(id, rec._raw), linkedSchedules: linked });
   }
 
   if (method === 'DELETE') {
@@ -361,17 +382,60 @@ async function handleMaintenance(
       return okMessage('Deleted successfully');
     }
     const vehicleId = rec._raw?.vehicle_id;
+    const serviceType = rec._raw?.service_type;
     await localMarkDeleted(db, MAINT_TABLE, id, at);
-    if (vehicleId) await recomputeVehicleOdometer(db, vehicleId, at);
+    if (vehicleId) {
+      await recomputeVehicleOdometer(db, vehicleId, at);
+      await linkSchedulesInBridge(db, vehicleId, derivedItemsForServiceType(serviceType), null, null, at);
+    }
     return okMessage('Deleted successfully');
   }
 
   return notImplemented(`GET|POST|PUT|DELETE /api/maintenance (${method})`);
 }
 
-async function seedSchedules(db: Database, vehicleId: string, vehicleRaw: Raw, at: number): Promise<void> {
-  for (const preset of DEFAULT_MAINTENANCE_PRESETS) {
-    await localCreate(db, SCHED_TABLE, newId(), scheduleSeedFields(preset, vehicleId, vehicleRaw), at);
+async function linkSchedulesInBridge(
+  db: Database,
+  vehicleId: string,
+  itemCodes: string[],
+  sourceLog: { odometer: number; serviceDate: string } | null,
+  explicitItemCode: string | null,
+  at: number,
+): Promise<number> {
+  const targets = Array.from(new Set(itemCodes.filter(Boolean)));
+  if (!targets.length) return 0;
+  const schedRows = await liveRows(db, SCHED_TABLE, vehicleId);
+  const logRows = await liveRows(db, MAINT_TABLE, vehicleId);
+  const logs = logRows.map((r) => maintenanceFromRaw(r.id, r.raw));
+  let updatedCount = 0;
+  for (const row of schedRows) {
+    const sched = scheduleFromRaw(row.id, row.raw);
+    if (!targets.includes(sched.itemCode)) continue;
+    const explicitHit = !!explicitItemCode && sched.itemCode === explicitItemCode;
+    let candidate: { odometer: number; serviceDate: string } | null = null;
+    if (explicitHit && sourceLog) {
+      candidate = { odometer: sourceLog.odometer, serviceDate: sourceLog.serviceDate };
+    } else {
+      const best = bestLogForItem(logs, sched.itemCode);
+      if (best) candidate = { odometer: best.odometer, serviceDate: best.serviceDate };
+    }
+    if (!candidate) continue;
+    if (!baselineMovesForward(sched as any, candidate)) continue;
+    await localUpdate(db, SCHED_TABLE, row.id, {
+      last_done_odometer: candidate.odometer,
+      last_done_date: candidate.serviceDate,
+    }, at);
+    updatedCount++;
+  }
+  return updatedCount;
+}
+
+async function seedSchedules(db: Database, vehicleId: string, at: number): Promise<void> {
+  const existingRows = await liveRows(db, SCHED_TABLE, vehicleId);
+  const existingCodes = existingRows.map((r) => String(r.raw.item_code));
+  const missing = missingFactoryPresets(existingCodes);
+  for (const preset of missing) {
+    await localCreate(db, SCHED_TABLE, newId(), scheduleSeedFields(preset, vehicleId), at);
   }
 }
 
@@ -385,15 +449,49 @@ async function handleSchedules(
     if (!vehicleRaw) return fail('Vehicle not found or unauthorized', 404);
     const vehicle = vehicleFromRaw(vehicleId, vehicleRaw);
 
-    let rows = await liveRows(db, SCHED_TABLE, vehicleId);
-    // Idempotent preset seeding: only when the vehicle has no schedules yet.
-    if (rows.length === 0) {
-      await seedSchedules(db, vehicleId, vehicleRaw, at);
-      rows = await liveRows(db, SCHED_TABLE, vehicleId);
-    }
+    await seedSchedules(db, vehicleId, at);
+    const rows = await liveRows(db, SCHED_TABLE, vehicleId);
+    const logRows = await liveRows(db, MAINT_TABLE, vehicleId);
+    const logs = logRows.map((r) => maintenanceFromRaw(r.id, r.raw));
     const schedules = rows.map((r) => scheduleFromRaw(r.id, r.raw));
-    const evaluated = schedules.map((s) => evaluateMaintenanceStatus(s as any, vehicle.currentOdometer));
+    const evaluated = schedules.map((s) => {
+      const status = evaluateMaintenanceStatus(s as any, vehicle.currentOdometer);
+      const linkedFromLog = scheduleLinkedFromLog(s as any, logs);
+      return linkedFromLog ? { ...status, linkedFromLog } : status;
+    });
     return ok({ vehicle, schedules: evaluated });
+  }
+
+  if (method === 'POST') {
+    const vehicleId = String(body?.vehicleId ?? '');
+    const vehicleRaw = await findVehicle(db, vehicleId);
+    if (!vehicleRaw) return fail('Vehicle not found or unauthorized', 404);
+    const titleAr = typeof body?.titleAr === 'string' ? body.titleAr.trim() : '';
+    const titleEn = typeof body?.titleEn === 'string' && body.titleEn.trim() ? body.titleEn.trim() : titleAr;
+    const intervalKm = Number(body?.intervalKm);
+    const intervalMonths = body?.intervalMonths ? Number(body.intervalMonths) : null;
+    const itemCode = `${CUSTOM_ITEM_CODE_PREFIX}${newId().replace(/-/g, '').slice(0, 12)}`;
+    const parsed = maintenanceScheduleSchema.safeParse({
+      id: newId(),
+      vehicleId,
+      itemCode,
+      titleAr,
+      titleEn,
+      intervalKm,
+      intervalMonths,
+      lastDoneOdometer: null,
+      lastDoneDate: null,
+    });
+    if (!parsed.success) return zodFail(parsed.error);
+    await localCreate(db, SCHED_TABLE, parsed.data.id, scheduleCreateFields(parsed.data, vehicleId), at);
+    return ok(parsed.data);
+  }
+
+  if (method === 'DELETE') {
+    const id = params.get('id');
+    if (!id) return fail('id is required', 400);
+    await localMarkDeleted(db, SCHED_TABLE, id, at);
+    return okMessage('Deleted successfully');
   }
 
   if (method === 'PATCH') {
@@ -408,7 +506,7 @@ async function handleSchedules(
     return ok(undefined);
   }
 
-  return notImplemented(`GET|PATCH /api/schedules (${method})`);
+  return notImplemented(`GET|POST|PATCH|DELETE /api/schedules (${method})`);
 }
 
 async function handleReports(db: Database, params: URLSearchParams): Promise<Response> {

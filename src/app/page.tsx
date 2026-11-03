@@ -32,6 +32,7 @@ import { MaintenanceLogModal } from '@/components/modals/MaintenanceLogModal';
 import { ToastViewport, pushToast } from '@/components/ui/Toast';
 import { ConfirmDialogHost, askConfirm } from '@/components/ui/ConfirmDialog';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
+import { UpdateBanner } from '@/components/ui/UpdateBanner';
 import { deriveMaintenanceTotal } from '@/components/tabs/maintenanceTotals';
 
 type Envelope = { success: true; data?: any } | { success: false; error: string };
@@ -721,6 +722,9 @@ export default function WorkbenchPage() {
         setShowMaintenanceModal(false);
         setEditingMaintenanceId(null);
         setPartsList([]);
+        if (data.data?.linkedSchedules > 0) {
+          pushToast(t('maint_linked_schedules', { count: data.data.linkedSchedules }), 'success');
+        }
         loadVehicleDetails(selectedVehicle.id);
         loadVehicles();
       } else {
@@ -868,6 +872,9 @@ export default function WorkbenchPage() {
           onSelectTab={setActiveTab}
         />
 
+        {/* APK In-App Update Banner */}
+        <UpdateBanner />
+
         {/* Tab Body */}
         <div className="p-4 md:p-6 pb-36 md:pb-6">
           {/* Urgent Maintenance Banner */}
@@ -981,6 +988,7 @@ export default function WorkbenchPage() {
                 <SchedulesTab
                   schedules={schedules}
                   currentOdometer={selectedVehicle?.currentOdometer || 0}
+                  vehicleId={selectedVehicle?.id}
                   onRefresh={() => selectedVehicle && loadVehicleDetails(selectedVehicle.id)}
                 />
               )}
@@ -1073,6 +1081,7 @@ export default function WorkbenchPage() {
           setMaintenanceForm={setMaintenanceForm}
           partsList={partsList}
           setPartsList={setPartsList}
+          schedules={schedules}
           onSaveMaintenance={handleSaveMaintenance}
           saving={savingMaintenance}
           minOdometer={editingMaintenanceId ? 0 : selectedVehicle?.currentOdometer ?? 0}

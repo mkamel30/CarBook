@@ -169,7 +169,24 @@ describe('Every UI string is translatable', () => {
   });
 
   it('interpolated dictionary values keep their placeholders in all languages', () => {
-    const vars = { pushed: 3, pulled: 2, km: '500', title: 'X', odo: '1', message: 'boom', front: '32', rear: '34', count: '7', stage: 'exchange', reason: 'Failed to fetch', status: 502 };
+    const vars = {
+      pushed: 3,
+      pulled: 2,
+      km: '500',
+      title: 'X',
+      odo: '1',
+      date: '2026-01-01',
+      time: '12:00',
+      version: '1.0.0',
+      name: 'User',
+      message: 'boom',
+      front: '32',
+      rear: '34',
+      count: '7',
+      stage: 'exchange',
+      reason: 'Failed to fetch',
+      status: 502,
+    };
     for (const lang of LANGS) {
       for (const key of Object.keys(DICTIONARIES[lang])) {
         const out = translate(DICTIONARIES, lang, key, vars);

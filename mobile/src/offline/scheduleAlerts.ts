@@ -13,15 +13,13 @@
 // the permission check stay inside that function, so nothing about prompting
 // behaviour can drift from the web app.
 //
-// Honest platform limitation, recorded rather than hidden (see getLastAlertRun):
-// src/services/notifications.ts uses the Web Notifications API. On Android that
-// API is a browser feature: in an app-owned WebView it is commonly absent
-// (`'Notification' in window === false`), and even where present it cannot wake
-// a closed app nor create the Android 8+ (O) NotificationChannel a posted
-// notification needs. Background delivery therefore needs
-// @capacitor/local-notifications — deliberately NOT installed here (dependency
-// pinning: owner approval required). Everything else here still works offline:
-// the sweep, the evaluation, and the due/overdue data the in-app tabs render.
+// The shared service (src/services/notifications.ts) is now native-aware via
+// @capacitor/local-notifications: device permission + Android channel on the
+// app, Web Notifications fallback on the web. It also (re)arms future-dated
+// alarms (scheduleFutureMaintenanceNotifications) so reminders fire while the
+// app is closed. Known limitation, recorded rather than hidden (see
+// getLastAlertRun): OS alarms do not survive a device reboot, so re-arming
+// depends on this sweep (or a page load) running at least once after boot.
 
 import { evaluateAndNotifySchedules, checkNotificationSupport } from '@app/services/notifications';
 
