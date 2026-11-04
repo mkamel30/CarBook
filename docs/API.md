@@ -488,14 +488,24 @@ Same resolution, but persists the result onto the vehicle.
 - The prompt is grounded in the vehicle's make, model, year, current odometer and last five services, so the advice is about *this* car. With no provider key it returns heuristic advice built from the same context, labelled as such.
 - `lang` (`ar` | `en` | `pl`) is the caller's UI language and fixes the answer language — provider prompt and the offline heuristic report labels alike. Anything else (missing, unsupported, or a crafted string) normalises to `ar`, the product default, because the value is interpolated into an external prompt. Vehicle-specification lookups stay bilingual by design: their rows are cached per make/model/year and shared across accounts.
 
+### `POST /api/ai/extract`
+Receipt/odometer photo extraction for the fuel-log form. Requires a signed-in session (the provider key must not be spendable anonymously) and is bounded to the same 10/min per user budget.
+```json
+{ "image": "<base64, optionally data: URL prefixed>", "mimeType": "image/jpeg" }
+```
+- `mimeType` is restricted to `image/jpeg | image/png | image/webp | image/heic | image/heif`; the image is capped at 10 MB and must be base64. Both checks run **before** any provider key leaves the process.
+- **Returns:** `{ success: true, data: { date, liters, pricePerLiter, total, odometer, confidence } }` — every field except `confidence` (0..1) is optional/nullable, because a receipt has no odometer and an odometer shot has no liters.
+- Output is Zod-validated and returned as *proposal data only*: the server never persists it; the client shows it to the owner for review before a fuel log is written. Retries are bounded (max 3, rotating models) and a malformed provider response falls through to a 500 rather than a guessed value.
+
 ---
 
 ## App version — `/api/app-version`
 
 ### `GET /api/app-version`
 No auth. Reports the newest published Android build so the client can show the update banner.
-- **Returns:** `{ success: true, data: { version, versionCode, apkUrl, releaseDate, notes, source } }`
+- **Returns:** `{ success: true, data: { version, versionCode, apkUrl, sha256, releaseDate, notes, source } }`
 - Reads the latest GitHub Release (repo from `GITHUB_REPO` env, default `mkamel30/CarBook`), looks for a `.apk` asset, and maps the tag (e.g. `v1.0.1`) to `version`/`versionCode` with the same formula the Gradle build uses (`major*10000 + minor*100 + patch`).
+- `sha256` is the lowercase hex digest GitHub publishes for the APK asset (or null when absent); the client re-checks the downloaded bytes against it before opening the URL, and refuses only on a positive mismatch.
 - Results are cached in memory for 5 minutes; the GitHub call has a 5s timeout.
 - `source` is `github` on success or `fallback` when GitHub is unreachable — the fallback reports the running `package.json` version with `apkUrl: null`, so the client stays "up to date" rather than erroring.
 - `apkUrl` is null until the first release is published; the client only offers the download when `apkUrl` is present and `versionCode` is strictly higher than the installed one.
@@ -504,7 +514,7 @@ No auth. Reports the newest published Android build so the client can show the u
 
 ## Route index
 
-18 route files, 36 method handlers:
+19 route files, 37 method handlers:
 
 | Route | Methods | Auth |
 | :--- | :--- | :--- |
@@ -527,3 +537,4 @@ No auth. Reports the newest published Android build so the client can show the u
 | `/api/ai/lookup` | POST | session · 10/min per user |
 | `/api/ai/manual` | POST | session + ownership · 10/min per user |
 | `/api/ai/doctor` | POST | session + ownership · 10/min per user |
+| `/api/ai/extract` | POST | session · 10/min per user |

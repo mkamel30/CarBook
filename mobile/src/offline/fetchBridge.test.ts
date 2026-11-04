@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from '@nozbe/watermelondb';
 import { makeDatabase } from '@device/database';
+import { localCreate } from '@device/writer';
 import { WMDBLocalStore } from '@device/localStore';
 import { syncOnce } from '@sync/client';
 import { createFetchBridge, type FetchHandler } from './fetchBridge';
@@ -393,5 +394,28 @@ describe('offline fetch bridge: schedule group stamps follow the writer', () => 
     expect(vehRaw.current_odometer).toBe(20000);
     expect(vehRaw.updated_at_sync_config).toBeUndefined();
     expect(vehRaw.updated_at_sync_baseline).toBeUndefined();
+  });
+
+  it('tombstones a seeded retired item (differential gear oil) on the schedules read', async () => {
+    const vehicle = (await envelope(await post('/api/vehicles', vehiclePayload))).data;
+
+    // A car created before the preset removal already has the live row locally.
+    await localCreate(bdb, 'maintenance_schedules', 's-diff-1', {
+      vehicle_id: vehicle.id,
+      item_code: 'differential_gear_oil',
+      title_ar: 'زيت الدفرنس',
+      title_en: 'Differential gear oil',
+      interval_km: 50000,
+      interval_months: 36,
+      last_done_odometer: null,
+      last_done_date: null,
+    }, clockMs);
+
+    const res = await envelope(await bbridge(`/api/schedules?vehicleId=${vehicle.id}`));
+    expect(res.success).toBe(true);
+    expect(res.data.schedules.find((s: any) => s.itemCode === 'differential_gear_oil')).toBeUndefined();
+
+    const raw = (await bdb.collections.get('maintenance_schedules').find('s-diff-1') as any)._raw;
+    expect(raw._dirty).toBe('deleted');
   });
 });

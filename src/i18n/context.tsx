@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { SUPPORTED_LANGUAGES, DICTIONARIES, LanguageInfo } from './config';
 import { translate, TranslateVars } from './resolve';
 
@@ -64,7 +64,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     }
   }, [lang, dir]);
 
-  const setLang = (newLang: string) => {
+  const setLang = useCallback((newLang: string) => {
     if (DICTIONARIES[newLang]) {
       setLangState(newLang);
       try {
@@ -72,16 +72,23 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       } catch {}
       setCookie('carbook_lang', newLang);
     }
-  };
+  }, []);
 
-  const t = (key: string, vars?: string | TranslateVars, count?: number): string =>
-    translate(DICTIONARIES, lang, key, vars, count);
-
-  return (
-    <I18nContext.Provider value={{ lang, setLang, dir, t, languages: SUPPORTED_LANGUAGES }}>
-      {children}
-    </I18nContext.Provider>
+  // Stable reference so `useCallback`-wrapped handlers that call t() do not change
+  // identity on every render (A5 memoized tabs). translate() is pure given `lang`,
+  // so this is behavior-identical to the inline closure it replaces.
+  const t = useCallback(
+    (key: string, vars?: string | TranslateVars, count?: number): string =>
+      translate(DICTIONARIES, lang, key, vars, count),
+    [lang]
   );
+
+  const value = useMemo(
+    () => ({ lang, setLang, dir, t, languages: SUPPORTED_LANGUAGES }),
+    [lang, dir, t]
+  );
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
 export function useTranslation() {

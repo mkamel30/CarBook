@@ -90,6 +90,7 @@ describe('scoped mobile CORS (bundled Capacitor origin)', () => {
       '@/app/api/ai/doctor/route',
       '@/app/api/ai/lookup/route',
       '@/app/api/ai/manual/route',
+      '@/app/api/ai/extract/route',
       '@/app/api/app-version/route',
     ];
     for (const spec of routes) {

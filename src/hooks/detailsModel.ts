@@ -21,6 +21,8 @@ export interface DetailsBatch {
   schedulesOk: boolean;
   schedules: any[];
   schedulesVehicleName: string;
+  /** The schedules payload's own vehicle odometer (fresh from the server). */
+  schedulesVehicleOdometer: number | null;
   reportOk: boolean;
   reportData: any;
 }
@@ -30,6 +32,7 @@ export interface NotifyArgs {
   vehicleName: string;
   lang: string;
   usage: UsagePoint[];
+  currentOdometer: number | null;
 }
 
 export interface DetailsEffectPlan {
@@ -65,6 +68,7 @@ export function planDetailsEffects(
           vehicleName: batch.schedulesVehicleName || opts.vehicleNameFallback || '',
           lang: opts.lang,
           usage: usageFromFuelLogs(batch.fuelOk ? batch.fuelLogs : []),
+          currentOdometer: batch.schedulesVehicleOdometer,
         }
       : null,
     // Only fill in specs when the selection genuinely lacks them, so a save that

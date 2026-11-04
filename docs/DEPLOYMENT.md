@@ -347,7 +347,7 @@ The app checks `GET /api/app-version` and offers to download a newer APK straigh
 
 1. `version` in root `package.json` (single source of truth — `android/app/build.gradle` parses it for `versionName`/`versionCode`).
 2. `CURRENT_CLIENT_VERSION` in `src/services/version.ts` (what the installed bundle compares against).
-3. Commit, then `git tag v1.0.1` (tag must equal `v` + the package version) and `git push origin v1.0.1`.
+3. Commit, then `git tag v<version>` (tag must equal `v` + the package version) and `git push origin v<version>`.
 
 `.github/workflows/release-apk.yml` runs on `v*` tags (and `workflow_dispatch`), installs both workspaces, runs typecheck + `pnpm test` + `pnpm --prefix mobile test`, builds the mobile bundle, `cap sync android`, then `assembleRelease`. It fails fast if the tag does not match `package.json`'s version. The APK is uploaded as a release asset named `CarBook-v<VERSION>.apk` (with a `sha256` checksum). `/api/app-version` reads the latest release, so the next time a device checks, it sees the new version and the download URL — no manual step.
 

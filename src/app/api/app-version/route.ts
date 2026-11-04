@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import pkg from '../../../../package.json';
 import { semverToVersionCode } from '@/services/version';
 import { mobilePreflight, withMobileCors } from '@/services/mobileCors';
+import { normalizeSha256 } from '@/services/apkIntegrity';
 
 // Latest release is read from GitHub Releases so the self-hosted server never
 // needs a manual APK upload: the release workflow publishes the APK and this
@@ -13,6 +14,8 @@ export interface AppVersionInfo {
   version: string;
   versionCode: number;
   apkUrl: string | null;
+  /** Lowercase hex sha256 of the APK asset (from GitHub's digest), or null. */
+  sha256: string | null;
   releaseDate: string | null;
   notes: string | null;
   source: 'github' | 'fallback';
@@ -38,6 +41,7 @@ async function fetchLatestRelease(): Promise<AppVersionInfo | null> {
       version: tag,
       versionCode: semverToVersionCode(tag),
       apkUrl: apk ? apk.browser_download_url : null,
+      sha256: apk ? normalizeSha256(apk.digest) : null,
       releaseDate: release.published_at || null,
       notes: release.body || release.name || null,
       source: 'github',
@@ -67,6 +71,7 @@ async function GETHandler(_req: NextRequest) {
     version: pkg.version || '1.0.0',
     versionCode: semverToVersionCode(pkg.version),
     apkUrl: null,
+    sha256: null,
     releaseDate: null,
     notes: null,
     source: 'fallback',

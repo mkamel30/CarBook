@@ -111,6 +111,9 @@ function toBackupValue(table: string, col: string, v: unknown): unknown {
     // JSON columns keep their TEXT form; an empty TEXT column is server NULL.
     return null;
   }
+  // The device stores "unset" in a nullable number column as 0 (WatermelonDB
+  // fills the column default), so a backup must not carry a fabricated 0.
+  if (def?.nul && Number(v) === 0) return null;
   if (BOOL_COLUMNS[table]?.includes(col)) return Number(v) === 1 || v === true ? 1 : 0;
   if (!def) return v;
   if (def.json) return typeof v === 'string' ? v : JSON.stringify(v);

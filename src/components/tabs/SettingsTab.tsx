@@ -7,7 +7,9 @@ import { useTheme } from '@/theme/context';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
 import { pushToast } from '@/components/ui/Toast';
 import { Browser } from '@capacitor/browser';
-import { CURRENT_CLIENT_VERSION, semverToVersionCode } from '@/services/version';
+import { App } from '@capacitor/app';
+import { CURRENT_CLIENT_VERSION, resolveInstalledVersion, semverToVersionCode } from '@/services/version';
+import { verifyApkIntegrity } from '@/services/apkIntegrity';
 import {
   checkNotificationSupport,
   checkNotificationSupportAsync,
@@ -181,7 +183,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatusMsg, setUpdateStatusMsg] = useState<string | null>(null);
-  const [availableUpdate, setAvailableUpdate] = useState<{ version: string; apkUrl: string } | null>(null);
+  const [availableUpdate, setAvailableUpdate] = useState<{ version: string; apkUrl: string; sha256?: string | null } | null>(null);
+  const [installedVersion, setInstalledVersion] = useState(CURRENT_CLIENT_VERSION);
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    resolveInstalledVersion(() => App.getInfo())
+      .then((info) => { if (alive) setInstalledVersion(info.version); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
@@ -192,7 +204,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       const info = body?.success ? body.data : null;
       if (info?.version) {
         const serverCode = semverToVersionCode(info.version);
-        const currentCode = semverToVersionCode(CURRENT_CLIENT_VERSION);
+        const currentCode = semverToVersionCode(installedVersion);
         if (serverCode > currentCode && info.apkUrl) {
           setAvailableUpdate(info);
           setUpdateStatusMsg(t('update_available_title', { version: info.version }));
@@ -213,6 +225,30 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   useEffect(() => {
     checkNotificationSupportAsync().then(setNotifStatus);
   }, []);
+
+  const handleDownloadUpdate = async () => {
+    if (!availableUpdate) return;
+    setDownloading(true);
+    try {
+      const result = await verifyApkIntegrity({
+        apkUrl: availableUpdate.apkUrl,
+        expectedSha256: availableUpdate.sha256 ?? null,
+      });
+      // A positive digest mismatch means the APK differs from what GitHub
+      // published — refuse to hand the URL to the system browser. An
+      // unverifiable download (network/CORS) still proceeds via the
+      // TLS-protected browser download so the update path isn't bricked.
+      if (!result.verified && result.reason === 'mismatch') {
+        pushToast(t('update_integrity_mismatch'), 'error');
+        return;
+      }
+      Browser.open({ url: availableUpdate.apkUrl }).catch(() =>
+        window.open(availableUpdate.apkUrl, '_blank'),
+      );
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const handleEnableNotifications = async () => {
     const granted = await requestNotificationPermission();
@@ -754,7 +790,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="flex items-center gap-2">
             <Download className="w-5 h-5 text-amber-500" />
             <h2 className="text-sm font-bold text-slate-100">
-              {t('update_current_version', { version: CURRENT_CLIENT_VERSION })}
+              {t('update_current_version', { version: installedVersion })}
             </h2>
           </div>
         </div>
@@ -777,15 +813,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           {availableUpdate && (
             <button
               type="button"
-              onClick={() =>
-                Browser.open({ url: availableUpdate.apkUrl }).catch(() =>
-                  window.open(availableUpdate.apkUrl, '_blank'),
-                )
-              }
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition active:scale-95 shadow-sm"
+              onClick={handleDownloadUpdate}
+              disabled={downloading}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition active:scale-95 disabled:opacity-50 shadow-sm"
             >
               <Download className="w-4 h-4" />
-              <span>{t('update_btn_download')}</span>
+              <span>{downloading ? '...' : t('update_btn_download')}</span>
             </button>
           )}
         </div>

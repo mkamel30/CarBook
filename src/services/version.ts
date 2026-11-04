@@ -16,5 +16,43 @@ export function semverToVersionCode(version: string | null | undefined): number 
 }
 
 // The version baked into the running client. Bump together with package.json
-// "version" (see docs/DEPLOYMENT.md release runbook).
-export const CURRENT_CLIENT_VERSION = '1.1.0';
+// "version" (see docs/DEPLOYMENT.md release runbook). It remains the fallback for
+// the web build and for any environment where the native bridge is unavailable.
+export const CURRENT_CLIENT_VERSION = '1.2.0';
+
+export interface InstalledVersionInfo {
+  version: string;
+  versionCode: number;
+  /** 'native' when read from the installed APK, 'baked' when it fell back. */
+  source: 'native' | 'baked';
+}
+
+/**
+ * The version actually installed, not the one baked into the bundle. A stale
+ * baked constant would report "up to date" against an older APK the user kept
+ * after a failed self-update; Android's own install gate uses the real
+ * versionCode, so the client must too.
+ *
+ * The `getInfo` seam is injected by the caller (the @capacitor/app import lives
+ * in the client components) so this module stays importable from node/vitest.
+ */
+export async function resolveInstalledVersion(
+  getInfo: () => Promise<{ version?: string }>,
+): Promise<InstalledVersionInfo> {
+  try {
+    const info = await getInfo();
+    const version = info?.version?.trim();
+    if (version) {
+      return { version, versionCode: semverToVersionCode(version), source: 'native' };
+    }
+  } catch {
+    // Native bridge unavailable (web, tests, or an old WebView): the baked
+    // constant is still a correct, deterministic fallback.
+  }
+  return {
+    version: CURRENT_CLIENT_VERSION,
+    versionCode: semverToVersionCode(CURRENT_CLIENT_VERSION),
+    source: 'baked',
+  };
+}
+

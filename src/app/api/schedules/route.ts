@@ -1,11 +1,10 @@
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { StorageRepository } from '@/persistence/repository';
-import { evaluateMaintenanceStatus } from '@/services/calculator';
+import { evaluateSchedulesForRead } from '@/domain/schedulesCore';
 import {
   CUSTOM_ITEM_CODE_PREFIX,
   missingFactoryPresets,
-  scheduleLinkedFromLog,
 } from '@/services/presets';
 import { maintenanceScheduleSchema } from '@/domain/schemas';
 import { authErrorResponse, requireOwnership, requireUser } from '@/services/authz';
@@ -48,17 +47,11 @@ export async function GET(req: NextRequest) {
     const schedules = await repo.getSchedulesByVehicle(vehicleId);
     const logs = await repo.getMaintenanceLogsByVehicle(vehicleId);
 
-    const evaluated = schedules.map(s => {
-      const status = evaluateMaintenanceStatus(s, vehicle.currentOdometer);
-      const linkedFromLog = scheduleLinkedFromLog(s, logs);
-      return linkedFromLog ? { ...status, linkedFromLog } : status;
-    });
-
     return NextResponse.json({
       success: true,
       data: {
         vehicle,
-        schedules: evaluated,
+        schedules: evaluateSchedulesForRead(schedules, logs, vehicle.currentOdometer),
       },
     });
   } catch (err: any) {

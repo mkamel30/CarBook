@@ -28,6 +28,19 @@ const num = (v: unknown, d = 0): number => {
 const nn = (v: unknown): number | null =>
   v === null || v === undefined || v === '' ? null : num(v);
 
+/**
+ * nn() plus the device's encoding of "unset" in a nullable NUMBER column.
+ * WatermelonDB stores a create-time null as the column default 0, so a seeded
+ * (never serviced) item would otherwise read back as "serviced at odometer 0"
+ * and compute a due date out of nothing — the exact fabrication the server
+ * refuses. 0 therefore means "no record" here, as '' does for a text column
+ * (see opt()). Applies to last_done_odometer, interval_months, next_due_odometer.
+ */
+const nnz = (v: unknown): number | null => {
+  const n = nn(v);
+  return n === 0 ? null : n;
+};
+
 /** is_full_tank is stored 0/1 on the device but must be a boolean for the server. */
 const toBool = (v: unknown): boolean => Number(v) === 1 || v === true;
 
@@ -95,7 +108,7 @@ export function maintenanceFromRaw(id: string, raw: Raw) {
     totalCost: num(raw.total_cost),
     workshop: opt(raw.workshop),
     notes: opt(raw.notes),
-    nextDueOdometer: nn(raw.next_due_odometer),
+    nextDueOdometer: nnz(raw.next_due_odometer),
     nextDueDate: opt(raw.next_due_date),
     createdAt: raw.created_at_iso ?? null,
   };
@@ -109,8 +122,8 @@ export function scheduleFromRaw(id: string, raw: Raw) {
     titleAr: raw.title_ar ?? '',
     titleEn: raw.title_en ?? '',
     intervalKm: num(raw.interval_km),
-    intervalMonths: nn(raw.interval_months),
-    lastDoneOdometer: nn(raw.last_done_odometer),
+    intervalMonths: nnz(raw.interval_months),
+    lastDoneOdometer: nnz(raw.last_done_odometer),
     lastDoneDate: opt(raw.last_done_date),
   };
 }

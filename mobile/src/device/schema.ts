@@ -18,13 +18,32 @@ import { groupsOf } from '@sync/fieldGroups';
 // Business cols are pushed/pulled; the trailing columns are device-local bookkeeping.
 
 export type ColType = 'string' | 'number' | 'boolean';
-export interface ColDef { col: string; prop: string; type: ColType; srv?: string; json?: boolean; }
+export interface ColDef {
+  col: string;
+  prop: string;
+  type: ColType;
+  srv?: string;
+  json?: boolean;
+  /**
+   * Nullable on the server, and a NUMBER on the device. WatermelonDB cannot keep
+   * a null in a column — a create stores the column default (0 for numbers, ''
+   * for strings) — so the device's encoding of "no value" in such a column is 0,
+   * exactly as '' is for a text column. Every boundary that leaves the device
+   * (the read mapping, the sync push, the backup export) collapses it back to
+   * null, so an unserviced item never travels as a fabricated "serviced at 0 km".
+   *
+   * Accepted cost: a service recorded at odometer reading exactly 0 reads back as
+   * "no record". A real car is never serviced at 0, while every preset car is.
+   */
+  nul?: boolean;
+}
 
 /** Server-side key a device column maps to in the sync contract. */
 export const srvKey = (c: ColDef): string => c.srv ?? c.col;
 
 /** Device stored value -> value placed in the push payload. */
 export function toSrvValue(c: ColDef, v: string | number | null | undefined): unknown {
+  if (c.nul && (v === null || v === undefined || v === '' || Number(v) === 0)) return null;
   if (!c.json || typeof v !== 'string') return v ?? null;
   const s = v.trim();
   if (!s) return null;
@@ -67,8 +86,8 @@ export const DEVICE_COLS: Record<string, ColDef[]> = {
     { col: 'title_ar', prop: 'titleAr', type: 'string' },
     { col: 'title_en', prop: 'titleEn', type: 'string' },
     { col: 'interval_km', prop: 'intervalKm', type: 'number' },
-    { col: 'interval_months', prop: 'intervalMonths', type: 'number' },
-    { col: 'last_done_odometer', prop: 'lastDoneOdometer', type: 'number' },
+    { col: 'interval_months', prop: 'intervalMonths', type: 'number', nul: true },
+    { col: 'last_done_odometer', prop: 'lastDoneOdometer', type: 'number', nul: true },
     { col: 'last_done_date', prop: 'lastDoneDate', type: 'string' },
   ],
   maintenance_logs: [
@@ -83,7 +102,7 @@ export const DEVICE_COLS: Record<string, ColDef[]> = {
     { col: 'total_cost', prop: 'totalCost', type: 'number' },
     { col: 'workshop', prop: 'workshop', type: 'string' },
     { col: 'notes', prop: 'notes', type: 'string' },
-    { col: 'next_due_odometer', prop: 'nextDueOdometer', type: 'number' },
+    { col: 'next_due_odometer', prop: 'nextDueOdometer', type: 'number', nul: true },
     { col: 'next_due_date', prop: 'nextDueDate', type: 'string' },
     { col: 'created_at_iso', prop: 'createdAt', type: 'string', srv: 'created_at' },
   ],

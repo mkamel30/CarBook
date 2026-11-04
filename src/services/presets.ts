@@ -116,6 +116,16 @@ export const DEFAULT_MAINTENANCE_PRESETS: VehiclePresetItem[] = [
 /** Every factory item code, in catalogue order. */
 export const FACTORY_ITEM_CODES: string[] = DEFAULT_MAINTENANCE_PRESETS.map(p => p.itemCode);
 
+/**
+ * Factory item codes retired from the catalogue. Cars created before the removal
+ * already carry a seeded row for these, so the server startup migration and the
+ * offline bridge tombstone them on next access instead of letting an item the
+ * car may not even have (e.g. differential gear oil) keep showing up.
+ */
+export const RETIRED_FACTORY_ITEM_CODES: readonly string[] = Object.freeze([
+  'differential_gear_oil',
+]);
+
 /** Prefix used for user-defined items so they can be told apart from factory ones. */
 export const CUSTOM_ITEM_CODE_PREFIX = 'custom_';
 

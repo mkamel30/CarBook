@@ -2,7 +2,7 @@ import { getDatabase } from './db';
 import { reserveSeq } from './sync';
 import * as schema from './schema';
 import { eq, desc, and } from 'drizzle-orm';
-import { baselineMovesForward, bestLogForItem } from '../services/presets';
+import { planScheduleLinking } from '../domain/schedulesCore';
 import { touchedGroups } from '../sync/fieldGroups';
 import {
   vehicleSchema,
@@ -25,6 +25,34 @@ const OWNED_TABLES: ReadonlySet<string> = new Set<OwnedTable>([
   'maintenance_logs',
   'maintenance_schedules',
 ]);
+
+/**
+ * The server encoding of the odometer rule in domain/schedulesCore.ts
+ * (computeMaxOdometer): current_odometer is the max of the vehicle's initial
+ * odometer and every LIVE fuel/maintenance reading. It is a single SQL statement
+ * so the log write and the odometer move commit in one transaction; the conformance
+ * suite (tests/schedulesConformance.server.test.ts) proves it agrees with the pure
+ * rule the device uses. Arg order: vehicle id ×3, then updated_at, seq, sync_ts, id.
+ */
+const RECALCULATE_ODOMETER_SQL = `UPDATE vehicles
+  SET current_odometer = (
+    SELECT MAX(odo) FROM (
+      SELECT initial_odometer AS odo FROM vehicles WHERE id = ?
+      UNION ALL
+      SELECT odometer AS odo FROM fuel_logs WHERE vehicle_id = ? AND deleted = 0
+      UNION ALL
+      SELECT odometer AS odo FROM maintenance_logs WHERE vehicle_id = ? AND deleted = 0
+    )
+  ),
+  updated_at = ?, rev = rev + 1, seq = ?, sync_ts = ?
+  WHERE id = ?`;
+
+/**
+ * The insert-side shortcut of the same rule: a brand-new log can only raise the
+ * odometer, so MAX(current, ?) is the recompute restricted to one reading.
+ * Arg order: odometer, updated_at, seq, sync_ts, vehicle id.
+ */
+const PUSH_ODOMETER_MAX_SQL = `UPDATE vehicles SET current_odometer = MAX(current_odometer, ?), updated_at = ?, rev = rev + 1, seq = ?, sync_ts = ? WHERE id = ?`;
 
 export class StorageRepository {
   private dbPromise: ReturnType<typeof getDatabase>;
@@ -468,15 +496,10 @@ export class StorageRepository {
   }
 
   /**
-   * Drive the preventive schedule from recorded service (server side of the
-   * log→item link; the offline bridge mirrors it with the same pure rules).
-   *
-   * `itemCodes` scopes which items may change. For each live schedule row in
-   * scope the baseline comes from the newest live log that evidences it — or,
-   * for the item the owner picked explicitly in the log modal, from that very
-   * log. Baselines only ever move FORWARD (see presets.baselineMovesForward),
-   * and a link that cannot find a supporting log leaves the row untouched:
-   * deleting a log never invents, clears or rewinds a baseline.
+   * Drive the preventive schedule from recorded service — the server's storage
+   * port for domain/schedulesCore.planScheduleLinking, which the offline bridge
+   * runs over the same rows. This method only reads live rows and writes back
+   * the patches the core chose; every candidate rule lives in the core.
    *
    * Returns the ids of the schedule rows it updated.
    */
@@ -486,33 +509,19 @@ export class StorageRepository {
     sourceLog?: { odometer: number; serviceDate: string } | null;
     explicitItemCode?: string | null;
   }): Promise<string[]> {
-    const targets = Array.from(new Set((params.itemCodes || []).filter(Boolean)));
-    if (!targets.length) return [];
-
-    const schedules = (await this.getSchedulesByVehicle(params.vehicleId))
-      .filter(s => targets.includes(s.itemCode));
+    const schedules = await this.getSchedulesByVehicle(params.vehicleId);
     if (schedules.length === 0) return [];
 
     const logs = await this.getMaintenanceLogsByVehicle(params.vehicleId);
+    const patches = planScheduleLinking(schedules, logs, params);
+
     const updated: string[] = [];
-
-    for (const schedule of schedules) {
-      const explicitHit = !!params.explicitItemCode && schedule.itemCode === params.explicitItemCode;
-      let candidate: { odometer: number; serviceDate: string } | null = null;
-      if (explicitHit && params.sourceLog) {
-        candidate = { odometer: params.sourceLog.odometer, serviceDate: params.sourceLog.serviceDate };
-      } else {
-        const best = bestLogForItem(logs, schedule.itemCode);
-        if (best) candidate = { odometer: best.odometer, serviceDate: best.serviceDate };
-      }
-      if (!candidate) continue;
-      if (!baselineMovesForward(schedule, candidate)) continue;
-
-      await this.updateMaintenanceSchedule(schedule.id!, {
-        lastDoneOdometer: candidate.odometer,
-        lastDoneDate: candidate.serviceDate,
+    for (const patch of patches) {
+      await this.updateMaintenanceSchedule(patch.schedule.id!, {
+        lastDoneOdometer: patch.lastDoneOdometer,
+        lastDoneDate: patch.lastDoneDate,
       });
-      updated.push(schedule.id!);
+      updated.push(patch.schedule.id!);
     }
 
     return updated;
@@ -550,7 +559,7 @@ export class StorageRepository {
         ],
       },
       {
-        sql: `UPDATE vehicles SET current_odometer = MAX(current_odometer, ?), updated_at = ?, rev = rev + 1, seq = ?, sync_ts = ? WHERE id = ?`,
+        sql: PUSH_ODOMETER_MAX_SQL,
         args: [validated.odometer, now, seqBase + 1, ts, validated.vehicleId],
       },
     ], 'write');
@@ -618,18 +627,7 @@ export class StorageRepository {
       },
       {
         // Re-evaluate vehicle max odometer across fuel, maintenance, and initial odometer
-        sql: `UPDATE vehicles
-              SET current_odometer = (
-                SELECT MAX(odo) FROM (
-                  SELECT initial_odometer AS odo FROM vehicles WHERE id = ?
-                  UNION ALL
-                  SELECT odometer AS odo FROM fuel_logs WHERE vehicle_id = ? AND deleted = 0
-                  UNION ALL
-                  SELECT odometer AS odo FROM maintenance_logs WHERE vehicle_id = ? AND deleted = 0
-                )
-              ),
-              updated_at = ?, rev = rev + 1, seq = ?, sync_ts = ?
-              WHERE id = ?`,
+        sql: RECALCULATE_ODOMETER_SQL,
         args: [validated.vehicleId, validated.vehicleId, validated.vehicleId, now, seqBase + 1, ts, validated.vehicleId],
       },
     ], 'write');
@@ -656,18 +654,7 @@ export class StorageRepository {
         args: [seqBase, ts, id],
       },
       {
-        sql: `UPDATE vehicles
-              SET current_odometer = (
-                SELECT MAX(odo) FROM (
-                  SELECT initial_odometer AS odo FROM vehicles WHERE id = ?
-                  UNION ALL
-                  SELECT odometer AS odo FROM fuel_logs WHERE vehicle_id = ? AND deleted = 0
-                  UNION ALL
-                  SELECT odometer AS odo FROM maintenance_logs WHERE vehicle_id = ? AND deleted = 0
-                )
-              ),
-              updated_at = ?, rev = rev + 1, seq = ?, sync_ts = ?
-              WHERE id = ?`,
+        sql: RECALCULATE_ODOMETER_SQL,
         args: [vehicleId, vehicleId, vehicleId, now, seqBase + 1, ts, vehicleId],
       },
     ], 'write');
@@ -707,7 +694,7 @@ export class StorageRepository {
         ],
       },
       {
-        sql: `UPDATE vehicles SET current_odometer = MAX(current_odometer, ?), updated_at = ?, rev = rev + 1, seq = ?, sync_ts = ? WHERE id = ?`,
+        sql: PUSH_ODOMETER_MAX_SQL,
         args: [validated.odometer, now, seqBase + 1, ts, validated.vehicleId],
       },
     ], 'write');
@@ -773,18 +760,7 @@ export class StorageRepository {
         ],
       },
       {
-        sql: `UPDATE vehicles
-              SET current_odometer = (
-                SELECT MAX(odo) FROM (
-                  SELECT initial_odometer AS odo FROM vehicles WHERE id = ?
-                  UNION ALL
-                  SELECT odometer AS odo FROM fuel_logs WHERE vehicle_id = ? AND deleted = 0
-                  UNION ALL
-                  SELECT odometer AS odo FROM maintenance_logs WHERE vehicle_id = ? AND deleted = 0
-                )
-              ),
-              updated_at = ?, rev = rev + 1, seq = ?, sync_ts = ?
-              WHERE id = ?`,
+        sql: RECALCULATE_ODOMETER_SQL,
         args: [validated.vehicleId, validated.vehicleId, validated.vehicleId, now, seqBase + 1, ts, validated.vehicleId],
       },
     ], 'write');
@@ -809,18 +785,7 @@ export class StorageRepository {
         args: [seqBase, ts, id],
       },
       {
-        sql: `UPDATE vehicles
-              SET current_odometer = (
-                SELECT MAX(odo) FROM (
-                  SELECT initial_odometer AS odo FROM vehicles WHERE id = ?
-                  UNION ALL
-                  SELECT odometer AS odo FROM fuel_logs WHERE vehicle_id = ? AND deleted = 0
-                  UNION ALL
-                  SELECT odometer AS odo FROM maintenance_logs WHERE vehicle_id = ? AND deleted = 0
-                )
-              ),
-              updated_at = ?, rev = rev + 1, seq = ?, sync_ts = ?
-              WHERE id = ?`,
+        sql: RECALCULATE_ODOMETER_SQL,
         args: [vehicleId, vehicleId, vehicleId, now, seqBase + 1, ts, vehicleId],
       },
     ], 'write');

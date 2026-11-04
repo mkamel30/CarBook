@@ -260,6 +260,35 @@ export async function getDatabase(dbFilePath?: string) {
     } catch (e) {}
   }
 
+  // Retired factory presets: cars created before an item left the catalogue carry
+  // a live seeded row for it (e.g. differential_gear_oil). Tombstone those rows
+  // with a seq ABOVE the current counter — after the backfill, so the delete is
+  // always newer than every cursor a client may already hold — and leave
+  // already-deleted rows alone (idempotent across restarts). A row the owner
+  // edited by hand is still retired: the item no longer exists in the catalogue
+  // and a differential-oil card the car may not have is noise either way.
+  try {
+    const res = await client.execute({
+      sql: `SELECT COUNT(*) AS c FROM maintenance_schedules WHERE item_code = 'differential_gear_oil' AND deleted = 0`,
+      args: [],
+    });
+    const retired = Number((res.rows[0] as any).c || 0);
+    if (retired > 0) {
+      const now = Date.now();
+      await client.batch([
+        { sql: `UPDATE sync_counter SET value = value + ? WHERE id = 1;`, args: [retired] },
+        { sql: `WITH bump AS (SELECT value AS hi FROM sync_counter WHERE id = 1),
+                 ranked AS (SELECT id, hi - (COUNT(*) OVER (ORDER BY rowid) - 1) AS s
+                            FROM maintenance_schedules CROSS JOIN bump
+                            WHERE item_code = 'differential_gear_oil' AND deleted = 0)
+                UPDATE maintenance_schedules
+                SET deleted = 1, rev = rev + 1, seq = (SELECT s FROM ranked WHERE ranked.id = maintenance_schedules.id),
+                    sync_ts = ?, baseline_ts = ?
+                WHERE item_code = 'differential_gear_oil' AND deleted = 0;`, args: [now, now] },
+      ], 'write');
+    }
+  } catch (e) {}
+
   // Per-user app_settings migration: legacy databases have `key TEXT PRIMARY KEY`
   // with no user_id. Add the column, then rebuild with (key, user_id) as the
   // composite key. Legacy rows become global defaults (user_id = ''), which stay

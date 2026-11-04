@@ -57,14 +57,15 @@ import {
 import { enrichFuelMetrics, evaluateMaintenanceStatus } from '@app/services/calculator';
 import {
   CUSTOM_ITEM_CODE_PREFIX,
-  baselineMovesForward,
-  bestLogForItem,
   derivedItemsForServiceType,
   missingFactoryPresets,
-  scheduleLinkedFromLog,
-  type LinkedFromLog,
+  RETIRED_FACTORY_ITEM_CODES,
 } from '@app/services/presets';
-import { DEFAULT_MAINTENANCE_PRESETS } from '@app/services/presets';
+import {
+  computeMaxOdometer,
+  evaluateSchedulesForRead,
+  planScheduleLinking,
+} from '@app/domain/schedulesCore';
 import {
   vehicleSchema,
   fuelLogSchema,
@@ -168,7 +169,8 @@ async function readVehicle(db: Database, id: string): Promise<any | null> {
 }
 
 /**
- * Mirror the server's atomic odometer rule: after any fuel/maintenance change the
+ * Mirror the server's atomic odometer rule with the shared core's pure function
+ * (see @app/domain/schedulesCore): after any fuel/maintenance change the
  * vehicle's current odometer is the max of its initial odometer and every live
  * fuel/maintenance entry. Written back through the dirty-marking writer.
  */
@@ -177,9 +179,10 @@ async function recomputeVehicleOdometer(db: Database, vehicleId: string, now: nu
   if (!raw) return;
   const fuel = await liveRows(db, FUEL_TABLE, vehicleId);
   const maint = await liveRows(db, MAINT_TABLE, vehicleId);
-  let max = Number(raw.initial_odometer) || 0;
-  for (const r of fuel) max = Math.max(max, Number(r.raw.odometer) || 0);
-  for (const r of maint) max = Math.max(max, Number(r.raw.odometer) || 0);
+  const max = computeMaxOdometer(
+    raw.initial_odometer,
+    [...fuel, ...maint].map((r) => r.raw.odometer),
+  );
   if (max !== (Number(raw.current_odometer) || 0)) {
     await localUpdate(db, VEHICLE_TABLE, vehicleId, { current_odometer: max }, now);
   }
@@ -395,6 +398,14 @@ async function handleMaintenance(
   return notImplemented(`GET|POST|PUT|DELETE /api/maintenance (${method})`);
 }
 
+/**
+ * The device's storage port for @app/domain/schedulesCore.planScheduleLinking —
+ * the same decision the server repository makes from the same rows. Reads live
+ * schedule/log rows, asks the core which baselines move, writes them back.
+ *
+ * Returns how many schedule rows it updated (the server returns their ids and
+ * the route reports the count).
+ */
 async function linkSchedulesInBridge(
   db: Database,
   vehicleId: string,
@@ -403,40 +414,53 @@ async function linkSchedulesInBridge(
   explicitItemCode: string | null,
   at: number,
 ): Promise<number> {
-  const targets = Array.from(new Set(itemCodes.filter(Boolean)));
-  if (!targets.length) return 0;
   const schedRows = await liveRows(db, SCHED_TABLE, vehicleId);
   const logRows = await liveRows(db, MAINT_TABLE, vehicleId);
+  const schedules = schedRows.map((r) => scheduleFromRaw(r.id, r.raw));
   const logs = logRows.map((r) => maintenanceFromRaw(r.id, r.raw));
-  let updatedCount = 0;
-  for (const row of schedRows) {
-    const sched = scheduleFromRaw(row.id, row.raw);
-    if (!targets.includes(sched.itemCode)) continue;
-    const explicitHit = !!explicitItemCode && sched.itemCode === explicitItemCode;
-    let candidate: { odometer: number; serviceDate: string } | null = null;
-    if (explicitHit && sourceLog) {
-      candidate = { odometer: sourceLog.odometer, serviceDate: sourceLog.serviceDate };
-    } else {
-      const best = bestLogForItem(logs, sched.itemCode);
-      if (best) candidate = { odometer: best.odometer, serviceDate: best.serviceDate };
-    }
-    if (!candidate) continue;
-    if (!baselineMovesForward(sched as any, candidate)) continue;
-    await localUpdate(db, SCHED_TABLE, row.id, {
-      last_done_odometer: candidate.odometer,
-      last_done_date: candidate.serviceDate,
+  const patches = planScheduleLinking(schedules, logs, { itemCodes, sourceLog, explicitItemCode });
+  for (const patch of patches) {
+    await localUpdate(db, SCHED_TABLE, patch.schedule.id, {
+      last_done_odometer: patch.lastDoneOdometer,
+      last_done_date: patch.lastDoneDate,
     }, at);
-    updatedCount++;
   }
-  return updatedCount;
+  return patches.length;
 }
 
+/**
+ * Idempotent per item_code, exactly like the server's GET /api/schedules: the
+ * comparison reads EVERY local row including the owner's tombstones, so a
+ * preset they removed is not silently re-created on the next read.
+ *
+ * Known device-side limit: sync purges an acked tombstone (localStore
+ * markSynced), after which only the server still remembers the removal.
+ */
 async function seedSchedules(db: Database, vehicleId: string, at: number): Promise<void> {
-  const existingRows = await liveRows(db, SCHED_TABLE, vehicleId);
-  const existingCodes = existingRows.map((r) => String(r.raw.item_code));
+  const rows = await (db.collections.get(SCHED_TABLE as any) as any)
+    .query(Q.where('vehicle_id', vehicleId)).fetch();
+  const existingCodes = (rows as any[])
+    .map((r) => String((r as any)._raw?.item_code ?? ''))
+    .filter(Boolean);
   const missing = missingFactoryPresets(existingCodes);
   for (const preset of missing) {
     await localCreate(db, SCHED_TABLE, newId(), scheduleSeedFields(preset, vehicleId), at);
+  }
+}
+
+/**
+ * Tombstone seeded rows whose item left the factory catalogue (see
+ * RETIRED_FACTORY_ITEM_CODES). Runs lazily on the schedules read, mirroring
+ * seedSchedules, so an offline guest car that predates the removal stops showing
+ * the retired item without waiting for a server round-trip.
+ */
+async function removeRetiredPresets(db: Database, vehicleId: string, at: number): Promise<void> {
+  const rows = await liveRows(db, SCHED_TABLE, vehicleId);
+  for (const row of rows) {
+    const code = String(row.raw.item_code ?? '');
+    if (RETIRED_FACTORY_ITEM_CODES.includes(code)) {
+      await localMarkDeleted(db, SCHED_TABLE, row.id, at);
+    }
   }
 }
 
@@ -451,16 +475,12 @@ async function handleSchedules(
     const vehicle = vehicleFromRaw(vehicleId, vehicleRaw);
 
     await seedSchedules(db, vehicleId, at);
+    await removeRetiredPresets(db, vehicleId, at);
     const rows = await liveRows(db, SCHED_TABLE, vehicleId);
     const logRows = await liveRows(db, MAINT_TABLE, vehicleId);
     const logs = logRows.map((r) => maintenanceFromRaw(r.id, r.raw));
     const schedules = rows.map((r) => scheduleFromRaw(r.id, r.raw));
-    const evaluated = schedules.map((s) => {
-      const status = evaluateMaintenanceStatus(s as any, vehicle.currentOdometer);
-      const linkedFromLog = scheduleLinkedFromLog(s as any, logs);
-      return linkedFromLog ? { ...status, linkedFromLog } : status;
-    });
-    return ok({ vehicle, schedules: evaluated });
+    return ok({ vehicle, schedules: evaluateSchedulesForRead(schedules, logs, vehicle.currentOdometer) });
   }
 
   if (method === 'POST') {

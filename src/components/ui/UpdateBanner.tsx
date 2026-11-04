@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { Browser } from '@capacitor/browser';
+import { App } from '@capacitor/app';
 import { Download, Sparkles, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
-import { CURRENT_CLIENT_VERSION, semverToVersionCode } from '@/services/version';
+import { resolveInstalledVersion, semverToVersionCode } from '@/services/version';
 
 interface AppVersionInfo {
   version: string;
@@ -27,9 +28,13 @@ export const UpdateBanner: React.FC = () => {
         const info: AppVersionInfo | undefined = body?.success ? body.data : undefined;
         if (!info?.version || !info.apkUrl) return;
         // Newer by versionCode (what Android actually uses to decide whether an
-        // APK can upgrade the installed one), not by string inequality.
+        // APK can upgrade the installed one), not by string inequality. The
+        // installed version comes from the native bridge (falls back to the
+        // baked constant on web), not from the bundle — otherwise a stale baked
+        // constant would hide an update from an older installed APK.
+        const installed = await resolveInstalledVersion(() => App.getInfo());
         const serverCode = semverToVersionCode(info.version);
-        const currentCode = semverToVersionCode(CURRENT_CLIENT_VERSION);
+        const currentCode = installed.versionCode;
         if (serverCode <= currentCode) return;
         const dismissedVersion = localStorage.getItem('carbook_dismissed_update');
         if (dismissedVersion === info.version) return;

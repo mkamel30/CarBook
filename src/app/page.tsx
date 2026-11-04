@@ -1,11 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense, memo, useCallback } from 'react';
 import { Car, PlusCircle, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
-import { tStatic } from '@/i18n/staticTranslate';
-import { evaluateAndNotifySchedules } from '@/services/notifications';
-import { usageFromFuelLogs } from '@/services/calculator';
 
 // Layout Components
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -19,15 +16,18 @@ import { MobileFab } from '@/components/layout/MobileFab';
 // seven are code-split with React.lazy and load only when first opened — that
 // keeps xlsx (pulled in by the Report/Maintenance/Fuel export tabs) off the cold
 // WebView start, which matters on low-end Android. Each lazy() re-wraps the
-// named export as default, which is what React.lazy expects.
-import { OverviewTab } from '@/components/tabs/OverviewTab';
-const FuelTab = lazy(() => import('@/components/tabs/FuelTab').then((m) => ({ default: m.FuelTab })));
-const MaintenanceTab = lazy(() => import('@/components/tabs/MaintenanceTab').then((m) => ({ default: m.MaintenanceTab })));
-const SchedulesTab = lazy(() => import('@/components/tabs/SchedulesTab').then((m) => ({ default: m.SchedulesTab })));
-const ManualTab = lazy(() => import('@/components/tabs/ManualTab').then((m) => ({ default: m.ManualTab })));
-const DoctorTab = lazy(() => import('@/components/tabs/DoctorTab').then((m) => ({ default: m.DoctorTab })));
-const ReportsTab = lazy(() => import('@/components/tabs/ReportsTab').then((m) => ({ default: m.ReportsTab })));
-const SettingsTab = lazy(() => import('@/components/tabs/SettingsTab').then((m) => ({ default: m.SettingsTab })));
+// named export as default (what React.lazy expects) and memoizes it so a page
+// re-render that does not change its props (e.g. typing in another tab's input)
+// does not re-render the whole tab.
+import { OverviewTab as OverviewTabInner } from '@/components/tabs/OverviewTab';
+const OverviewTab = memo(OverviewTabInner);
+const FuelTab = lazy(() => import('@/components/tabs/FuelTab').then((m) => ({ default: memo(m.FuelTab) })));
+const MaintenanceTab = lazy(() => import('@/components/tabs/MaintenanceTab').then((m) => ({ default: memo(m.MaintenanceTab) })));
+const SchedulesTab = lazy(() => import('@/components/tabs/SchedulesTab').then((m) => ({ default: memo(m.SchedulesTab) })));
+const ManualTab = lazy(() => import('@/components/tabs/ManualTab').then((m) => ({ default: memo(m.ManualTab) })));
+const DoctorTab = lazy(() => import('@/components/tabs/DoctorTab').then((m) => ({ default: memo(m.DoctorTab) })));
+const ReportsTab = lazy(() => import('@/components/tabs/ReportsTab').then((m) => ({ default: memo(m.ReportsTab) })));
+const SettingsTab = lazy(() => import('@/components/tabs/SettingsTab').then((m) => ({ default: memo(m.SettingsTab) })));
 
 // Modal Components
 import { AddVehicleModal } from '@/components/modals/AddVehicleModal';
@@ -35,35 +35,29 @@ import { FuelLogModal } from '@/components/modals/FuelLogModal';
 import { MaintenanceLogModal } from '@/components/modals/MaintenanceLogModal';
 
 // Shared UI primitives (in-app replacements for alert()/confirm())
-import { ToastViewport, pushToast } from '@/components/ui/Toast';
-import { ConfirmDialogHost, askConfirm } from '@/components/ui/ConfirmDialog';
+import { ToastViewport } from '@/components/ui/Toast';
+import { ConfirmDialogHost } from '@/components/ui/ConfirmDialog';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
 import { UpdateBanner } from '@/components/ui/UpdateBanner';
-import { deriveMaintenanceTotal } from '@/components/tabs/maintenanceTotals';
 
-type Envelope = { success: true; data?: any } | { success: false; error: string };
+// Domain hooks + pure models (A5)
+import { useAuth } from '@/hooks/useAuth';
+import { useVehicles } from '@/hooks/useVehicles';
+import { useSettings } from '@/hooks/useSettings';
+import { useDetails } from '@/hooks/useDetails';
+import { useFuelLogs } from '@/hooks/useFuelLogs';
+import { useMaintenanceLogs } from '@/hooks/useMaintenanceLogs';
+import { useSchedules } from '@/hooks/useSchedules';
+import { useDoctor } from '@/hooks/useDoctor';
+import { useManual } from '@/hooks/useManual';
+import {
+  selectBodyMode,
+  countUrgentSchedules,
+  shouldShowUrgentBanner,
+  minOdometerFor,
+} from '@/hooks/workbenchModel';
 
-/**
- * Read an API response as an envelope. A reverse proxy answering a 502 with HTML
- * would otherwise make `res.json()` throw inside the handler, leaving the modal
- * open with no message even though the write may already have landed.
- */
-async function readEnvelope(res: Response): Promise<Envelope> {
-  const httpFailure = tStatic('err_http_status', { status: res.status });
-  if (res.status === 401) return { success: false, error: tStatic('err_session_expired') };
-
-  let body: any = null;
-  try {
-    body = await res.json();
-  } catch {
-    body = null;
-  }
-  if (!body || typeof body !== 'object' || !('success' in body)) {
-    return { success: false, error: httpFailure };
-  }
-  if (body.success) return { success: true, data: body.data };
-  return { success: false, error: typeof body.error === 'string' && body.error ? body.error : httpFailure };
-}
+type TabKey = 'overview' | 'fuel' | 'maintenance' | 'alerts' | 'manual' | 'doctor' | 'report' | 'settings';
 
 /** Suspense fallback for the code-split tabs (A6): a quiet skeleton, no copy. */
 function TabLoading() {
@@ -78,174 +72,60 @@ function TabLoading() {
 
 export default function WorkbenchPage() {
   const { t, lang } = useTranslation();
-  const [currentUser, setCurrentUser] = useState<any | null>(null);
-  const [vehicles, setVehicles] = useState<any[]>([]);
-  const [selectedVehicle, setSelectedVehicle] = useState<any | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'alerts' | 'manual' | 'doctor' | 'report' | 'settings'>('overview');
-  const [loading, setLoading] = useState(true);
-  // Initial-load truthfulness: a failed first fetch must show an error panel
-  // with Retry, never the first-run "add your car" state (it invites duplicate vehicles).
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
-  const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
-
-  // Vehicle Form State
-  const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
-  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
-  const [vehicleForm, setVehicleForm] = useState({
-    name: '',
-    make: '',
-    model: '',
-    year: new Date().getFullYear(),
-    engineCc: '',
-    licensePlate: '',
-    initialOdometer: 0,
-    recommendedOil: '',
-  });
-
-  // AI Lookup in Add Vehicle Modal
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiProposal, setAiProposal] = useState<any | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  // Fuel Form State
-  const [showFuelModal, setShowFuelModal] = useState(false);
-  const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
-  const [selectedFuelType, setSelectedFuelType] = useState<string>('');
-  const [fuelForm, setFuelForm] = useState({
-    fillDate: new Date().toISOString().split('T')[0],
-    odometer: 0,
-    liters: 40,
-    pricePerLiter: 15,
-    totalCost: 600,
-    isFullTank: true,
-    notes: '',
-  });
-
-  // Maintenance Form State
-  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
-  const [editingMaintenanceId, setEditingMaintenanceId] = useState<string | null>(null);
-  const [partsList, setPartsList] = useState<{ id: string; name: string; condition: 'new' | 'used_import'; cost: number }[]>([]);
-  const [maintenanceForm, setMaintenanceForm] = useState({
-    serviceDate: new Date().toISOString().split('T')[0],
-    odometer: 0,
-    serviceType: 'oil_change',
-    title: '',
-    partsCost: 0,
-    laborCost: 0,
-    totalCost: 0,
-    workshop: '',
-    notes: '',
-    nextDueOdometer: 0,
-    nextDueDate: '',
-  });
-
-  // Vehicle Data State
-  const [fuelLogs, setFuelLogs] = useState<any[]>([]);
-  const [maintenanceLogs, setMaintenanceLogs] = useState<any[]>([]);
-  const [schedules, setSchedules] = useState<any[]>([]);
-  const [reportData, setReportData] = useState<any | null>(null);
-  const detailsSeq = useRef(0);
-  const [savingVehicle, setSavingVehicle] = useState(false);
-  const [savingFuel, setSavingFuel] = useState(false);
-  const [savingMaintenance, setSavingMaintenance] = useState(false);
-
-  // AI Manual & Doctor State
-  const [manualLoading, setManualLoading] = useState(false);
-  const [manualError, setManualError] = useState<string | null>(null);
-  const [doctorQuery, setDoctorQuery] = useState('');
-  const [doctorLoading, setDoctorLoading] = useState(false);
-  const [doctorHistory, setDoctorHistory] = useState<{ query: string; advice: string }[]>([]);
-
-  // Settings State
-  const [settings, setSettings] = useState({
-    provider: 'gemini',
-    apiKey: '',
-    hasApiKey: false,
-    maskedApiKey: '',
-    fuelTypes: [
-      { id: 'gasoline_92', name: 'بنزين 92', price: 22.25 },
-      { id: 'gasoline_95', name: 'بنزين 95', price: 24.00 },
-      { id: 'gasoline_80', name: 'بنزين 80', price: 20.75 },
-      { id: 'diesel', name: 'سولار', price: 20.50 },
-      { id: 'cng', name: 'غاز طبيعي', price: 13.00 },
-    ],
-  });
-  const [settingsMsg, setSettingsMsg] = useState('');
-  const [settingsError, setSettingsError] = useState('');
-  // In-flight guards for destructive deletes (mirrors the saving* flags).
-  const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null);
-  const [deletingFuelId, setDeletingFuelId] = useState<string | null>(null);
-  const [deletingMaintenanceId, setDeletingMaintenanceId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [showFabMenu, setShowFabMenu] = useState(false);
 
-  // Fetch Vehicles
-  const loadVehicles = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/vehicles');
-      const data = await readEnvelope(res);
-      if (data.success) {
-        setInitialLoadError(null);
-        setVehicles(data.data);
-        if (data.data.length > 0) {
-          setSelectedVehicle((prev: any) => {
-            const next = !prev ? data.data[0] : (data.data.find((v: any) => v.id === prev.id) || data.data[0]);
-            // Keep the same object when nothing meaningful changed, otherwise every
-            // save hands down a new reference and the details effect loads twice.
-            if (prev && next && prev.id === next.id && prev.currentOdometer === next.currentOdometer) {
-              return prev;
-            }
-            return next;
-          });
-        } else {
-          setSelectedVehicle(null);
-          setFuelLogs([]);
-          setMaintenanceLogs([]);
-          setSchedules([]);
-          setReportData(null);
-        }
-      } else {
-        setInitialLoadError(data.error || 'Failed to load vehicles');
-      }
-    } catch (e) {
-      console.error('Failed to load vehicles', e);
-      setInitialLoadError(e instanceof Error ? e.message : 'Failed to load vehicles');
-    } finally {
-      setLoading(false);
-      setInitialLoadDone(true);
-    }
-  };
+  const auth = useAuth();
+  const vehicles = useVehicles();
+  const settings = useSettings();
+  const details = useDetails({
+    selectedVehicle: vehicles.selectedVehicle,
+    lang,
+    setSelectedVehicle: vehicles.setSelectedVehicle,
+  });
+  const fuel = useFuelLogs({
+    selectedVehicle: vehicles.selectedVehicle,
+    fuelLogs: details.fuelLogs,
+    fuelTypes: settings.settings.fuelTypes,
+    reloadDetails: details.loadVehicleDetails,
+    reloadVehicles: vehicles.loadVehicles,
+  });
+  const maintenance = useMaintenanceLogs({
+    selectedVehicle: vehicles.selectedVehicle,
+    reloadDetails: details.loadVehicleDetails,
+    reloadVehicles: vehicles.loadVehicles,
+  });
+  const schedules = useSchedules({
+    schedules: details.schedules,
+    vehicleId: vehicles.selectedVehicle?.id,
+    reloadDetails: details.loadVehicleDetails,
+  });
+  const doctor = useDoctor({ selectedVehicle: vehicles.selectedVehicle, lang });
+  const manual = useManual({
+    selectedVehicle: vehicles.selectedVehicle,
+    setSelectedVehicle: vehicles.setSelectedVehicle,
+    reloadVehicles: vehicles.loadVehicles,
+  });
 
-  const loadAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      if (data.authenticated) {
-        setCurrentUser(data.user);
-      } else {
-        setCurrentUser(null);
-      }
-    } catch {}
-  };
+  const selectedVehicle = vehicles.selectedVehicle;
 
+  // Initial load: auth mounts itself (useAuth); vehicles + settings load here.
   useEffect(() => {
-    loadAuth();
-    loadVehicles();
-    loadSettings();
+    vehicles.loadVehicles();
+    settings.loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Bundled APK: the account handoff finishes AFTER mount (the bearer arrives
   // via deep link), so re-ask /api/auth/me once the shell reports a sign-in.
-  // The shell also re-pulls the account rows into the local DB (onLinked rewinds
-  // the cursor + syncNow) before it fires this event — so the fresh rows are
-  // already readable, but the mount-time list load ran against the pre-login DB
-  // and never re-ran. Reloading vehicles here is what makes signed-in data appear
-  // without needing to log out (logout only "worked" because it did a full reload).
+  // The shell also re-pulls the account rows into the local DB before it fires
+  // this event — reloading vehicles here is what makes signed-in data appear
+  // without needing to log out.
   useEffect(() => {
     const onHandoff = (e: Event) => {
       if ((e as CustomEvent)?.detail?.kind === 'signedin') {
-        loadAuth();
-        loadVehicles();
+        auth.loadAuth();
+        vehicles.loadVehicles();
       }
     };
     window.addEventListener('carbook:handoff', onHandoff);
@@ -253,623 +133,66 @@ export default function WorkbenchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleLoginGoogle = () => {
-    // Bundled APK: the shell opens the SERVER login URL in the external browser
-    // (Google refuses embedded WebViews); the deep link returns with a code.
-    const shell = typeof window !== 'undefined'
-      ? (window as { carbookShell?: { openLogin?: () => void } }).carbookShell
-      : undefined;
-    if (shell?.openLogin) {
-      shell.openLogin();
-      return;
-    }
-    window.location.href = '/api/auth/login';
-  };
-
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    // Bundled APK: drop the stored account bearer too, or the next boot would
-    // re-attach a revoked credential.
-    (window as { carbookShell?: { clearSession?: () => void } }).carbookShell?.clearSession?.();
-    setCurrentUser(null);
-    window.location.reload();
-  };
-
-  // Fetch Vehicle Specific Data
-  const loadVehicleDetails = async (vehicleId: string) => {
-    // Only the newest request may write: switching A -> B must not let a slow
-    // reply for A land after B's and paint A's logs under B's header.
-    const my = ++detailsSeq.current;
-    const stale = () => my !== detailsSeq.current;
-
-    try {
-      const [fuelRes, maintRes, schedRes, repRes] = await Promise.all([
-        fetch(`/api/fuel?vehicleId=${vehicleId}`).then(readEnvelope),
-        fetch(`/api/maintenance?vehicleId=${vehicleId}`).then(readEnvelope),
-        fetch(`/api/schedules?vehicleId=${vehicleId}`).then(readEnvelope),
-        fetch(`/api/reports?vehicleId=${vehicleId}`).then(readEnvelope),
-      ]);
-      if (stale()) return;
-
-      if (fuelRes.success) setFuelLogs(fuelRes.data);
-      if (maintRes.success) setMaintenanceLogs(maintRes.data);
-      if (schedRes.success) {
-        setSchedules(schedRes.data.schedules);
-        const vName = schedRes.data.vehicle?.name || selectedVehicle?.name || '';
-        // Feature 1: feed the vehicle's fuel history so a km-only item's closed-app
-        // alarm is aimed at its projected due day instead of nagging hourly.
-        const usage = usageFromFuelLogs(fuelRes.success ? fuelRes.data : []);
-        evaluateAndNotifySchedules(schedRes.data.schedules, vName, lang, usage, schedRes.data.vehicle?.currentOdometer);
-      }
-      if (repRes.success) {
-        setReportData(repRes.data);
-        if (repRes.data?.vehicle?.specs) {
-          setSelectedVehicle((prev: any) => {
-            if (prev && (!prev.specs || (typeof prev.specs === 'object' && Object.keys(prev.specs).length === 0))) {
-              return { ...prev, specs: repRes.data.vehicle.specs };
-            }
-            return prev;
-          });
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    if (selectedVehicle) {
-      loadVehicleDetails(selectedVehicle.id);
-      setFuelForm(prev => ({ ...prev, odometer: selectedVehicle.currentOdometer }));
-      setMaintenanceForm(prev => ({ ...prev, odometer: selectedVehicle.currentOdometer }));
-    }
-  }, [selectedVehicle]);
-
-  // Keyed on the id alone, so a different car drops the previous one's
-  // consultations while a save that only bumps the odometer does not.
-  useEffect(() => {
-    setDoctorHistory([]);
-  }, [selectedVehicle?.id]);
-
-  // Load Settings
-  const loadSettings = async () => {
-    try {
-      const res = await fetch('/api/settings');
-      const data = await readEnvelope(res);
-      if (data.success) {
-        setSettings(prev => ({
-          ...prev,
-          provider: data.data.provider,
-          hasApiKey: data.data.hasApiKey,
-          maskedApiKey: data.data.maskedApiKey || '',
-          fuelTypes: data.data.fuelTypes || prev.fuelTypes,
-        }));
-      }
-    } catch (e) {
-      console.error('Failed to load settings', e);
-    }
-  };
-
+  // Reload settings whenever the settings tab is opened.
   useEffect(() => {
     if (activeTab === 'settings') {
-      loadSettings();
+      settings.loadSettings();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  const openAddVehicleModal = () => {
-    setEditingVehicleId(null);
-    setVehicleForm({
-      name: '',
-      make: '',
-      model: '',
-      year: new Date().getFullYear(),
-      engineCc: '',
-      licensePlate: '',
-      initialOdometer: 0,
-      recommendedOil: '',
-    });
-    setAiProposal(null);
-    setAiError(null);
-    setShowAddVehicleModal(true);
-  };
-
-  const openEditVehicleModal = (v: any) => {
-    if (!v) return;
-    setEditingVehicleId(v.id);
-    setVehicleForm({
-      name: v.name,
-      make: v.make,
-      model: v.model,
-      year: Number(v.year),
-      engineCc: v.engineCc || '',
-      licensePlate: v.licensePlate || '',
-      initialOdometer: Number(v.initialOdometer || 0),
-      recommendedOil: v.recommendedOil || '',
-    });
-    setAiProposal(null);
-    setAiError(null);
-    setShowAddVehicleModal(true);
-  };
-
-  const handleDeleteVehicle = async (v: any) => {
-    if (!v || deletingVehicleId) return;
-    const ok = await askConfirm({
-      title: t('btn_delete_vehicle'),
-      message: t('confirm_delete_vehicle'),
-      danger: true,
-      confirmLabel: t('btn_delete'),
-    });
-    if (!ok) return;
-
-    setDeletingVehicleId(v.id);
-    try {
-      const res = await fetch(`/api/vehicles?id=${encodeURIComponent(v.id)}`, {
-        method: 'DELETE',
-      });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        pushToast(`${v.name} · ${t('btn_delete')} ✓`, 'success');
-        await loadVehicles();
-      } else {
-        pushToast(data.error, 'error');
-      }
-    } catch (e: any) {
-      pushToast(e.message || t('err_delete_vehicle'), 'error');
-    } finally {
-      setDeletingVehicleId(null);
+  // A new/edited vehicle's odometer seeds the two log forms.
+  useEffect(() => {
+    if (selectedVehicle) {
+      fuel.setFuelForm((prev) => ({ ...prev, odometer: selectedVehicle.currentOdometer }));
+      maintenance.setMaintenanceForm((prev) => ({ ...prev, odometer: selectedVehicle.currentOdometer }));
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVehicle]);
 
-  // Handle Add or Edit Vehicle
-  const handleSaveVehicle = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (savingVehicle) return;
-    setSavingVehicle(true);
-    try {
-      const isEdit = Boolean(editingVehicleId);
-      const url = '/api/vehicles';
-      const method = isEdit ? 'PUT' : 'POST';
-      const body = {
-        ...(isEdit ? { id: editingVehicleId } : {}),
-        ...vehicleForm,
-        initialOdometer: Number(vehicleForm.initialOdometer),
-        currentOdometer: isEdit && selectedVehicle ? selectedVehicle.currentOdometer : Number(vehicleForm.initialOdometer),
-        year: Number(vehicleForm.year),
-      };
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        setShowAddVehicleModal(false);
-        const savedId = data.data.id || editingVehicleId;
-        setVehicleForm({
-          name: '',
-          make: '',
-          model: '',
-          year: new Date().getFullYear(),
-          engineCc: '',
-          licensePlate: '',
-          initialOdometer: 0,
-          recommendedOil: '',
-        });
-        setAiProposal(null);
-        setEditingVehicleId(null);
-        await loadVehicles();
-        setSelectedVehicle(data.data);
-
-        // Auto-refresh specifications if vehicle details or engine changed
-        if (isEdit && savedId) {
-          fetch('/api/ai/manual', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vehicleId: savedId, forceRefresh: true }),
-          })
-            .then(r => r.json())
-            .then(res => {
-              if (res.success && res.data) {
-                setSelectedVehicle((prev: any) => prev && prev.id === savedId ? { ...prev, specs: res.data } : prev);
-              }
-            })
-            .catch(() => {});
-        }
-      } else {
-        pushToast(data.error, 'error');
-      }
-    } catch (err: any) {
-      pushToast(err?.message || t('err_request_failed'), 'error');
-    } finally {
-      setSavingVehicle(false);
+  // The details fan-out is cleared when the list empties (last vehicle deleted),
+  // exactly as loadVehicles used to do inline before the hooks split.
+  useEffect(() => {
+    if (vehicles.initialLoadDone && vehicles.vehicles.length === 0) {
+      details.clearAll();
     }
-  };
+  }, [vehicles.initialLoadDone, vehicles.vehicles.length, details.clearAll]);
 
-  // Trigger AI Schedule & Oil Lookup
-  const handleAiLookup = async () => {
-    if (!vehicleForm.make || !vehicleForm.model) {
-      pushToast(t('modal_make_model_required'), 'error');
-      return;
-    }
-    setAiLoading(true);
-    setAiError(null);
-    try {
-      const res = await fetch('/api/ai/lookup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          make: vehicleForm.make,
-          model: vehicleForm.model,
-          year: vehicleForm.year,
-          engineCc: vehicleForm.engineCc || undefined,
-        }),
-      });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        setAiProposal(data.data);
-        if (data.data.recommendedOil) {
-          setVehicleForm(prev => ({ ...prev, recommendedOil: data.data.recommendedOil }));
-        }
-      } else {
-        setAiError(data.error);
-      }
-    } catch (err: any) {
-      setAiError(err.message);
-    } finally {
-      setAiLoading(false);
-    }
-  };
+  const onDataRestored = useCallback(() => {
+    vehicles.loadVehicles();
+    if (selectedVehicle) details.loadVehicleDetails(selectedVehicle.id, true);
+  }, [vehicles.loadVehicles, selectedVehicle, details.loadVehicleDetails]);
 
-  // Open Fuel Modal (Add or Edit)
-  const openAddFuelModal = () => {
-    setEditingFuelId(null);
-    const lastLog = fuelLogs.length > 0 ? fuelLogs[0] : null;
-    let selectedFuel = settings.fuelTypes?.[0];
-
-    if (lastLog) {
-      const match = settings.fuelTypes?.find(
-        f => f.name === lastLog.notes || Math.abs(f.price - lastLog.pricePerLiter) < 0.01
-      );
-      if (match) {
-        selectedFuel = match;
-      }
-    }
-
-    const fuelTypeId = selectedFuel ? selectedFuel.id : (lastLog ? 'custom' : '');
-    const price = lastLog ? lastLog.pricePerLiter : (selectedFuel ? selectedFuel.price : 15);
-    const fuelName = lastLog?.notes || selectedFuel?.name || '';
-
-    setSelectedFuelType(fuelTypeId);
-    setFuelForm({
-      fillDate: new Date().toISOString().split('T')[0],
-      odometer: selectedVehicle?.currentOdometer || 0,
-      liters: 0,
-      pricePerLiter: price,
-      totalCost: 0,
-      isFullTank: true,
-      notes: fuelName,
-    });
-    setShowFuelModal(true);
-  };
-
-  const openEditFuelModal = (log: any) => {
-    setEditingFuelId(log.id);
-    const matchedType = settings.fuelTypes?.find(f => f.price === log.pricePerLiter || f.name === log.notes);
-    setSelectedFuelType(matchedType ? matchedType.id : 'custom');
-    setFuelForm({
-      fillDate: log.fillDate,
-      odometer: log.odometer,
-      liters: log.liters,
-      pricePerLiter: log.pricePerLiter,
-      totalCost: log.totalCost,
-      isFullTank: log.isFullTank,
-      notes: log.notes || '',
-    });
-    setShowFuelModal(true);
-  };
-
-  const handleDeleteFuel = async (id: string) => {
-    if (deletingFuelId) return;
-    const ok = await askConfirm({
-      title: t('btn_delete'),
-      message: t('confirm_delete_fuel'),
-      danger: true,
-      confirmLabel: t('btn_delete'),
-    });
-    if (!ok) return;
-
-    setDeletingFuelId(id);
-    try {
-      const res = await fetch(`/api/fuel?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        if (selectedVehicle) {
-          loadVehicleDetails(selectedVehicle.id);
-          loadVehicles();
-        }
-      } else {
-        pushToast(data.error, 'error');
-      }
-    } catch (e: any) {
-      pushToast(e?.message || t('err_delete_fuel'), 'error');
-    } finally {
-      setDeletingFuelId(null);
-    }
-  };
-
-  // Handle Fuel Submit (Create or Update)
-  const handleSaveFuel = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedVehicle || savingFuel) return;
-    setSavingFuel(true);
-
-    const url = '/api/fuel';
-    const method = editingFuelId ? 'PUT' : 'POST';
-    const payload = {
-      ...(editingFuelId ? { id: editingFuelId } : {}),
-      ...fuelForm,
-      vehicleId: selectedVehicle.id,
-      odometer: Number(fuelForm.odometer),
-      liters: Number(fuelForm.liters),
-      pricePerLiter: Number(fuelForm.pricePerLiter),
-      totalCost: Number(fuelForm.totalCost),
-    };
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        setShowFuelModal(false);
-        setEditingFuelId(null);
-        loadVehicleDetails(selectedVehicle.id);
-        loadVehicles();
-      } else {
-        pushToast(data.error, 'error');
-      }
-    } catch (err: any) {
-      pushToast(err?.message || t('err_request_failed'), 'error');
-    } finally {
-      setSavingFuel(false);
-    }
-  };
-
-  // Open Maintenance Modal (Add or Edit)
-  const openAddMaintenanceModal = () => {
-    setEditingMaintenanceId(null);
-    setPartsList([]);
-    setMaintenanceForm({
-      serviceDate: new Date().toISOString().split('T')[0],
-      odometer: selectedVehicle?.currentOdometer || 0,
-      serviceType: 'oil_change',
-      title: '',
-      partsCost: 0,
-      laborCost: 0,
-      totalCost: 0,
-      workshop: '',
-      notes: '',
-      nextDueOdometer: 0,
-      nextDueDate: '',
-    });
-    setShowMaintenanceModal(true);
-  };
-
-  const openEditMaintenanceModal = (log: any) => {
-    setEditingMaintenanceId(log.id);
-    const existingParts = log.partsList || [];
-    setPartsList(existingParts.map((p: any, idx: number) => ({
-      id: p.id || `p_${Date.now()}_${idx}`,
-      name: p.name,
-      condition: p.condition || 'new',
-      cost: Number(p.cost) || 0,
-    })));
-    setMaintenanceForm({
-      serviceDate: log.serviceDate,
-      odometer: log.odometer,
-      serviceType: log.serviceType,
-      title: log.title,
-      partsCost: log.partsCost || 0,
-      laborCost: log.laborCost || 0,
-      totalCost: log.totalCost || 0,
-      workshop: log.workshop || '',
-      notes: log.notes || '',
-      nextDueOdometer: log.nextDueOdometer || 0,
-      nextDueDate: log.nextDueDate || '',
-    });
-    setShowMaintenanceModal(true);
-  };
-
-  const handleDeleteMaintenance = async (id: string) => {
-    if (deletingMaintenanceId) return;
-    const ok = await askConfirm({
-      title: t('btn_delete'),
-      message: t('confirm_delete_maint'),
-      danger: true,
-      confirmLabel: t('btn_delete'),
-    });
-    if (!ok) return;
-
-    setDeletingMaintenanceId(id);
-    try {
-      const res = await fetch(`/api/maintenance?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        if (selectedVehicle) {
-          loadVehicleDetails(selectedVehicle.id);
-          loadVehicles();
-        }
-      } else {
-        pushToast(data.error, 'error');
-      }
-    } catch (e: any) {
-      pushToast(e?.message || t('err_delete_maint'), 'error');
-    } finally {
-      setDeletingMaintenanceId(null);
-    }
-  };
-
-  // Handle Maintenance Submit
-  const handleSaveMaintenance = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedVehicle || savingMaintenance) return;
-    setSavingMaintenance(true);
-
-    const url = '/api/maintenance';
-    const method = editingMaintenanceId ? 'PUT' : 'POST';
-    const totalPartsCost = partsList.reduce((sum, p) => sum + (Number(p.cost) || 0), 0);
-    const labor = Number(maintenanceForm.laborCost) || 0;
-    // Additive, honest rule (see maintenanceTotals.ts): when parts or labor are
-    // filled the grand total is their sum; when both are 0/empty we honor the
-    // typed lump-sum total instead of silently overwriting it.
-    const { total: finalTotal } = deriveMaintenanceTotal(totalPartsCost, labor, maintenanceForm.totalCost);
-
-    const payload = {
-      ...(editingMaintenanceId ? { id: editingMaintenanceId } : {}),
-      ...maintenanceForm,
-      vehicleId: selectedVehicle.id,
-      odometer: Number(maintenanceForm.odometer),
-      partsList: partsList.length > 0 ? partsList : null,
-      partsCost: totalPartsCost,
-      laborCost: labor,
-      totalCost: finalTotal,
-      nextDueOdometer: maintenanceForm.nextDueOdometer ? Number(maintenanceForm.nextDueOdometer) : undefined,
-    };
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        setShowMaintenanceModal(false);
-        setEditingMaintenanceId(null);
-        setPartsList([]);
-        if (data.data?.linkedSchedules > 0) {
-          pushToast(t('maint_linked_schedules', { count: data.data.linkedSchedules }), 'success');
-        }
-        loadVehicleDetails(selectedVehicle.id);
-        loadVehicles();
-      } else {
-        pushToast(data.error, 'error');
-      }
-    } catch (err: any) {
-      pushToast(err?.message || t('err_request_failed'), 'error');
-    } finally {
-      setSavingMaintenance(false);
-    }
-  };
-
-  // Fetch OEM Manual Specs via AI
-  const handleFetchManual = async () => {
-    if (!selectedVehicle) return;
-    setManualLoading(true);
-    setManualError(null);
-    try {
-      const res = await fetch('/api/ai/manual', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vehicleId: selectedVehicle.id }),
-      });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        setSelectedVehicle({ ...selectedVehicle, specs: data.data });
-        loadVehicles();
-      } else {
-        setManualError(data.error);
-      }
-    } catch (e: any) {
-      setManualError(e.message);
-    } finally {
-      setManualLoading(false);
-    }
-  };
-
-  // Ask AI Car Doctor
-  const handleAskDoctor = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedVehicle || !doctorQuery.trim()) return;
-    const queryText = doctorQuery.trim();
-    setDoctorLoading(true);
-    try {
-      const res = await fetch('/api/ai/doctor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vehicleId: selectedVehicle.id,
-          query: queryText,
-          lang,
-        }),
-      });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        setDoctorHistory(prev => [
-          { query: queryText, advice: data.data.advice },
-          ...prev,
-        ]);
-        setDoctorQuery('');
-      } else {
-        pushToast(data.error, 'error');
-      }
-    } catch (e: any) {
-      pushToast(e.message || t('err_request_failed'), 'error');
-    } finally {
-      setDoctorLoading(false);
-    }
-  };
-
-  // Handle Settings Save — success and failure must never share one message slot.
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSettingsMsg('');
-    setSettingsError('');
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: settings.provider,
-          apiKey: settings.apiKey || undefined,
-          fuelTypes: settings.fuelTypes,
-        }),
-      });
-      const data = await readEnvelope(res);
-      if (data.success) {
-        setSettingsMsg(t('set_save_success'));
-        setTimeout(() => setSettingsMsg(''), 3000);
-        loadSettings();
-      } else {
-        setSettingsError(data.error || t('err_request_failed'));
-      }
-    } catch (err: any) {
-      setSettingsError(err?.message || t('err_request_failed'));
-    }
-  };
-
-  const urgentCount = schedules.filter(
-    (s) => s.status === 'overdue' || s.status === 'due_soon'
-  ).length;
+  const urgentCount = countUrgentSchedules(details.schedules);
+  const bodyMode = selectBodyMode({
+    loading: vehicles.loading,
+    initialLoadDone: vehicles.initialLoadDone,
+    initialLoadError: vehicles.initialLoadError,
+    vehicleCount: vehicles.vehicles.length,
+    hasSelectedVehicle: Boolean(selectedVehicle),
+    activeTab,
+  });
+  const showUrgentBanner = shouldShowUrgentBanner({
+    hasSelectedVehicle: Boolean(selectedVehicle),
+    urgentCount,
+    activeTab,
+  });
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100">
       {/* Desktop & Tablet Sidebar */}
       <Sidebar
-        vehicles={vehicles}
+        vehicles={vehicles.vehicles}
         selectedVehicle={selectedVehicle}
-        onSelectVehicle={setSelectedVehicle}
+        onSelectVehicle={vehicles.setSelectedVehicle}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onOpenAddVehicle={openAddVehicleModal}
-        onEditVehicle={openEditVehicleModal}
-        onDeleteVehicle={handleDeleteVehicle}
-        currentUser={currentUser}
-        onLoginGoogle={handleLoginGoogle}
-        onLogout={handleLogout}
+        onOpenAddVehicle={vehicles.openAddVehicleModal}
+        onEditVehicle={vehicles.openEditVehicleModal}
+        onDeleteVehicle={vehicles.handleDeleteVehicle}
+        currentUser={auth.currentUser}
+        onLoginGoogle={auth.handleLoginGoogle}
+        onLogout={auth.handleLogout}
         urgentCount={urgentCount}
       />
 
@@ -877,25 +200,25 @@ export default function WorkbenchPage() {
       <main className="flex-1 flex flex-col overflow-y-auto">
         {/* Mobile M3 Top App Bar */}
         <MobileTopBar
-          vehicles={vehicles}
+          vehicles={vehicles.vehicles}
           selectedVehicle={selectedVehicle}
-          onSelectVehicle={setSelectedVehicle}
+          onSelectVehicle={vehicles.setSelectedVehicle}
           activeTab={activeTab}
           onSelectTab={setActiveTab}
-          currentUser={currentUser}
-          onLoginGoogle={handleLoginGoogle}
-          onLogout={handleLogout}
+          currentUser={auth.currentUser}
+          onLoginGoogle={auth.handleLoginGoogle}
+          onLogout={auth.handleLogout}
           urgentCount={urgentCount}
         />
 
         {/* Desktop Top Header */}
         <DesktopHeader
           selectedVehicle={selectedVehicle}
-          onOpenAddFuel={openAddFuelModal}
-          onOpenAddMaintenance={openAddMaintenanceModal}
-          currentUser={currentUser}
-          onLoginGoogle={handleLoginGoogle}
-          onLogout={handleLogout}
+          onOpenAddFuel={fuel.openAddFuelModal}
+          onOpenAddMaintenance={maintenance.openAddMaintenanceModal}
+          currentUser={auth.currentUser}
+          onLoginGoogle={auth.handleLoginGoogle}
+          onLogout={auth.handleLogout}
           urgentCount={urgentCount}
           onSelectTab={setActiveTab}
         />
@@ -906,7 +229,7 @@ export default function WorkbenchPage() {
         {/* Tab Body */}
         <div className="p-4 md:p-6 pb-36 md:pb-6">
           {/* Urgent Maintenance Banner */}
-          {selectedVehicle && urgentCount > 0 && activeTab !== 'alerts' && (
+          {showUrgentBanner && (
             <div className="mb-4 bg-rose-950/40 border border-rose-900/80 rounded-xl p-3 sm:p-3.5 flex items-center justify-between gap-3 text-xs text-rose-200 shadow-sm animate-in fade-in">
               <div className="flex items-center gap-2.5 min-w-0">
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
@@ -923,7 +246,7 @@ export default function WorkbenchPage() {
             </div>
           )}
 
-          {loading && !initialLoadDone ? (
+          {bodyMode === 'skeleton' ? (
             /* Initial data load: skeleton instead of a flash of the empty state */
             <div className="max-w-4xl mx-auto space-y-4 animate-pulse" role="status" aria-label={t('ov_calculating')}>
               <div className="h-20 bg-slate-950 border border-slate-800 rounded-xl" />
@@ -935,23 +258,23 @@ export default function WorkbenchPage() {
               <div className="h-48 bg-slate-950 border border-slate-800 rounded-lg" />
               <span className="sr-only">{t('ov_calculating')}…</span>
             </div>
-          ) : initialLoadError && vehicles.length === 0 && activeTab !== 'settings' ? (
+          ) : bodyMode === 'loadError' ? (
             /* Initial fetch FAILURE: honest error panel with Retry — never the
                first-run "add your car" state, which invites duplicate vehicles. */
             <div className="max-w-md mx-auto my-20 text-center bg-slate-950 p-8 rounded-xl border border-rose-900/60">
               <AlertTriangle className="w-12 h-12 text-rose-400 mx-auto mb-4" />
               <h2 className="text-base font-semibold mb-2 text-rose-200">{t('load_error_title')}</h2>
               <p className="text-xs text-slate-400 mb-2">{t('load_error_desc')}</p>
-              <p className="text-[11px] text-slate-500 font-mono mb-6 break-words">{initialLoadError}</p>
+              <p className="text-[11px] text-slate-500 font-mono mb-6 break-words">{vehicles.initialLoadError}</p>
               <button
-                onClick={() => loadVehicles()}
-                disabled={loading}
+                onClick={() => vehicles.loadVehicles()}
+                disabled={vehicles.loading}
                 className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold px-4 py-2 rounded text-xs inline-flex items-center justify-center gap-2 transition"
               >
                 {t('btn_retry')}
               </button>
             </div>
-          ) : !selectedVehicle && activeTab !== 'settings' ? (
+          ) : bodyMode === 'firstRun' ? (
             <div className="max-w-md mx-auto my-20 text-center bg-slate-950 p-8 rounded-xl border border-slate-800">
               <Car className="w-12 h-12 text-amber-500 mx-auto mb-4" />
               <h2 className="text-base font-semibold mb-2">{t('app_welcome_title')}</h2>
@@ -960,14 +283,14 @@ export default function WorkbenchPage() {
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <button
-                  onClick={openAddVehicleModal}
+                  onClick={vehicles.openAddVehicleModal}
                   className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded text-xs inline-flex items-center justify-center gap-2"
                 >
                   <PlusCircle className="w-4 h-4" /> {t('app_add_first_car')}
                 </button>
-                {!currentUser && (
+                {!auth.currentUser && (
                   <button
-                    onClick={handleLoginGoogle}
+                    onClick={auth.handleLoginGoogle}
                     className="w-full sm:w-auto bg-white hover:bg-slate-100 text-slate-900 font-bold px-4 py-2 rounded text-xs inline-flex items-center justify-center gap-2 shadow-sm"
                   >
                     <GoogleIcon className="w-3.5 h-3.5" />
@@ -981,91 +304,88 @@ export default function WorkbenchPage() {
               {activeTab === 'overview' && (
                 <OverviewTab
                   selectedVehicle={selectedVehicle}
-                  reportData={reportData}
-                  fuelLogs={fuelLogs}
-                  maintenanceLogs={maintenanceLogs}
-                  schedules={schedules}
+                  reportData={details.reportData}
+                  fuelLogs={details.fuelLogs}
+                  maintenanceLogs={details.maintenanceLogs}
+                  schedules={details.schedules}
                   onSelectTab={setActiveTab}
-                  onEditVehicle={openEditVehicleModal}
-                  onDeleteVehicle={handleDeleteVehicle}
-                  onOpenAddVehicle={openAddVehicleModal}
+                  onEditVehicle={vehicles.openEditVehicleModal}
+                  onDeleteVehicle={vehicles.handleDeleteVehicle}
+                  onOpenAddVehicle={vehicles.openAddVehicleModal}
                 />
               )}
 
               {activeTab === 'fuel' && (
                 <FuelTab
                   selectedVehicle={selectedVehicle}
-                  fuelLogs={fuelLogs}
-                  onOpenAddFuel={openAddFuelModal}
-                  onOpenEditFuel={openEditFuelModal}
-                  onDeleteFuel={handleDeleteFuel}
+                  fuelLogs={details.fuelLogs}
+                  onOpenAddFuel={fuel.openAddFuelModal}
+                  onOpenEditFuel={fuel.openEditFuelModal}
+                  onDeleteFuel={fuel.handleDeleteFuel}
                 />
               )}
 
               {activeTab === 'maintenance' && (
                 <MaintenanceTab
                   selectedVehicle={selectedVehicle}
-                  maintenanceLogs={maintenanceLogs}
-                  onOpenAddMaintenance={openAddMaintenanceModal}
-                  onOpenEditMaintenance={openEditMaintenanceModal}
-                  onDeleteMaintenance={handleDeleteMaintenance}
+                  maintenanceLogs={details.maintenanceLogs}
+                  onOpenAddMaintenance={maintenance.openAddMaintenanceModal}
+                  onOpenEditMaintenance={maintenance.openEditMaintenanceModal}
+                  onDeleteMaintenance={maintenance.handleDeleteMaintenance}
                 />
               )}
 
               {activeTab === 'alerts' && (
                 <SchedulesTab
-                  schedules={schedules}
+                  schedules={schedules.schedules}
                   currentOdometer={selectedVehicle?.currentOdometer || 0}
                   vehicleId={selectedVehicle?.id}
-                  onRefresh={() => selectedVehicle && loadVehicleDetails(selectedVehicle.id)}
+                  onRefresh={schedules.refresh}
                 />
               )}
 
               {activeTab === 'manual' && (
                 <ManualTab
                   selectedVehicle={selectedVehicle}
-                  manualLoading={manualLoading}
-                  manualError={manualError}
-                  onFetchManual={handleFetchManual}
+                  manualLoading={manual.manualLoading}
+                  manualError={manual.manualError}
+                  onFetchManual={manual.handleFetchManual}
                 />
               )}
 
               {activeTab === 'doctor' && (
                 <DoctorTab
                   selectedVehicle={selectedVehicle}
-                  doctorQuery={doctorQuery}
-                  setDoctorQuery={setDoctorQuery}
-                  doctorLoading={doctorLoading}
-                  doctorHistory={doctorHistory}
-                  onAskDoctor={handleAskDoctor}
+                  doctorQuery={doctor.doctorQuery}
+                  setDoctorQuery={doctor.setDoctorQuery}
+                  doctorLoading={doctor.doctorLoading}
+                  doctorHistory={doctor.doctorHistory}
+                  onAskDoctor={doctor.handleAskDoctor}
                 />
               )}
 
               {activeTab === 'report' && (
                 <ReportsTab
                   selectedVehicle={selectedVehicle}
-                  reportData={reportData}
-                  maintenanceLogs={maintenanceLogs}
-                  fuelLogs={fuelLogs}
-                  manualLoading={manualLoading}
-                  onFetchManual={handleFetchManual}
+                  reportData={details.reportData}
+                  maintenanceLogs={details.maintenanceLogs}
+                  fuelLogs={details.fuelLogs}
+                  manualLoading={manual.manualLoading}
+                  onFetchManual={manual.handleFetchManual}
                 />
               )}
 
               {activeTab === 'settings' && (
                 <SettingsTab
-                  settings={settings}
-                  setSettings={setSettings}
-                  settingsMsg={settingsMsg}
-                  settingsError={settingsError}
-                  onSaveSettings={handleSaveSettings}
-                  currentUser={currentUser}
-                  onLoginGoogle={handleLoginGoogle}
-                  onLogout={handleLogout}
-                  onDataRestored={() => {
-                    loadVehicles();
-                    if (selectedVehicle) loadVehicleDetails(selectedVehicle.id);
-                  }}
+                  settings={settings.settings}
+                  setSettings={settings.setSettings}
+                  settingsMsg={settings.settingsMsg}
+                  settingsError={settings.settingsError}
+                  onSaveSettings={settings.handleSaveSettings}
+                  currentUser={auth.currentUser}
+                  onLoginGoogle={auth.handleLoginGoogle}
+                  onLogout={auth.handleLogout}
+                  onDataRestored={onDataRestored}
                 />
               )}
             </Suspense>
@@ -1074,45 +394,45 @@ export default function WorkbenchPage() {
 
         {/* Modals */}
         <AddVehicleModal
-          isOpen={showAddVehicleModal}
-          isEdit={Boolean(editingVehicleId)}
-          onClose={() => setShowAddVehicleModal(false)}
-          vehicleForm={vehicleForm}
-          setVehicleForm={setVehicleForm}
-          aiLoading={aiLoading}
-          aiProposal={aiProposal}
-          aiError={aiError}
-          onAiLookup={handleAiLookup}
-          onSaveVehicle={handleSaveVehicle}
-          saving={savingVehicle}
+          isOpen={vehicles.showAddVehicleModal}
+          isEdit={Boolean(vehicles.editingVehicleId)}
+          onClose={() => vehicles.setShowAddVehicleModal(false)}
+          vehicleForm={vehicles.vehicleForm}
+          setVehicleForm={vehicles.setVehicleForm}
+          aiLoading={vehicles.aiLoading}
+          aiProposal={vehicles.aiProposal}
+          aiError={vehicles.aiError}
+          onAiLookup={vehicles.handleAiLookup}
+          onSaveVehicle={vehicles.handleSaveVehicle}
+          saving={vehicles.savingVehicle}
         />
 
         <FuelLogModal
-          isOpen={showFuelModal}
-          onClose={() => setShowFuelModal(false)}
-          editingFuelId={editingFuelId}
-          fuelForm={fuelForm}
-          setFuelForm={setFuelForm}
-          selectedFuelType={selectedFuelType}
-          setSelectedFuelType={setSelectedFuelType}
-          settings={settings}
-          onSaveFuel={handleSaveFuel}
-          saving={savingFuel}
-          minOdometer={editingFuelId ? 0 : selectedVehicle?.currentOdometer ?? 0}
+          isOpen={fuel.showFuelModal}
+          onClose={() => fuel.setShowFuelModal(false)}
+          editingFuelId={fuel.editingFuelId}
+          fuelForm={fuel.fuelForm}
+          setFuelForm={fuel.setFuelForm}
+          selectedFuelType={fuel.selectedFuelType}
+          setSelectedFuelType={fuel.setSelectedFuelType}
+          settings={settings.settings}
+          onSaveFuel={fuel.handleSaveFuel}
+          saving={fuel.savingFuel}
+          minOdometer={minOdometerFor(fuel.editingFuelId, selectedVehicle)}
         />
 
         <MaintenanceLogModal
-          isOpen={showMaintenanceModal}
-          onClose={() => setShowMaintenanceModal(false)}
-          editingMaintenanceId={editingMaintenanceId}
-          maintenanceForm={maintenanceForm}
-          setMaintenanceForm={setMaintenanceForm}
-          partsList={partsList}
-          setPartsList={setPartsList}
-          schedules={schedules}
-          onSaveMaintenance={handleSaveMaintenance}
-          saving={savingMaintenance}
-          minOdometer={editingMaintenanceId ? 0 : selectedVehicle?.currentOdometer ?? 0}
+          isOpen={maintenance.showMaintenanceModal}
+          onClose={() => maintenance.setShowMaintenanceModal(false)}
+          editingMaintenanceId={maintenance.editingMaintenanceId}
+          maintenanceForm={maintenance.maintenanceForm}
+          setMaintenanceForm={maintenance.setMaintenanceForm}
+          partsList={maintenance.partsList}
+          setPartsList={maintenance.setPartsList}
+          schedules={details.schedules}
+          onSaveMaintenance={maintenance.handleSaveMaintenance}
+          saving={maintenance.savingMaintenance}
+          minOdometer={minOdometerFor(maintenance.editingMaintenanceId, selectedVehicle)}
         />
 
         {/* Mobile Material You Floating Action Button (FAB) */}
@@ -1120,8 +440,8 @@ export default function WorkbenchPage() {
           selectedVehicle={selectedVehicle}
           showFabMenu={showFabMenu}
           setShowFabMenu={setShowFabMenu}
-          onOpenAddFuel={openAddFuelModal}
-          onOpenAddMaintenance={openAddMaintenanceModal}
+          onOpenAddFuel={fuel.openAddFuelModal}
+          onOpenAddMaintenance={maintenance.openAddMaintenanceModal}
         />
 
         {/* Mobile Material You Bottom Navigation Bar */}

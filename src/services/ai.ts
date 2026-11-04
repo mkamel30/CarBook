@@ -17,6 +17,26 @@ export const aiLookupResponseSchema = z.object({
 
 export type AILookupResponse = z.infer<typeof aiLookupResponseSchema>;
 
+/**
+ * A receipt or dashboard photo, reduced to the fields the fuel-log form needs.
+ * Every value is optional except `confidence`: a photo may be a receipt (no
+ * odometer), a dashboard odometer shot (no liters), or a hand-written note. The
+ * route feeds this straight back to the client, which never persists a value
+ * the user has not reviewed (Core Rule #3).
+ */
+export const receiptExtractionSchema = z.object({
+  /** Fill date, ISO `YYYY-MM-DD`, or null when the image does not show one. */
+  date: z.string().nullable().optional(),
+  liters: z.number().nonnegative().nullable().optional(),
+  pricePerLiter: z.number().nonnegative().nullable().optional(),
+  total: z.number().nonnegative().nullable().optional(),
+  odometer: z.number().nonnegative().nullable().optional(),
+  /** Model-reported certainty, 0..1. */
+  confidence: z.number().min(0).max(1),
+});
+
+export type ReceiptExtraction = z.infer<typeof receiptExtractionSchema>;
+
 export interface AILookupConfig {
   apiKey?: string;
   provider: 'gemini' | 'openrouter';
@@ -513,5 +533,71 @@ Schema:
         : rawJson.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
 
     return aiLookupResponseSchema.parse(JSON.parse(extractJson(textContent)));
+  });
+}
+
+/**
+ * Extract fuel/odometer fields from a receipt or dashboard photo. Bounded to the
+ * same retry budget as every other AI call (max 3, `withAiRetries`), and the
+ * provider sees the image only after `assertSafeEndpoint` has cleared the URL.
+ * The result is Zod-validated proposal data — never persisted server-side.
+ */
+export async function extractReceiptFromImage(
+  imageBase64: string,
+  mimeType: string,
+  config: AILookupConfig,
+  fetchFn = fetch,
+): Promise<ReceiptExtraction> {
+  const prompt = `You are an OCR assistant for a car maintenance app. The image is a fuel receipt, an odometer/dashboard photo, or a handwritten note. Extract ONLY the values you can actually read.
+
+Respond with ONLY valid JSON, no markdown, no backticks, with this exact schema:
+{
+  "date": "YYYY-MM-DD of the fill/purchase, or null",
+  "liters": number or null,
+  "pricePerLiter": number or null,
+  "total": number or null,
+  "odometer": number or null,
+  "confidence": 0.0 to 1.0 — how certain you are of the whole reading
+}
+Rules:
+- Use the Arabic (Eastern Arabic) or Western digits exactly as printed; output plain numbers.
+- Do NOT guess a missing field: null it and lower the confidence.
+- If the image is not a receipt, odometer or note, return every value null with a low confidence.
+- liters * pricePerLiter should approximately equal total; if only two are legible you may infer the third only when confident, otherwise null.`;
+
+  return withAiRetries('Receipt extraction', config, async (currentModel) => {
+    const endpoint = resolveEndpoint(config);
+    assertSafeEndpoint(endpoint);
+
+    const body =
+      config.provider === 'openrouter'
+        ? JSON.stringify({
+            model: currentModel,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: prompt },
+                  { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+                ],
+              },
+            ],
+          })
+        : JSON.stringify({
+            contents: [
+              { parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: imageBase64 } }] },
+            ],
+            generationConfig: { responseMimeType: 'application/json' },
+          });
+
+    const res = await postToProvider(endpoint, authHeaders(config), body, fetchFn);
+
+    const rawJson = await res.json();
+    const textContent =
+      config.provider === 'openrouter'
+        ? rawJson.choices?.[0]?.message?.content || '{}'
+        : rawJson.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+
+    return receiptExtractionSchema.parse(JSON.parse(extractJson(textContent)));
   });
 }
