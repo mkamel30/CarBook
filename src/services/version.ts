@@ -18,7 +18,7 @@ export function semverToVersionCode(version: string | null | undefined): number 
 // The version baked into the running client. Bump together with package.json
 // "version" (see docs/DEPLOYMENT.md release runbook). It remains the fallback for
 // the web build and for any environment where the native bridge is unavailable.
-export const CURRENT_CLIENT_VERSION = '1.2.0';
+export const CURRENT_CLIENT_VERSION = '1.3.0';
 
 export interface InstalledVersionInfo {
   version: string;

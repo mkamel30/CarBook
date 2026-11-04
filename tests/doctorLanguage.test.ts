@@ -186,6 +186,7 @@ describe('Every UI string is translatable', () => {
       stage: 'exchange',
       reason: 'Failed to fetch',
       status: 502,
+      percent: '42',
     };
     for (const lang of LANGS) {
       for (const key of Object.keys(DICTIONARIES[lang])) {

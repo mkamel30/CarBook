@@ -505,7 +505,7 @@ Receipt/odometer photo extraction for the fuel-log form. Requires a signed-in se
 No auth. Reports the newest published Android build so the client can show the update banner.
 - **Returns:** `{ success: true, data: { version, versionCode, apkUrl, sha256, releaseDate, notes, source } }`
 - Reads the latest GitHub Release (repo from `GITHUB_REPO` env, default `mkamel30/CarBook`), looks for a `.apk` asset, and maps the tag (e.g. `v1.0.1`) to `version`/`versionCode` with the same formula the Gradle build uses (`major*10000 + minor*100 + patch`).
-- `sha256` is the lowercase hex digest GitHub publishes for the APK asset (or null when absent); the client re-checks the downloaded bytes against it before opening the URL, and refuses only on a positive mismatch.
+- `sha256` is the lowercase hex digest GitHub publishes for the APK asset (or null when absent). The Android client passes it to the native `ApkUpdater` plugin, which hashes the file DownloadManager actually wrote and refuses to launch the installer on a mismatch (see DEPLOYMENT.md §14). A non-Android client can only pre-fetch the bytes, and the GitHub CDN sends no CORS header there, so that check reports `unverifiable` and does not block the download.
 - Results are cached in memory for 5 minutes; the GitHub call has a 5s timeout.
 - `source` is `github` on success or `fallback` when GitHub is unreachable — the fallback reports the running `package.json` version with `apkUrl: null`, so the client stays "up to date" rather than erroring.
 - `apkUrl` is null until the first release is published; the client only offers the download when `apkUrl` is present and `versionCode` is strictly higher than the installed one.

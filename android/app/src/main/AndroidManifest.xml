@@ -72,5 +72,13 @@
       breaking the existing in-app maintenance-alert feature, so it is kept.
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      REQUEST_INSTALL_PACKAGES is what lets the app hand a downloaded update to the
+      package installer (ApkUpdater.java). It only grants the right to SHOW the
+      install dialog — the user still confirms every install, and on API 26+ the
+      platform gates it behind the per-app "install unknown apps" toggle, which the
+      plugin can open for the user. Declared here so that toggle exists at all.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- VIBRATE removed: no navigator.vibrate()/haptics usage in the served app. -->
 </manifest>

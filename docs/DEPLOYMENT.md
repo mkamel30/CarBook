@@ -351,6 +351,14 @@ The app checks `GET /api/app-version` and offers to download a newer APK straigh
 
 `.github/workflows/release-apk.yml` runs on `v*` tags (and `workflow_dispatch`), installs both workspaces, runs typecheck + `pnpm test` + `pnpm --prefix mobile test`, builds the mobile bundle, `cap sync android`, then `assembleRelease`. It fails fast if the tag does not match `package.json`'s version. The APK is uploaded as a release asset named `CarBook-v<VERSION>.apk` (with a `sha256` checksum). `/api/app-version` reads the latest release, so the next time a device checks, it sees the new version and the download URL — no manual step.
 
+**On-device install path (Android).** Tapping *Download* no longer throws the user at the browser. The app-local Capacitor plugin `android/app/src/main/java/com/mkamel/carbook/ApkUpdater.java` (registered in `MainActivity.onCreate` before the bridge is built) owns the whole chain:
+
+1. `DownloadManager` fetches the APK into `getExternalFilesDir(null)/updates/` and posts its own progress + completion notification, so a killed app still leaves a tappable download.
+2. The plugin polls the download (500 ms, 15-minute deadline), streams the finished file through SHA-256 off the main thread and compares it with the `sha256` from `/api/app-version`. A mismatch deletes the file and stops — there is deliberately no browser fallback there, because the browser would re-download the bytes just refused.
+3. On a match it hands the file to the package installer as a `content://` URI through `FileProvider` (`res/xml/file_paths.xml` → `<external-files-path name="apk_updates" path="updates/"/>`; a `file://` URI throws `FileUriExposedException`). `REQUEST_INSTALL_PACKAGES` is declared in the manifest; the user always confirms in the system dialog — silent install is a system-app privilege.
+
+The JS side (`src/services/apkUpdater.ts` + `src/hooks/useApkInstaller.ts`) keeps every decision — outcome classification, progress labels, the handoff rule — outside the native layer so it runs under vitest; the plugin object is injected. When the device has not been granted "install unknown apps", the banner and Settings show an *Allow installs* button that opens `ACTION_MANAGE_UNKNOWN_APP_SOURCES` for the app. Any other transport failure, and every non-Android platform, still falls back to `Browser.open(apkUrl)`.
+
 **GitHub Secrets (set once, in the repo web UI → Settings → Secrets and variables → Actions):**
 
 | Secret | Value |

@@ -9,6 +9,8 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // App-local plugins must be registered before the bridge is built.
+        registerPlugin(ApkUpdater.class);
         // Applies postSplashScreenTheme once the branded splash dismisses.
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);

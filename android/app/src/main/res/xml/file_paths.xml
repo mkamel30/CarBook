@@ -2,4 +2,11 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
+    <!--
+      Update APKs downloaded by ApkUpdater land in getExternalFilesDir(null)/updates.
+      The installer needs a content:// URI (file:// throws FileUriExposedException),
+      and FileProvider only serves paths listed here — so this entry is what makes
+      "download then install" work without exposing the rest of external storage.
+    -->
+    <external-files-path name="apk_updates" path="updates/" />
 </paths>

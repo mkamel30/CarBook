@@ -6,10 +6,11 @@ import { localizedField } from '@/i18n/util';
 import { useTheme } from '@/theme/context';
 import { GoogleIcon } from '@/components/ui/GoogleIcon';
 import { pushToast } from '@/components/ui/Toast';
-import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
 import { CURRENT_CLIENT_VERSION, resolveInstalledVersion, semverToVersionCode } from '@/services/version';
 import { verifyApkIntegrity } from '@/services/apkIntegrity';
+import { useApkInstaller } from '@/hooks/useApkInstaller';
+import { percentOf, progressKeyFor } from '@/services/apkUpdater';
 import {
   checkNotificationSupport,
   checkNotificationSupportAsync,
@@ -226,25 +227,48 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     checkNotificationSupportAsync().then(setNotifStatus);
   }, []);
 
+  const installer = useApkInstaller();
+  const installPercent = percentOf(installer.progress);
+  const installKey = progressKeyFor(installer.progress);
+  const installOutcome = installer.result?.outcome ?? null;
+  const installLabel = installKey === 'update_progress_verifying'
+    ? t('update_progress_verifying')
+    : installKey
+      ? installPercent === null
+        ? t('update_progress_unknown')
+        : t(installKey, { percent: `${installPercent}%` })
+      : null;
+
   const handleDownloadUpdate = async () => {
     if (!availableUpdate) return;
     setDownloading(true);
     try {
+      if (installer.isNative) {
+        // Android: DownloadManager owns the transfer, the SHA-256 is computed over
+        // the bytes on disk, and the installer dialog is launched from a
+        // content:// URI. The browser handoff only happens as a fallback.
+        const run = await installer.start({
+          apkUrl: availableUpdate.apkUrl,
+          sha256: availableUpdate.sha256 ?? null,
+        });
+        if (run.outcome === 'integrity_failed') pushToast(t('update_integrity_mismatch'), 'error');
+        else if (run.outcome === 'permission_required') pushToast(t('update_permission_needed'), 'error');
+        else if (run.outcome === 'failed') pushToast(t('update_download_failed'), 'error');
+        return;
+      }
+      // Web/iOS: no DownloadManager, so keep the pre-download digest check and let
+      // the browser finish. A positive digest mismatch means the APK differs from
+      // what GitHub published — refuse to hand the URL over. An unverifiable
+      // download (network/CORS) still proceeds so the update path isn't bricked.
       const result = await verifyApkIntegrity({
         apkUrl: availableUpdate.apkUrl,
         expectedSha256: availableUpdate.sha256 ?? null,
       });
-      // A positive digest mismatch means the APK differs from what GitHub
-      // published — refuse to hand the URL to the system browser. An
-      // unverifiable download (network/CORS) still proceeds via the
-      // TLS-protected browser download so the update path isn't bricked.
       if (!result.verified && result.reason === 'mismatch') {
         pushToast(t('update_integrity_mismatch'), 'error');
         return;
       }
-      Browser.open({ url: availableUpdate.apkUrl }).catch(() =>
-        window.open(availableUpdate.apkUrl, '_blank'),
-      );
+      installer.handOffToBrowser(availableUpdate.apkUrl);
     } finally {
       setDownloading(false);
     }
@@ -799,6 +823,22 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           {updateStatusMsg || t('update_available_body')}
         </p>
 
+        {availableUpdate && installLabel && (
+          <div className="space-y-2">
+            <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-amber-500 transition-all duration-300"
+                style={{ width: `${installPercent ?? 0}%` }}
+              />
+            </div>
+            <p className="text-xs text-amber-200">{installLabel}</p>
+          </div>
+        )}
+
+        {availableUpdate && installOutcome === 'permission_required' && (
+          <p className="text-xs text-amber-200 leading-relaxed">{t('update_permission_needed')}</p>
+        )}
+
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <button
             type="button"
@@ -810,6 +850,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <span>{checkingUpdate ? '...' : t('update_check_btn')}</span>
           </button>
 
+          {availableUpdate && installOutcome === 'permission_required' && (
+            <button
+              type="button"
+              onClick={() => void installer.openInstallPermission()}
+              className="bg-slate-900 hover:bg-slate-800 text-amber-200 border border-amber-500/40 px-3.5 py-2 rounded-lg text-xs font-semibold transition active:scale-95"
+            >
+              <ShieldAlert className="w-4 h-4 mr-1 inline text-amber-400" />
+              {t('update_allow_install_btn')}
+            </button>
+          )}
+
           {availableUpdate && (
             <button
               type="button"
@@ -818,7 +869,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-2 transition active:scale-95 disabled:opacity-50 shadow-sm"
             >
               <Download className="w-4 h-4" />
-              <span>{downloading ? '...' : t('update_btn_download')}</span>
+              <span>
+                {downloading
+                  ? installPercent !== null
+                    ? `${installPercent}%`
+                    : t('update_progress_unknown')
+                  : t('update_btn_download')}
+              </span>
             </button>
           )}
         </div>
