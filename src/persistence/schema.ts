@@ -44,6 +44,10 @@ export const maintenanceSchedulesTable = sqliteTable('maintenance_schedules', {
   seq: integer('seq'),
   deleted: integer('deleted').notNull().default(0),
   syncTs: integer('sync_ts').notNull().default(0),
+  // Second last-write-wins clock: `sync_ts` stamps the item's config (code,
+  // titles, intervals) and this one stamps the service baseline. See
+  // src/sync/fieldGroups.ts.
+  baselineTs: integer('baseline_ts').notNull().default(0),
 });
 
 export const maintenanceLogsTable = sqliteTable('maintenance_logs', {

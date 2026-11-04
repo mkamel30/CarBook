@@ -1,4 +1,8 @@
-import * as XLSX from 'xlsx';
+// xlsx is ~the heaviest dependency in the app and only needed when the user
+// actually exports. It is loaded on demand via `await import('xlsx')` in the
+// export* handlers and injected into the build* helpers, so it never lands in
+// the initial bundle. This is a type-only import (erased at build).
+import type { WorkBook } from 'xlsx';
 
 /**
  * Helper to compute column widths for auto-sizing Excel columns
@@ -57,13 +61,14 @@ export function formatParts(record: any, isAr: boolean): string {
  * Build the complete vehicle dossier workbook
  */
 export function buildVehicleDossierWorkbook(
+  xlsx: typeof import('xlsx'),
   vehicle: any,
   maintenanceLogs: any[],
   fuelLogs: any[],
   lang: string = 'ar'
-): { wb: XLSX.WorkBook; filename: string } {
+): { wb: WorkBook; filename: string } {
   const isAr = lang === 'ar';
-  const wb = XLSX.utils.book_new();
+  const wb = xlsx.utils.book_new();
 
   // 1. Maintenance Sheet
   const maintData = (maintenanceLogs || []).map((m, idx) => ({
@@ -80,7 +85,7 @@ export function buildVehicleDossierWorkbook(
     [isAr ? 'ملاحظات' : 'Notes']: m.notes || '-',
   }));
 
-  const maintWs = XLSX.utils.json_to_sheet(
+  const maintWs = xlsx.utils.json_to_sheet(
     maintData.length > 0
       ? maintData
       : [{ [isAr ? 'تنبيه' : 'Notice']: isAr ? 'لا توجد سجلات صيانة مسجلة' : 'No maintenance records logged' }]
@@ -88,7 +93,7 @@ export function buildVehicleDossierWorkbook(
   if (maintData.length > 0) {
     maintWs['!cols'] = autoFitColumns(maintData);
   }
-  XLSX.utils.book_append_sheet(wb, maintWs, isAr ? 'سجل الصيانة' : 'Maintenance');
+  xlsx.utils.book_append_sheet(wb, maintWs, isAr ? 'سجل الصيانة' : 'Maintenance');
 
   // 2. Fuel Sheet
   const fuelData = (fuelLogs || []).map((f, idx) => {
@@ -118,7 +123,7 @@ export function buildVehicleDossierWorkbook(
     };
   });
 
-  const fuelWs = XLSX.utils.json_to_sheet(
+  const fuelWs = xlsx.utils.json_to_sheet(
     fuelData.length > 0
       ? fuelData
       : [{ [isAr ? 'تنبيه' : 'Notice']: isAr ? 'لا توجد سجلات استهلاك وقود' : 'No fuel logs recorded' }]
@@ -126,7 +131,7 @@ export function buildVehicleDossierWorkbook(
   if (fuelData.length > 0) {
     fuelWs['!cols'] = autoFitColumns(fuelData);
   }
-  XLSX.utils.book_append_sheet(wb, fuelWs, isAr ? 'سجل الوقود' : 'Fuel Consumption');
+  xlsx.utils.book_append_sheet(wb, fuelWs, isAr ? 'سجل الوقود' : 'Fuel Consumption');
 
   // 3. Vehicle & OEM Specs Sheet
   let specs: any = {};
@@ -231,9 +236,9 @@ export function buildVehicleDossierWorkbook(
     });
   }
 
-  const vehicleWs = XLSX.utils.json_to_sheet(vehicleData);
+  const vehicleWs = xlsx.utils.json_to_sheet(vehicleData);
   vehicleWs['!cols'] = autoFitColumns(vehicleData);
-  XLSX.utils.book_append_sheet(wb, vehicleWs, isAr ? 'بيانات ومواصفات المركبة' : 'Vehicle Specs');
+  xlsx.utils.book_append_sheet(wb, vehicleWs, isAr ? 'بيانات ومواصفات المركبة' : 'Vehicle Specs');
 
   const safeName = (vehicle?.name || 'Vehicle').replace(/[^a-zA-Z0-9_\u0600-\u06FF-]/g, '_');
   const dateStr = new Date().toISOString().split('T')[0];
@@ -246,12 +251,13 @@ export function buildVehicleDossierWorkbook(
  * Build maintenance workbook
  */
 export function buildMaintenanceWorkbook(
+  xlsx: typeof import('xlsx'),
   vehicle: any,
   maintenanceLogs: any[],
   lang: string = 'ar'
-): { wb: XLSX.WorkBook; filename: string } {
+): { wb: WorkBook; filename: string } {
   const isAr = lang === 'ar';
-  const wb = XLSX.utils.book_new();
+  const wb = xlsx.utils.book_new();
 
   const maintData = (maintenanceLogs || []).map((m, idx) => ({
     '#': idx + 1,
@@ -267,7 +273,7 @@ export function buildMaintenanceWorkbook(
     [isAr ? 'ملاحظات' : 'Notes']: m.notes || '-',
   }));
 
-  const maintWs = XLSX.utils.json_to_sheet(
+  const maintWs = xlsx.utils.json_to_sheet(
     maintData.length > 0
       ? maintData
       : [{ [isAr ? 'تنبيه' : 'Notice']: isAr ? 'لا توجد سجلات صيانة مسجلة' : 'No maintenance records logged' }]
@@ -275,7 +281,7 @@ export function buildMaintenanceWorkbook(
   if (maintData.length > 0) {
     maintWs['!cols'] = autoFitColumns(maintData);
   }
-  XLSX.utils.book_append_sheet(wb, maintWs, isAr ? 'سجل الصيانة' : 'Maintenance');
+  xlsx.utils.book_append_sheet(wb, maintWs, isAr ? 'سجل الصيانة' : 'Maintenance');
 
   const safeName = (vehicle?.name || 'Vehicle').replace(/[^a-zA-Z0-9_\u0600-\u06FF-]/g, '_');
   const dateStr = new Date().toISOString().split('T')[0];
@@ -288,12 +294,13 @@ export function buildMaintenanceWorkbook(
  * Build fuel workbook
  */
 export function buildFuelWorkbook(
+  xlsx: typeof import('xlsx'),
   vehicle: any,
   fuelLogs: any[],
   lang: string = 'ar'
-): { wb: XLSX.WorkBook; filename: string } {
+): { wb: WorkBook; filename: string } {
   const isAr = lang === 'ar';
-  const wb = XLSX.utils.book_new();
+  const wb = xlsx.utils.book_new();
 
   const fuelData = (fuelLogs || []).map((f, idx) => {
     const distance = f.distanceTraveledKm ?? f.distanceTraveled ?? f.distance_traveled_km ?? f.distance_traveled ?? '-';
@@ -322,7 +329,7 @@ export function buildFuelWorkbook(
     };
   });
 
-  const fuelWs = XLSX.utils.json_to_sheet(
+  const fuelWs = xlsx.utils.json_to_sheet(
     fuelData.length > 0
       ? fuelData
       : [{ [isAr ? 'تنبيه' : 'Notice']: isAr ? 'لا توجد سجلات استهلاك وقود' : 'No fuel logs recorded' }]
@@ -330,7 +337,7 @@ export function buildFuelWorkbook(
   if (fuelData.length > 0) {
     fuelWs['!cols'] = autoFitColumns(fuelData);
   }
-  XLSX.utils.book_append_sheet(wb, fuelWs, isAr ? 'سجل الوقود' : 'Fuel Consumption');
+  xlsx.utils.book_append_sheet(wb, fuelWs, isAr ? 'سجل الوقود' : 'Fuel Consumption');
 
   const safeName = (vehicle?.name || 'Vehicle').replace(/[^a-zA-Z0-9_\u0600-\u06FF-]/g, '_');
   const dateStr = new Date().toISOString().split('T')[0];
@@ -342,30 +349,33 @@ export function buildFuelWorkbook(
 /**
  * Trigger browser file downloads
  */
-export function exportVehicleDossierToExcel(
+export async function exportVehicleDossierToExcel(
   vehicle: any,
   maintenanceLogs: any[],
   fuelLogs: any[],
   lang: string = 'ar'
 ) {
-  const { wb, filename } = buildVehicleDossierWorkbook(vehicle, maintenanceLogs, fuelLogs, lang);
-  XLSX.writeFile(wb, filename);
+  const xlsx = await import('xlsx');
+  const { wb, filename } = buildVehicleDossierWorkbook(xlsx, vehicle, maintenanceLogs, fuelLogs, lang);
+  xlsx.writeFile(wb, filename);
 }
 
-export function exportMaintenanceToExcel(
+export async function exportMaintenanceToExcel(
   vehicle: any,
   maintenanceLogs: any[],
   lang: string = 'ar'
 ) {
-  const { wb, filename } = buildMaintenanceWorkbook(vehicle, maintenanceLogs, lang);
-  XLSX.writeFile(wb, filename);
+  const xlsx = await import('xlsx');
+  const { wb, filename } = buildMaintenanceWorkbook(xlsx, vehicle, maintenanceLogs, lang);
+  xlsx.writeFile(wb, filename);
 }
 
-export function exportFuelToExcel(
+export async function exportFuelToExcel(
   vehicle: any,
   fuelLogs: any[],
   lang: string = 'ar'
 ) {
-  const { wb, filename } = buildFuelWorkbook(vehicle, fuelLogs, lang);
-  XLSX.writeFile(wb, filename);
+  const xlsx = await import('xlsx');
+  const { wb, filename } = buildFuelWorkbook(xlsx, vehicle, fuelLogs, lang);
+  xlsx.writeFile(wb, filename);
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Fuel, Wrench, PlusCircle } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
+import { useOverlayRegistration } from '@/components/ui/useOverlayRegistration';
 
 export interface MobileFabProps {
   selectedVehicle: any | null;
@@ -18,6 +19,9 @@ export const MobileFab: React.FC<MobileFabProps> = ({
   onOpenAddMaintenance,
 }) => {
   const { t, dir } = useTranslation();
+
+  // §4: the expanded FAB popover is an overlay Back must close, not skip past.
+  useOverlayRegistration(showFabMenu, () => setShowFabMenu(false));
 
   if (!selectedVehicle) return null;
   return (

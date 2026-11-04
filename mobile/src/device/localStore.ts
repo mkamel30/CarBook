@@ -8,6 +8,7 @@ import type {
   SyncRow,
 } from '../../../src/sync/client';
 import { DEVICE_COLS, SYNC_TABLE_NAMES, srvKey, toDeviceValue, toSrvValue } from './schema';
+import { groupsOf } from '@sync/fieldGroups';
 
 // Dirty states stored in the device-only `_dirty` column. Rows the device changed
 // since the last ack carry 'created' | 'updated' | 'deleted'; synced rows are ''.
@@ -48,6 +49,12 @@ function serialize(table: string, id: string, raw: RawFields, updatedAt: number)
   for (const c of businessCols(table)) {
     row[srvKey(c)] = toSrvValue(c, raw[c.col] as string | number | null);
   }
+  // Per-group last-write-wins clocks. A row written before the device had them
+  // argues with its row revision instead — byte-identical to the old row-level
+  // rule, so an upgraded snapshot cannot suddenly claim stale columns as new.
+  for (const g of groupsOf(table) ?? []) {
+    row[g.tsKey] = Number(raw[g.deviceTsColumn] ?? updatedAt);
+  }
   return row;
 }
 
@@ -60,6 +67,11 @@ function rawMapFromPulled(table: string, row: SyncRow, updatedAt: number): RawFi
   };
   for (const c of businessCols(table)) {
     raw[c.col] = toDeviceValue(c, row[srvKey(c)]);
+  }
+  // Keep the server's per-group stamps, so the next local edit of one group does
+  // not present the other group as freshly changed too.
+  for (const g of groupsOf(table) ?? []) {
+    raw[g.deviceTsColumn] = Number(row[g.tsKey] ?? row.updatedAt ?? 0);
   }
   return raw;
 }

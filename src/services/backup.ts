@@ -1,5 +1,6 @@
 import { getDatabase } from '../persistence/db';
 import { SYNC_TABLES, type SyncRow } from '../persistence/sync';
+import { secondaryTsColumns } from '../sync/fieldGroups';
 import type { Client } from '@libsql/client';
 
 /**
@@ -180,8 +181,13 @@ export async function restoreBackup(
     if (!rows.length) continue;
 
     const seqCursor = await reserveSeq(client, rows.length);
-    const cols = [...(def.owner === 'user' ? ['user_id'] : []), 'id', ...def.columns, 'rev', 'seq', 'sync_ts', 'deleted'];
-    const setExprs = [...def.columns.map((c) => `${c} = excluded.${c}`), 'rev = rev + 1', 'seq = excluded.seq', 'sync_ts = excluded.sync_ts', 'deleted = 0'].join(', ');
+    // A restore rewrites the whole row, so it stamps EVERY last-write-wins clock
+    // the table has: leaving a grouped table's secondary clock at its old value
+    // would let a client's stale edit land over freshly restored data.
+    const tsCols = ['sync_ts', ...secondaryTsColumns(table)];
+    const cols = [...(def.owner === 'user' ? ['user_id'] : []), 'id', ...def.columns, 'rev', 'seq', 'deleted', ...tsCols];
+    const setExprs = [...def.columns.map((c) => `${c} = excluded.${c}`), 'rev = rev + 1', 'seq = excluded.seq', 'deleted = 0',
+      ...tsCols.map((c) => `${c} = excluded.${c}`)].join(', ');
     await client.batch(
       rows.map((row, i) => ({
         sql:
@@ -191,7 +197,7 @@ export async function restoreBackup(
           ...(def.owner === 'user' ? [userId] : []),
           row.id,
           ...def.columns.map((c) => row[c] ?? null),
-          1, seqCursor + i, now, 0,
+          1, seqCursor + i, 0, ...tsCols.map(() => now),
         ],
       })),
       'write',

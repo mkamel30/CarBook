@@ -17,4 +17,4 @@ export function semverToVersionCode(version: string | null | undefined): number 
 
 // The version baked into the running client. Bump together with package.json
 // "version" (see docs/DEPLOYMENT.md release runbook).
-export const CURRENT_CLIENT_VERSION = '1.0.1';
+export const CURRENT_CLIENT_VERSION = '1.1.0';

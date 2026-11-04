@@ -77,13 +77,6 @@ export const DEFAULT_MAINTENANCE_PRESETS: VehiclePresetItem[] = [
     intervalMonths: 36,
   },
   {
-    itemCode: 'differential_gear_oil',
-    titleAr: 'تغيير زيت الكروكة والدفيرو (زيت المسننات)',
-    titleEn: 'Differential / Transfer Case Gear Oil Change',
-    intervalKm: 50000,
-    intervalMonths: 36,
-  },
-  {
     itemCode: 'coolant',
     titleAr: 'تغيير سائل تبريد المحرك (مياه الردياتير)',
     titleEn: 'Engine Coolant Flush & Refill',

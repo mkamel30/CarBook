@@ -5,6 +5,8 @@
 
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { alarmDelayDays, type UsagePoint } from './calculator';
+import { decideNotification, nextAlarmAt, type NotifyMemory } from './notifyPolicy';
 
 export interface NotificationStatus {
   supported: boolean;
@@ -153,6 +155,38 @@ function stableNotificationId(key: string): number {
 }
 
 /**
+ * Per-vehicle reminder memory. The pre-cadence key (`carbook_last_notif_…`) is
+ * still read, so a device upgrading mid-week does not immediately re-nag.
+ */
+function readMemory(vehicleName: string): NotifyMemory | null {
+  try {
+    const raw = localStorage.getItem(`carbook_notif_state_${vehicleName}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const last = Number(parsed?.lastNotifiedAt);
+      if (Number.isFinite(last)) {
+        const odo = Number(parsed?.odometer);
+        return { lastNotifiedAt: last, odometer: Number.isFinite(odo) ? odo : null };
+      }
+    }
+    const legacy = Number(localStorage.getItem(`carbook_last_notif_${vehicleName}`) || 0);
+    return legacy > 0 ? { lastNotifiedAt: legacy, odometer: null } : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeMemory(vehicleName: string, memory: NotifyMemory): void {
+  try {
+    localStorage.setItem(`carbook_notif_state_${vehicleName}`, JSON.stringify(memory));
+  } catch {
+    // Reminder memory is best-effort: losing it costs one extra nudge, never a
+    // missed schedule.
+  }
+}
+
+
+/**
  * Schedules (or clears) future-dated native notifications for due/overdue
  * preventive items. `LocalNotifications.schedule({ at })` hands the alarm to the
  * OS, so these fire even while the app is closed — the missing piece for
@@ -168,24 +202,25 @@ export async function scheduleFutureMaintenanceNotifications(
   schedules: any[],
   vehicleName: string,
   lang: string = 'ar',
+  usage: UsagePoint[] = [],
 ): Promise<number> {
   if (!isNativePlatform()) return 0;
 
   const now = Date.now();
-  const HOUR = 60 * 60 * 1000;
-  const DAY = 24 * HOUR;
   const vehicleId = schedules[0]?.schedule?.vehicleId ?? vehicleName;
+  const memory = readMemory(vehicleName);
 
   const toSchedule = schedules
     .filter((s) => s.status === 'overdue' || s.status === 'due_soon')
     .slice(0, 8)
     .map((s, i) => {
       const overdue = s.status === 'overdue';
-      // Overdue: nudge soon. Due soon: aim at the date itself.
-      let at = now + HOUR;
-      if (!overdue && Number.isFinite(s.remainingDays) && s.remainingDays > 0) {
-        at = now + Math.max(1, Math.round(s.remainingDays)) * DAY;
-      }
+      // Anchored to the last delivered reminder, not to this sweep: a relative
+      // "in an hour" recomputed every 30 minutes is an hourly alarm, which is the
+      // nagging the owner reported. A due-soon item still aims at its projected
+      // day (date axis, or the Feature 1 usage projection for a km-only item),
+      // but never before the weekly floor.
+      const at = nextAlarmAt({ now, memory, predictedDays: alarmDelayDays(s, usage, now) });
       const itemTitle = lang === 'en' ? s.schedule?.titleEn : s.schedule?.titleAr;
       const key = `${vehicleId}:${s.schedule?.id ?? i}`;
       return {
@@ -227,13 +262,15 @@ export async function scheduleFutureMaintenanceNotifications(
 }
 
 /**
- * Checks vehicle schedules and triggers a notification if any item is overdue or due soon.
- * Avoids spamming by remembering last notified timestamp in localStorage.
+ * Checks vehicle schedules and triggers a notification if any item is overdue or
+ * due soon, at the cadence `notifyPolicy` defines (weekly, or a newer odometer).
  */
 export function evaluateAndNotifySchedules(
   schedules: any[],
   vehicleName: string,
-  lang: string = 'ar'
+  lang: string = 'ar',
+  usage: UsagePoint[] = [],
+  currentOdometer: number | null = null
 ): void {
   const isNative = isNativePlatform();
   if (typeof window === 'undefined') return;
@@ -249,18 +286,22 @@ export function evaluateAndNotifySchedules(
   );
 
   // (Re)arm future-dated native notifications so reminders fire even while the
-  // app is closed. No-op on web; runs independently of the 6h toast throttle.
-  void scheduleFutureMaintenanceNotifications(urgentItems, vehicleName, lang);
+  // app is closed. No-op on web; runs independently of the in-app cadence below.
+  // `usage` lets a km-only item's alarm be aimed at its projected due day (Feature 1).
+  void scheduleFutureMaintenanceNotifications(urgentItems, vehicleName, lang, usage);
 
   if (urgentItems.length === 0) return;
 
-  // Rate limit: trigger at most once every 6 hours per car session
-  const lastNotifKey = `carbook_last_notif_${vehicleName}`;
-  const lastTime = Number(localStorage.getItem(lastNotifKey) || 0);
   const now = Date.now();
-  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  const odometer = Number.isFinite(currentOdometer as number) ? currentOdometer : null;
 
-  if (now - lastTime < SIX_HOURS) {
+  // Cadence: one reminder per item-state per week, plus one extra look when the
+  // odometer actually advanced (a new fuel or service log entered) — see
+  // src/services/notifyPolicy.ts. This replaces the old flat 6-hour throttle,
+  // which allowed four nags a day.
+  const memory = readMemory(vehicleName);
+  const decision = decideNotification({ urgent: true, memory, odometer, now });
+  if (!decision.fire) {
     return;
   }
 
@@ -291,5 +332,10 @@ export function evaluateAndNotifySchedules(
     tag: `carbook_maintenance_${vehicleName}`,
   });
 
-  localStorage.setItem(lastNotifKey, String(now));
+  writeMemory(vehicleName, {
+    lastNotifiedAt: now,
+    // Keep the last known reading when this caller has none, so an odometer
+    // reported later still counts as advancing rather than starting from blank.
+    odometer: odometer ?? memory?.odometer ?? null,
+  });
 }

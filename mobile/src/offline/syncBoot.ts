@@ -11,20 +11,21 @@
 // All side effects (fetch, timers, network events) stay injectable so the
 // whole flow runs under Node/vitest.
 //
-// HOW WRITES ARE DETECTED (and why it is not a bridge hook): the obvious place
-// to hang a post-write trigger is offline/fetchBridge.ts, which is exactly the
-// file another owner is editing right now. This wrapper therefore observes the
-// OUTBOX instead: the `_dirty` column is the queue of unsent writes, so a short
-// read-only poll of it (device/localStore.ts countDirtyRows — a pure query, it
-// never touches write semantics) sees every local write the bridge stores, with
-// zero coupling to the bridge's internals. Using collectDirty() for this would
-// be WRONG, not just inconvenient: it re-snapshots the pending queue the
-// transport compares against, so sampling it mid-flight would corrupt the
-// "is this revision still unsent" bookkeeping.
+// HOW WRITES ARE DETECTED (A3): every offline write goes through device/writer.ts
+// and fires an event on the write bus (device/writeEvents.ts). This wrapper
+// subscribes to that bus and arms the post-write debounce the instant a row
+// changes — no busy-poll needed. A slow outbox sample (DEFAULT_DIRTY_POLL_MS) is
+// kept purely as a safety net: it refreshes the chip's pendingCount and catches a
+// dropped event. Observing the `_dirty` column rather than the bridge's internals
+// keeps this decoupled from offline/fetchBridge.ts. Using collectDirty() for the
+// safety sample would be WRONG, not just inconvenient: it re-snapshots the pending
+// queue the transport compares against, so sampling it mid-flight would corrupt
+// the "is this revision still unsent" bookkeeping — countDirtyRows is a pure COUNT.
 
 import type { Database } from '@nozbe/watermelondb';
 import { countDirtyRows, WMDBLocalStore } from '@device/localStore';
 import { createRuntime } from '@device/runtime';
+import { onDeviceWrite } from '@device/writeEvents';
 import type { SessionStore, StoredSession } from '@device/session';
 import type { SyncOutcome } from '@sync/client';
 import { DICTIONARIES } from '@app/i18n/config';
@@ -83,8 +84,13 @@ export interface SyncBootDeps {
    * the `online`/foreground triggers keep working either way.
    */
   syncIntervalMs?: number;
-  /** How often (ms) the outbox is sampled for new writes. Only used when post-write auto sync is on. */
+  /** How often (ms) the outbox is sampled as a safety net. Only used when post-write auto sync is on. */
   dirtyPollMs?: number;
+  /**
+   * Primary post-write trigger (A3): subscribes to the device write bus. Defaults
+   * to onDeviceWrite; injected in tests to drive the debounce deterministically.
+   */
+  addWriteListener?: (cb: () => void) => () => void;
   /**
    * Read-only outbox size. Defaults to `countDirtyRows(db)`. Injected in tests.
    * MUST NOT be a mutating read (see the header comment on collectDirty).
@@ -119,8 +125,11 @@ export interface SyncBoot {
 export const DEFAULT_AUTO_SYNC_MS = 1500;
 // Background sweep for devices that sit open (or idle) without new writes: 5 min.
 export const DEFAULT_SYNC_INTERVAL_MS = 5 * 60_000;
-// Outbox sampling while post-write auto sync is on. Cheap (one COUNT per table).
-export const DEFAULT_DIRTY_POLL_MS = 800;
+// Outbox sampling is now only a SAFETY NET (A3). The primary post-write trigger
+// is the write-event bus (device/writeEvents.ts), fired by every writer call, so
+// we no longer need a fast poll. This slow interval only exists to refresh the
+// chip's pendingCount and to catch a dropped event — one COUNT per table per 30s.
+export const DEFAULT_DIRTY_POLL_MS = 30_000;
 // After an automatic run fails with rows still queued, the retry is rescheduled
 // with autoSyncMs * 2^n. Bounded: n never exceeds this, so the wait caps out at
 // 8x the debounce window instead of growing forever, and each attempt re-enters
@@ -157,6 +166,7 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
   const isOnline = deps.isOnline ?? defaultOnline;
   const addOnlineListener = deps.addOnlineListener ?? defaultAddOnlineListener;
   const addVisibilityListener = deps.addVisibilityListener ?? defaultAddVisibilityListener;
+  const addWriteListener = deps.addWriteListener ?? onDeviceWrite;
   const setTimer = deps.setTimer ?? defaultSetTimer;
   const countDirty = deps.countDirty ?? (() => countDirtyRows(deps.db));
   const autoSyncMs = deps.autoSyncMs ?? DEFAULT_AUTO_SYNC_MS;
@@ -345,6 +355,15 @@ export function createSyncBoot(deps: SyncBootDeps): SyncBoot {
     // Boot sync is fire-and-forget; failure lives in getStatus().phase for the chip.
     void syncNow().catch(() => {});
     teardowns.push(addOnlineListener(() => { void syncNow().catch(() => {}); }));
+    // A3 primary trigger: a local write arms the debounce immediately and refreshes
+    // the chip's pending figure. The debouncer coalesces a burst into one run, and
+    // scheduleAuto restarts the single timer so we never stack syncs.
+    if (writeSyncEnabled) {
+      teardowns.push(addWriteListener(() => {
+        scheduleAuto(autoSyncMs);
+        void pollOutbox();
+      }));
+    }
     // Returning to the foreground: flush what the queue already holds, no wait.
     if (writeSyncEnabled || syncIntervalMs > 0) {
       teardowns.push(addVisibilityListener(() => {

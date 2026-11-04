@@ -9,9 +9,11 @@
 // This module is the shell-side scheduler: it periodically sweeps the device's
 // own vehicles through the SAME bridge endpoints and hands the evaluated rows to
 // the SAME shared service function (src/services/notifications.ts, imported,
-// never forked). The shared throttle (once per 6h per vehicle, localStorage) and
+// never forked). The shared cadence (one reminder per week per unread state, plus
+// one extra look when the odometer advances — src/services/notifyPolicy.ts) and
 // the permission check stay inside that function, so nothing about prompting
-// behaviour can drift from the web app.
+// behaviour can drift from the web app. The 30-minute sweep only re-checks state;
+// it cannot re-nag, because the cadence gate lives in the shared evaluator.
 //
 // The shared service (src/services/notifications.ts) is now native-aware via
 // @capacitor/local-notifications: device permission + Android channel on the
@@ -22,6 +24,7 @@
 // depends on this sweep (or a page load) running at least once after boot.
 
 import { evaluateAndNotifySchedules, checkNotificationSupport } from '@app/services/notifications';
+import { usageFromFuelLogs } from '@app/services/calculator';
 
 export interface AlertRun {
   at: number;
@@ -44,7 +47,10 @@ export interface ScheduleAlertDeps {
   /** Sweep period; default 30 minutes (the shared throttle is 6h, so no spam). */
   intervalMs?: number;
   /** Injectable alert sink so tests never need a Notification constructor. */
-  notify?: (schedules: any[], vehicleName: string, lang: string) => void;
+  notify?: (
+    schedules: any[], vehicleName: string, lang: string,
+    usage: ReturnType<typeof usageFromFuelLogs>, currentOdometer: number | null,
+  ) => void;
   onRun?: (run: AlertRun) => void;
 }
 
@@ -113,8 +119,14 @@ export function createScheduleAlerter(deps: ScheduleAlertDeps = {}): ScheduleAle
           if (s?.status === 'overdue') run.urgent.overdue++;
           else if (s?.status === 'due_soon') run.urgent.due_soon++;
         }
-        // The shared evaluator: same filters, same 6h throttle, same copy.
-        notify(evaluated, data?.vehicle?.name || v.name || '', lang());
+        // Feature 1: the vehicle's own fuel history (bridge-served, so still offline)
+        // becomes usage points, letting a km-only reminder land on its projected day.
+        const fuel = await readEnvelope(doFetch, `/api/fuel?vehicleId=${encodeURIComponent(v.id)}`);
+        const usage = usageFromFuelLogs(Array.isArray(fuel) ? fuel : []);
+        // The shared evaluator: same filters, same cadence, same copy. The vehicle's
+        // odometer is the event signal — a new reading is what earns a reminder inside
+        // the weekly window (src/services/notifyPolicy.ts).
+        notify(evaluated, data?.vehicle?.name || v.name || '', lang(), usage, data?.vehicle?.currentOdometer ?? null);
       }
     } catch (err) {
       run.error = err instanceof Error ? err.message : String(err);

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -59,6 +59,27 @@ describe('scoped mobile CORS (bundled Capacitor origin)', () => {
   // CORS headers) unless the route EXPORTS an OPTIONS handler, so the preflight
   // never reaches withMobileCors and the WebView fetch fails opaquely. The
   // tests above call the wrapper directly and cannot catch a missing export.
+  // The update check is a plain GET, so no preflight is sent — the response must
+  // still carry ACAO or the WebView blocks it and Settings reports a failure the
+  // server never produced. GitHub is stubbed to fail here so the route takes its
+  // documented fallback branch without touching the network.
+  it('tags the app-version update check for the mobile origin', async () => {
+    const { GET: appVersion } = await import('@/app/api/app-version/route');
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline in test'); }));
+    try {
+      const mobile = await appVersion(req('https://srv/api/app-version', { headers: { origin: MOBILE } }));
+      expect(mobile.status).toBe(200);
+      expect(mobile.headers.get('access-control-allow-origin')).toBe(MOBILE);
+      expect(mobile.headers.get('access-control-allow-credentials')).toBeNull();
+
+      const web = await appVersion(req('https://srv/api/app-version'));
+      expect(web.status).toBe(200);
+      expect(web.headers.get('access-control-allow-origin')).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('every mobile-facing route exports OPTIONS so preflights reach the wrapper', async () => {
     const routes = [
       '@/app/api/auth/me/route',
@@ -69,6 +90,7 @@ describe('scoped mobile CORS (bundled Capacitor origin)', () => {
       '@/app/api/ai/doctor/route',
       '@/app/api/ai/lookup/route',
       '@/app/api/ai/manual/route',
+      '@/app/api/app-version/route',
     ];
     for (const spec of routes) {
       const mod = await import(spec);

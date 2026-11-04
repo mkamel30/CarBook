@@ -249,6 +249,133 @@ describe('device local store: refused rows stay retryable', () => {
   });
 });
 
+// A4: the device has to say WHICH group it changed, or the server merges the
+// whole row by one clock again and an interval edit wipes a peer's service
+// baseline (and the other way round). These assert the stamps, not the merge —
+// e2e.test.ts drives the same rows through the real server engine.
+describe('device stamps each field group separately', () => {
+  const schedFields = (over: Record<string, any> = {}) => ({
+    vehicle_id: 'v1', item_code: 'oil_change', title_ar: 'تغيير زيت', title_en: 'Oil change',
+    interval_km: 5000, interval_months: 6, last_done_odometer: null, last_done_date: null, ...over,
+  });
+
+  let db: any;
+  let store: WMDBLocalStore;
+
+  beforeEach(() => {
+    db = makeDatabase();
+    store = new WMDBLocalStore(db);
+  });
+
+  async function pushOne() {
+    const pushed = await store.collectDirty();
+    const row = pushed.maintenance_schedules?.upsert?.[0];
+    if (!row) throw new Error('expected the schedule to be in the outbox');
+    return row;
+  }
+
+  it('a create carries one stamp for both groups — the whole row is new', async () => {
+    await localCreate(db, 'maintenance_schedules', 's1', schedFields(), 1000);
+    const raw = await rawOf(db, 'maintenance_schedules', 's1');
+    expect(raw.updated_at_sync_config).toBe(1000);
+    expect(raw.updated_at_sync_baseline).toBe(1000);
+
+    const row = await pushOne();
+    expect(row).toMatchObject({ id: 's1', updatedAt: 1000, baselineUpdatedAt: 1000, interval_km: 5000 });
+  });
+
+  it('an interval edit moves only the config clock', async () => {
+    await localCreate(db, 'maintenance_schedules', 's1', schedFields(), 1000);
+    await store.collectDirty();
+    await store.markSynced(1);
+
+    await localUpdate(db, 'maintenance_schedules', 's1', { interval_km: 8000 }, 2000);
+    const raw = await rawOf(db, 'maintenance_schedules', 's1');
+    expect(raw.updated_at_sync_config).toBe(2000);
+    expect(raw.updated_at_sync_baseline).toBe(1000); // untouched: the baseline is not newer
+    expect(raw.updated_at_sync).toBe(2000);          // row revision still drives the outbox
+
+    expect(await pushOne()).toMatchObject({ interval_km: 8000, updatedAt: 2000, baselineUpdatedAt: 1000 });
+  });
+
+  it('a service-baseline advance moves only the baseline clock', async () => {
+    await localCreate(db, 'maintenance_schedules', 's1', schedFields(), 1000);
+    await store.collectDirty();
+    await store.markSynced(1);
+
+    // Exactly what the log→item link writes.
+    await localUpdate(db, 'maintenance_schedules', 's1', { last_done_odometer: 45000, last_done_date: '2026-10-05' }, 3000);
+    const raw = await rawOf(db, 'maintenance_schedules', 's1');
+    expect(raw.updated_at_sync_baseline).toBe(3000);
+    expect(raw.updated_at_sync_config).toBe(1000);
+
+    expect(await pushOne()).toMatchObject({ last_done_odometer: 45000, updatedAt: 1000, baselineUpdatedAt: 3000 });
+  });
+
+  it('a write that changes config and baseline together stamps both', async () => {
+    await localCreate(db, 'maintenance_schedules', 's1', schedFields(), 1000);
+    await store.collectDirty();
+    await store.markSynced(1);
+    await localUpdate(db, 'maintenance_schedules', 's1', { interval_months: 12, last_done_odometer: 600 }, 4000);
+
+    const row = await pushOne();
+    expect(row).toMatchObject({ updatedAt: 4000, baselineUpdatedAt: 4000 });
+  });
+
+  it('keeps the old row-level behaviour for a row written before the stamps existed', async () => {
+    await localCreate(db, 'maintenance_schedules', 's1', schedFields(), 1000);
+    // Simulate a snapshot from the released build: no group columns at all.
+    await db.write(async () => {
+      const rec: any = await db.collections.get('maintenance_schedules').find('s1');
+      await rec.update((r: any) => {
+        delete r._raw.updated_at_sync_config;
+        delete r._raw.updated_at_sync_baseline;
+        r._raw._dirty = 'updated';
+        r._raw.updated_at_sync = 1700;
+      });
+    });
+
+    const row = await pushOne();
+    expect(row.updatedAt).toBe(1700);
+    expect(row.baselineUpdatedAt).toBe(1700);
+  });
+
+  it('adopts both server stamps on pull, defaulting a stamp-less server to the row stamp', async () => {
+    await store.applyPulled({
+      maintenance_schedules: {
+        upsert: [
+          { id: 's1', vehicle_id: 'v1', item_code: 'oil_change', title_ar: 'x', title_en: 'y',
+            interval_km: 5000, updatedAt: 1000, baselineUpdatedAt: 4000, last_done_odometer: 900 },
+          { id: 's2', vehicle_id: 'v1', item_code: 'filters', title_ar: 'x', title_en: 'y',
+            interval_km: 3000, updatedAt: 2000 },
+        ],
+        deleted: [],
+      },
+    });
+
+    const a = await rawOf(db, 'maintenance_schedules', 's1');
+    expect([a.updated_at_sync_config, a.updated_at_sync_baseline]).toEqual([1000, 4000]);
+    // An older server sends only the row stamp: the baseline inherits it rather
+    // than falling to 0, which would let any later push overwrite the baseline.
+    const b = await rawOf(db, 'maintenance_schedules', 's2');
+    expect([b.updated_at_sync_config, b.updated_at_sync_baseline]).toEqual([2000, 2000]);
+  });
+
+  it('leaves ungrouped tables exactly as they were: one stamp, no wire extras', async () => {
+    await localCreate(db, 'vehicles', 'v1', vehicleFields('Corolla'), 1000);
+    const raw = await rawOf(db, 'vehicles', 'v1');
+    expect(raw.updated_at_sync_config).toBeUndefined();
+    expect(raw.updated_at_sync_baseline).toBeUndefined();
+
+    const veh = (await store.collectDirty()).vehicles?.upsert?.[0];
+    if (!veh) throw new Error('expected the vehicle to be in the outbox');
+    expect(Object.keys(veh).sort()).toEqual([
+      'created_at', 'current_odometer', 'engine_cc', 'id', 'initial_odometer', 'license_plate',
+      'make', 'model', 'name', 'recommended_oil', 'specs', 'updatedAt', 'updated_at', 'year',
+    ]);
+  });
+});
+
 describe('device local store: parts_list JSON round-trip', () => {
   const PARTS = [
     { id: 'p1', name: 'Oil filter', condition: 'new', cost: 15 },

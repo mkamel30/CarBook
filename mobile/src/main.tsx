@@ -24,6 +24,12 @@ import {
 } from './offline/authBridge';
 import { SERVER_BASE_URL } from './offline/config';
 import { createScheduleAlerter } from './offline/scheduleAlerts';
+import { createBackHandler } from './offline/backButton';
+import { requestPersistentStorage } from './offline/storageGuard';
+import { createAutoBackup } from './offline/dataSafety';
+import { closeTopOverlay } from '@app/components/ui/overlayStack';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 
 // Account session bearer (the durable 7-day JWT redeemed from the OAuth
 // handoff code). localStorage today; keystore migration is tracked in
@@ -213,6 +219,52 @@ async function startWithHandoff(): Promise<void> {
     },
   });
   alerter.start();
+
+  // §4 hardware Back: close the topmost overlay first, exit only when none is open.
+  // The listener reads the shared overlay stack live, so registering it here (before
+  // or after render) is fine; the stack is populated by each dialog/menu as it opens.
+  createBackHandler({
+    isNativePlatform: () => Capacitor.isNativePlatform(),
+    addBackListener: (cb) => {
+      const handle = CapacitorApp.addListener('backButton', cb);
+      return () => { void handle.then((h) => h.remove()).catch(() => {}); };
+    },
+    exitApp: () => { void CapacitorApp.exitApp(); },
+    closeTop: closeTopOverlay,
+  });
+
+  // A2 (1) persistent storage: every guest row lives only in this WebView's
+  // localStorage snapshot, which the OS may evict under storage pressure. Ask
+  // the browser to exempt this origin. Fire-and-forget and guarded (never
+  // rejects); a declined grant is normal, not an error, and is only ever logged.
+  void requestPersistentStorage({
+    onOutcome: (o) => {
+      if (o.error) console.warn('[carbook] persistent storage request failed:', o.error);
+      else if (o.newlyGranted) console.info('[carbook] origin storage marked persistent (guest data protected)');
+    },
+  });
+
+  // A2 (3) auto server-backup for a signed-in device: edge-triggered so the
+  // server copy never lags a signed-in user's local edits once connectivity
+  // returns. It REUSES the boot's single sync transport (boot.syncNow) rather
+  // than opening a second upload path, and publishes the resulting advice on the
+  // same status channel the chip/settings banner already render (no new UI
+  // surface, no forked transport).
+  const isSignedIn = async () => {
+    const bearer = await bearerStore.load();
+    return !!bearer && !isBearerExpired(bearer);
+  };
+  const autoBackup = createAutoBackup({
+    isSignedIn,
+    runBackup: () => boot.syncNow(),
+    readPending: () => boot.pendingCount(),
+    onAdvice: (a) => window.dispatchEvent(new CustomEvent('carbook:advice', { detail: a })),
+    onError: (m) => console.warn('[carbook] auto server-backup run failed:', m),
+  });
+  autoBackup.start();
+  // A fresh sign-in (or the boot handoff landing right after this) changes the
+  // guest/signed-in verdict — re-evaluate so the banner flips without a reload.
+  window.addEventListener('carbook:handoff', () => { void autoBackup.refresh(); });
 }
 
 if (shell) void startWithHandoff();

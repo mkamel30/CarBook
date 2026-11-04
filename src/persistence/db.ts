@@ -68,7 +68,8 @@ export async function getDatabase(dbFilePath?: string) {
       rev INTEGER NOT NULL DEFAULT 0,
       seq INTEGER,
       deleted INTEGER NOT NULL DEFAULT 0,
-      sync_ts INTEGER NOT NULL DEFAULT 0
+      sync_ts INTEGER NOT NULL DEFAULT 0,
+      baseline_ts INTEGER NOT NULL DEFAULT 0
     );`,
     `CREATE TABLE IF NOT EXISTS maintenance_logs (
       id TEXT PRIMARY KEY,
@@ -231,6 +232,14 @@ export async function getDatabase(dbFilePath?: string) {
     try { await client.execute(`ALTER TABLE ${t} ADD COLUMN sync_ts INTEGER NOT NULL DEFAULT 0;`); } catch (e) {}
     try { await client.execute(`CREATE INDEX IF NOT EXISTS idx_${t}_seq ON ${t}(seq);`); } catch (e) {}
   }
+
+  // Per-field-group last-write-wins for maintenance_schedules: the service
+  // baseline (last_done_odometer / last_done_date) gets its own clock so an
+  // interval edit and a log-link advance stop overwriting each other. Seeding it
+  // from sync_ts keeps an upgraded database behaving as it did while both groups
+  // shared one stamp — an old client's stale baseline cannot land over a new one.
+  try { await client.execute(`ALTER TABLE maintenance_schedules ADD COLUMN baseline_ts INTEGER NOT NULL DEFAULT 0;`); } catch (e) {}
+  try { await client.execute(`UPDATE maintenance_schedules SET baseline_ts = sync_ts WHERE baseline_ts = 0 AND sync_ts <> 0;`); } catch (e) {}
 
   // Backfill seq for rows that predate sync so the first client pull (since=0) receives them.
   for (const t of syncTables) {

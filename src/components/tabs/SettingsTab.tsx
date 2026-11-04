@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, Check, Fuel, PlusCircle, Trash2, Settings, Bell, BellRing, UserCheck, LogOut, Palette, DatabaseBackup, Download, Upload, MapPin, Sparkles } from 'lucide-react';
+import { Globe, Check, Fuel, PlusCircle, Trash2, Settings, Bell, BellRing, UserCheck, LogOut, Palette, DatabaseBackup, Download, Upload, MapPin, Sparkles, ShieldAlert } from 'lucide-react';
 import { detectCountryFromTimezone, getFuelPresetsByCountry, listSupportedCountries } from '@/services/geoPricing';
 import { useTranslation } from '@/i18n/context';
 import { localizedField } from '@/i18n/util';
@@ -68,6 +68,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [replaceArmed, setReplaceArmed] = useState(false);
   const [geoMsg, setGeoMsg] = useState('');
   const [selectedCountryCode, setSelectedCountryCode] = useState('EG');
+  // A2: the offline shell publishes the live backup verdict on this channel
+  // (mobile/src/main.tsx). On the plain web build nothing fires it, so it stays
+  // null and the banner falls back to the signed-in/guest state below.
+  const [advice, setAdvice] = useState<{ warning: boolean; backedUp: boolean; guest: boolean; pendingCount: number; messageKey: string } | null>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => setAdvice((e as CustomEvent).detail);
+    window.addEventListener('carbook:advice', handler);
+    return () => window.removeEventListener('carbook:advice', handler);
+  }, []);
+
+  // Which data-safety line to show. The shell's verdict wins when it has one;
+  // otherwise derive it from the account state alone.
+  const safetyKey = advice
+    ? advice.messageKey
+    : currentUser
+      ? 'set_data_backed_up'
+      : 'set_data_not_backed_up';
+  const safetyWarn = advice ? advice.warning : !currentUser;
 
   const handleAutoDetectFuel = () => {
     const tz = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
@@ -293,6 +312,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <h2 className="text-sm font-bold text-slate-100">
             {t('set_backup_title')}
           </h2>
+        </div>
+        {/* A2 data-safety line: a guest's only copy is this device, a signed-in
+            device is server-backed. Amber while anything is at risk, emerald
+            once the server copy is confirmed. */}
+        <div
+          className={`text-[11px] leading-relaxed rounded-lg border px-3 py-2 flex items-start gap-2 ${
+            safetyWarn
+              ? 'bg-amber-950/40 border-amber-800/60 text-amber-300'
+              : 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+          }`}
+          role="status"
+        >
+          <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${safetyWarn ? 'text-amber-400' : 'text-emerald-400'}`} />
+          <span>{t(safetyKey, { count: advice?.pendingCount ?? 0 })}</span>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed">
           {t('set_backup_desc')}

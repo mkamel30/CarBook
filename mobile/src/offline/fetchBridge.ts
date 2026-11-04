@@ -472,8 +472,12 @@ async function handleSchedules(
     const intervalKm = Number(body?.intervalKm);
     const intervalMonths = body?.intervalMonths ? Number(body.intervalMonths) : null;
     const itemCode = `${CUSTOM_ITEM_CODE_PREFIX}${newId().replace(/-/g, '').slice(0, 12)}`;
+    // The row id is minted here (the device owns identity) and reused for the write.
+    // Capturing it also keeps the type `string`: the schema marks `id` optional, so
+    // reading it back off parsed.data would be `string | undefined` for no reason.
+    const scheduleId = newId();
     const parsed = maintenanceScheduleSchema.safeParse({
-      id: newId(),
+      id: scheduleId,
       vehicleId,
       itemCode,
       titleAr,
@@ -484,7 +488,7 @@ async function handleSchedules(
       lastDoneDate: null,
     });
     if (!parsed.success) return zodFail(parsed.error);
-    await localCreate(db, SCHED_TABLE, parsed.data.id, scheduleCreateFields(parsed.data, vehicleId), at);
+    await localCreate(db, SCHED_TABLE, scheduleId, scheduleCreateFields(parsed.data, vehicleId), at);
     return ok(parsed.data);
   }
 

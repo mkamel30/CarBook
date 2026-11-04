@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Car, PlusCircle, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 import { tStatic } from '@/i18n/staticTranslate';
 import { evaluateAndNotifySchedules } from '@/services/notifications';
+import { usageFromFuelLogs } from '@/services/calculator';
 
 // Layout Components
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -13,15 +14,20 @@ import { DesktopHeader } from '@/components/layout/DesktopHeader';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { MobileFab } from '@/components/layout/MobileFab';
 
-// Tab Components
+// Tab Components.
+// OverviewTab is the landing tab, so it stays in the initial chunk. The other
+// seven are code-split with React.lazy and load only when first opened — that
+// keeps xlsx (pulled in by the Report/Maintenance/Fuel export tabs) off the cold
+// WebView start, which matters on low-end Android. Each lazy() re-wraps the
+// named export as default, which is what React.lazy expects.
 import { OverviewTab } from '@/components/tabs/OverviewTab';
-import { FuelTab } from '@/components/tabs/FuelTab';
-import { MaintenanceTab } from '@/components/tabs/MaintenanceTab';
-import { SchedulesTab } from '@/components/tabs/SchedulesTab';
-import { ManualTab } from '@/components/tabs/ManualTab';
-import { DoctorTab } from '@/components/tabs/DoctorTab';
-import { ReportsTab } from '@/components/tabs/ReportsTab';
-import { SettingsTab } from '@/components/tabs/SettingsTab';
+const FuelTab = lazy(() => import('@/components/tabs/FuelTab').then((m) => ({ default: m.FuelTab })));
+const MaintenanceTab = lazy(() => import('@/components/tabs/MaintenanceTab').then((m) => ({ default: m.MaintenanceTab })));
+const SchedulesTab = lazy(() => import('@/components/tabs/SchedulesTab').then((m) => ({ default: m.SchedulesTab })));
+const ManualTab = lazy(() => import('@/components/tabs/ManualTab').then((m) => ({ default: m.ManualTab })));
+const DoctorTab = lazy(() => import('@/components/tabs/DoctorTab').then((m) => ({ default: m.DoctorTab })));
+const ReportsTab = lazy(() => import('@/components/tabs/ReportsTab').then((m) => ({ default: m.ReportsTab })));
+const SettingsTab = lazy(() => import('@/components/tabs/SettingsTab').then((m) => ({ default: m.SettingsTab })));
 
 // Modal Components
 import { AddVehicleModal } from '@/components/modals/AddVehicleModal';
@@ -57,6 +63,17 @@ async function readEnvelope(res: Response): Promise<Envelope> {
   }
   if (body.success) return { success: true, data: body.data };
   return { success: false, error: typeof body.error === 'string' && body.error ? body.error : httpFailure };
+}
+
+/** Suspense fallback for the code-split tabs (A6): a quiet skeleton, no copy. */
+function TabLoading() {
+  return (
+    <div className="p-6 space-y-3" role="status" aria-live="polite">
+      <div className="h-6 w-40 rounded bg-slate-800/60 animate-pulse" />
+      <div className="h-24 w-full rounded bg-slate-800/40 animate-pulse" />
+      <div className="h-24 w-full rounded bg-slate-800/40 animate-pulse" />
+    </div>
+  );
 }
 
 export default function WorkbenchPage() {
@@ -219,9 +236,17 @@ export default function WorkbenchPage() {
 
   // Bundled APK: the account handoff finishes AFTER mount (the bearer arrives
   // via deep link), so re-ask /api/auth/me once the shell reports a sign-in.
+  // The shell also re-pulls the account rows into the local DB (onLinked rewinds
+  // the cursor + syncNow) before it fires this event — so the fresh rows are
+  // already readable, but the mount-time list load ran against the pre-login DB
+  // and never re-ran. Reloading vehicles here is what makes signed-in data appear
+  // without needing to log out (logout only "worked" because it did a full reload).
   useEffect(() => {
     const onHandoff = (e: Event) => {
-      if ((e as CustomEvent)?.detail?.kind === 'signedin') loadAuth();
+      if ((e as CustomEvent)?.detail?.kind === 'signedin') {
+        loadAuth();
+        loadVehicles();
+      }
     };
     window.addEventListener('carbook:handoff', onHandoff);
     return () => window.removeEventListener('carbook:handoff', onHandoff);
@@ -271,7 +296,10 @@ export default function WorkbenchPage() {
       if (schedRes.success) {
         setSchedules(schedRes.data.schedules);
         const vName = schedRes.data.vehicle?.name || selectedVehicle?.name || '';
-        evaluateAndNotifySchedules(schedRes.data.schedules, vName, lang);
+        // Feature 1: feed the vehicle's fuel history so a km-only item's closed-app
+        // alarm is aimed at its projected due day instead of nagging hourly.
+        const usage = usageFromFuelLogs(fuelRes.success ? fuelRes.data : []);
+        evaluateAndNotifySchedules(schedRes.data.schedules, vName, lang, usage, schedRes.data.vehicle?.currentOdometer);
       }
       if (repRes.success) {
         setReportData(repRes.data);
@@ -949,7 +977,7 @@ export default function WorkbenchPage() {
               </div>
             </div>
           ) : (
-            <>
+            <Suspense fallback={<TabLoading />}>
               {activeTab === 'overview' && (
                 <OverviewTab
                   selectedVehicle={selectedVehicle}
@@ -1040,7 +1068,7 @@ export default function WorkbenchPage() {
                   }}
                 />
               )}
-            </>
+            </Suspense>
           )}
         </div>
 

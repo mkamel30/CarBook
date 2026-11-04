@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AlertTriangle, Fuel, Wrench, Pencil, Trash2, Car, MoreVertical, Plus } from 'lucide-react';
 import { useTranslation } from '@/i18n/context';
 import { formatDate, localizedField } from '@/i18n/util';
+import { useOverlayRegistration } from '@/components/ui/useOverlayRegistration';
 
 export interface OverviewTabProps {
   selectedVehicle: any;
@@ -29,6 +30,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const { t, dir, lang } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // §4: this hand-rolled 3-dots dropdown does not use the Menu primitive, so it
+  // registers with the Back stack on its own.
+  useOverlayRegistration(isMenuOpen, () => setIsMenuOpen(false));
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

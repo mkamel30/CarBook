@@ -423,6 +423,15 @@ The whole offline protocol in one call. Requires authentication (a guest account
 5. **Ownership:** vehicles must be unowned, `default`, or yours — else rejected `forbidden`. Child rows without any `vehicle_id` → `no_parent`; a `vehicle_id` you don't own (and not created in this same request) → `forbidden`.
 6. **Domain validation:** required NOT-NULL columns are checked per row → `invalid_payload:<column>:required`; then a Zod validator built from the shared domain schemas (`SYNC_VALIDATORS`, transport fields relaxed: string ids, timestamp/specs as string-or-number) → `invalid_payload:<field.path>:<zod message>` (e.g. `invalid_payload:liters:Liters must be greater than zero`). Declared int/real columns are coerced first; unparseable values are left for Zod to refuse rather than reaching SQLite as `NaN`.
 
+**Per-field-group clocks (`maintenance_schedules`):** that table is edited by two unrelated writers — the items editor (interval, titles, item code) and a recorded service log (the `last_done_*` baseline) — so it merges per *group* of columns instead of per row (`src/sync/fieldGroups.ts` is the single declaration both server and device read):
+
+| group | columns | wire stamp | server column |
+| --- | --- | --- | --- |
+| `config` | `vehicle_id`, `item_code`, `title_ar`, `title_en`, `interval_km`, `interval_months` | `updatedAt` | `sync_ts` |
+| `baseline` | `last_done_odometer`, `last_done_date` | `baselineUpdatedAt` | `baseline_ts` |
+
+Each group is clamped and compared independently, and only the groups whose stamp is strictly newer are written. The `INSERT` still carries the full column list — SQLite enforces NOT NULL on the insert half before `DO UPDATE` runs — only the merge `SET` list is the accepted subset. A push whose every group is stale is dropped silently, exactly like a stale whole row. A client that sends only `updatedAt` reproduces the old row-level rule: a group with no stamp of its own inherits the row stamp. Deletes are judged against the **newest** stamp of any group. Pulls carry both stamps, so a device never argues with the server using a clock it did not see.
+
 Accepted ops get a contiguous block of fresh `seq` values (one atomic counter reservation) and are applied in one write transaction — a rejected row never poisons its siblings.
 
 **Response:**

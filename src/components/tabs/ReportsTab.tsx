@@ -74,7 +74,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => exportVehicleDossierToExcel(selectedVehicle, maintenanceLogs, fuelLogs, lang)}
+            onClick={() => { void exportVehicleDossierToExcel(selectedVehicle, maintenanceLogs, fuelLogs, lang); }}
             className="bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 px-3.5 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 transition"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" /> {t('rep_btn_excel')}

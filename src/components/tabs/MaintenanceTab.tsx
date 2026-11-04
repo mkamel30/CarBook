@@ -35,7 +35,7 @@ export const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => exportMaintenanceToExcel(selectedVehicle, maintenanceLogs, lang)}
+            onClick={() => { void exportMaintenanceToExcel(selectedVehicle, maintenanceLogs, lang); }}
             className="bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
             title={t('rep_btn_excel_maint')}
           >

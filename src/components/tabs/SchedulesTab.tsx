@@ -4,6 +4,7 @@ import { formatDate, localizedField } from '@/i18n/util';
 import { isCustomItemCode } from '@/services/presets';
 import { pushToast } from '@/components/ui/Toast';
 import { askConfirm } from '@/components/ui/ConfirmDialog';
+import { useOverlayRegistration } from '@/components/ui/useOverlayRegistration';
 import { CheckCircle2, Edit3, Gauge, Calendar, Wrench, X, Check, Plus, Trash2 } from 'lucide-react';
 
 export interface SchedulesTabProps {
@@ -38,6 +39,11 @@ export const SchedulesTab: React.FC<SchedulesTabProps> = ({
     intervalMonths: '',
   });
   const [isAdding, setIsAdding] = useState(false);
+
+  // §4: these two sheets are hand-rolled (no useDialogBehaviour), so they opt into
+  // the Back stack explicitly. Close the modal whose open-state is set.
+  useOverlayRegistration(Boolean(editingSchedule), () => setEditingSchedule(null));
+  useOverlayRegistration(showAddModal, () => setShowAddModal(false));
 
   const effectiveVehicleId = vehicleId || schedules[0]?.schedule?.vehicleId;
 

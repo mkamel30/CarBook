@@ -7,6 +7,15 @@ import {
   maintenanceLogSchema,
   fuelLogSchema,
 } from '../domain/schemas';
+import {
+  columnsOfGroups,
+  decideGroups,
+  groupsOf,
+  incomingGroupTs,
+  rowRecency,
+  secondaryTsColumns,
+  type FieldGroup,
+} from '../sync/fieldGroups';
 
 /**
  * Server side of the offline-first sync contract.
@@ -16,6 +25,12 @@ import {
  *   seq     – global monotonic op counter value at last mutation (pull cursor)
  *   deleted – tombstone flag; deletes propagate to other devices instead of vanishing
  *   sync_ts – winning edit timestamp (ms) used for last-write-wins
+ *
+ * `maintenance_schedules` merges per FIELD GROUP instead of per row: an interval
+ * edit (config) and a service-baseline advance from a log are unrelated writers,
+ * and row-level LWW lets whichever lands second overwrite columns it never touched.
+ * The groups, their columns and their stamps come from src/sync/fieldGroups.ts —
+ * the same module the offline device writer stamps with, so the two cannot diverge.
  *
  * Protocol per call:
  *   request  { deviceId, since, pushed: { <table>: { upsert: [row], delete: [{id, updatedAt}] } } }
@@ -242,6 +257,13 @@ async function scalar(client: Client, sql: string, args: any[]): Promise<any> {
   return res.rows.length ? Object.values(res.rows[0] as any)[0] : null;
 }
 
+/** Stored per-group stamps keyed by server column, for row-level comparisons. */
+function storedGroupTs(table: string, row: any): Record<string, number> {
+  const out: Record<string, number> = { sync_ts: Number(row?.sync_ts || 0) };
+  for (const c of secondaryTsColumns(table)) out[c] = Number(row?.[c] || 0);
+  return out;
+}
+
 // Atomically reserve a contiguous block of `n` seq numbers, returning the first one.
 // Shared by the sync push path and every REST mutation (see repository.ts) so all
 // writes to sync-visible tables land in one global order.
@@ -267,6 +289,10 @@ interface PendingOp {
   row: SyncRow;
   kind: 'upsert' | 'delete';
   ts: number;
+  /** Grouped tables only: the field groups this push is allowed to write. */
+  groups?: FieldGroup[];
+  /** Grouped tables only: the clamped stamp of each accepted group, by group id. */
+  stamps?: Record<string, number>;
 }
 
 export async function runSync(
@@ -296,8 +322,9 @@ export async function runSync(
         rejected.push({ table, id: String(raw?.id ?? ''), reason: 'missing_id' });
         continue;
       }
+      const extraTs = secondaryTsColumns(table);
       const existing = await client.execute({
-        sql: `SELECT sync_ts, deleted${def.owner === 'user' ? ', user_id' : ', vehicle_id'} FROM ${table} WHERE id = ?`,
+        sql: `SELECT sync_ts${extraTs.map(c => `, ${c}`).join('')}, deleted${def.owner === 'user' ? ', user_id' : ', vehicle_id'} FROM ${table} WHERE id = ?`,
         args: [raw.id],
       });
       const ex = existing.rows[0] as any;
@@ -306,14 +333,34 @@ export async function runSync(
       // the delete must not resurrect the row by pushing an older copy of it.
       if (ex && Number(ex.deleted || 0) === 1) continue;
 
-      // Never trust a future-dated client clock (see clampClientTs).
-      const ts = clampClientTs(
-        Number(raw.updatedAt ?? raw.sync_ts ?? Date.now()),
-        Date.now(),
-        ex ? Number(ex.sync_ts || 0) : null,
-      );
+      // Last-write-wins, per field group where the table has groups. Each stamp
+      // is clamped against ITS OWN stored value, so a group a device touched
+      // recently is not judged by when it last touched another one.
+      const groups = groupsOf(table);
+      const serverNow = Date.now();
+      let writeGroups: FieldGroup[] | null = null;
+      let stamps: Record<string, number> | undefined;
+      let ts: number;
 
-      if (ex && Number(ex.sync_ts || 0) >= ts) continue; // server already newer/equal — drop, not an error
+      if (groups) {
+        const groupStamps: Record<string, number> = {};
+        for (const g of groups) {
+          const rawTs = incomingGroupTs(groups, raw, g) ?? serverNow;
+          groupStamps[g.id] = clampClientTs(rawTs, serverNow, ex ? Number(ex[g.tsColumn] || 0) : null);
+        }
+        writeGroups = decideGroups(groups, groupStamps, ex ? storedGroupTs(table, ex) : null);
+        if (writeGroups.length === 0) continue; // every group is stale — drop, not an error
+        stamps = groupStamps;
+        ts = Math.max(...writeGroups.map(g => groupStamps[g.id]));
+      } else {
+        // Never trust a future-dated client clock (see clampClientTs).
+        ts = clampClientTs(
+          Number(raw.updatedAt ?? raw.sync_ts ?? Date.now()),
+          serverNow,
+          ex ? Number(ex.sync_ts || 0) : null,
+        );
+        if (ex && Number(ex.sync_ts || 0) >= ts) continue; // server already newer/equal — drop, not an error
+      }
 
       // Ownership
       if (def.owner === 'user') {
@@ -355,24 +402,29 @@ export async function runSync(
         }
       }
 
-      accepted.push({ table, row: raw, kind: 'upsert', ts });
+      accepted.push({ table, row: raw, kind: 'upsert', ts, groups: writeGroups ?? undefined, stamps });
     }
 
     for (const entry of payload.delete || []) {
       const id = typeof entry === 'string' ? entry : entry?.id;
       if (!id) continue;
 
+      const extraTs = secondaryTsColumns(table);
       const existing = await client.execute({
-        sql: `SELECT sync_ts, deleted${def.owner === 'user' ? ', user_id' : ', vehicle_id'} FROM ${table} WHERE id = ?`,
+        sql: `SELECT sync_ts${extraTs.map(c => `, ${c}`).join('')}, deleted${def.owner === 'user' ? ', user_id' : ', vehicle_id'} FROM ${table} WHERE id = ?`,
         args: [id],
       });
       const ex = existing.rows[0] as any;
       if (!ex) continue; // nothing to tombstone — idempotent
 
+      // A delete is row-level, so it is judged against the row's NEWEST group
+      // stamp: a peer that advanced a baseline a moment ago must not be erased by
+      // a delete this device queued before it ever saw that edit.
+      const stored = storedGroupTs(table, ex);
       const ts = clampClientTs(
         typeof entry === 'string' ? Date.now() : Number(entry?.updatedAt ?? Date.now()),
         Date.now(),
-        Number(ex.sync_ts || 0),
+        rowRecency(stored),
       );
 
       // Ownership
@@ -387,7 +439,7 @@ export async function runSync(
         if (vOwner !== userId) { rejected.push({ table, id, reason: 'forbidden' }); continue; }
       }
 
-      if (Number(ex.sync_ts || 0) > ts || Number(ex.deleted || 0) === 1) continue;
+      if (rowRecency(stored) > ts || Number(ex.deleted || 0) === 1) continue;
       accepted.push({ table, row: { id }, kind: 'delete', ts });
     }
   }
@@ -408,15 +460,27 @@ export async function runSync(
         });
       } else {
         const isVeh = def.owner === 'user';
+        // The INSERT half always carries the full row: SQLite enforces NOT NULL on
+        // the values it is about to insert before it ever reaches the conflict path,
+        // so a partial column list would abort on a row that only merges later.
+        // The merge happens in DO UPDATE, which sets ONLY the accepted groups —
+        // that is what stops a baseline edit from carrying a stale interval back.
+        const writeCols = op.groups
+          ? columnsOfGroups(op.groups).filter(c => def.columns.includes(c))
+          : def.columns;
+        const tsCols = op.groups ? op.groups.map(g => g.tsColumn) : ['sync_ts'];
+        const tsVals = op.groups
+          ? op.groups.map(g => Number(op.stamps?.[g.id] ?? op.ts))
+          : [op.ts];
         const businessVals = def.columns.map(c => toBindValue(def, c, readColumn(op.row, c, def)));
-        const insertCols = [...(isVeh ? ['user_id'] : []), 'id', ...def.columns, 'rev', 'seq', 'sync_ts', 'deleted'];
-        const values = [...(isVeh ? [userId] : []), op.row.id, ...businessVals, 1, seq, op.ts, 0];
-        const setExprs = def.columns.map(c => `${c} = excluded.${c}`).join(', ');
+        const insertCols = [...(isVeh ? ['user_id'] : []), 'id', ...def.columns, 'rev', 'seq', 'deleted', ...tsCols];
+        const values = [...(isVeh ? [userId] : []), op.row.id, ...businessVals, 1, seq, 0, ...tsVals];
+        const setExprs = [...writeCols, ...tsCols].map(c => `${c} = excluded.${c}`).join(', ');
         const ownerSet = isVeh ? ', user_id = excluded.user_id' : '';
         stmts.push({
           sql:
             `INSERT INTO ${op.table} (${insertCols.join(', ')}) VALUES (${values.map(() => '?').join(', ')}) ` +
-            `ON CONFLICT(id) DO UPDATE SET ${setExprs}${ownerSet}, rev = rev + 1, seq = excluded.seq, sync_ts = excluded.sync_ts, deleted = 0`,
+            `ON CONFLICT(id) DO UPDATE SET ${setExprs}${ownerSet}, rev = rev + 1, seq = excluded.seq, deleted = 0`,
           args: values,
         });
       }
@@ -442,6 +506,10 @@ export async function runSync(
       if (Number(r.deleted) === 1) { deleted.push(String(r.id)); continue; }
       const obj: SyncRow = { id: String(r.id), updatedAt: Number(r.sync_ts), rev: Number(r.rev), deleted: 0 };
       for (const c of def.columns) obj[c] = r[c];
+      // Hand the device every group stamp so its next push can argue per group.
+      for (const g of groupsOf(table) ?? []) {
+        if (g.tsColumn !== 'sync_ts') obj[g.tsKey] = Number(r[g.tsColumn] ?? 0);
+      }
       if (def.owner === 'user') obj.user_id = r.user_id;
       upsert.push(obj);
     }

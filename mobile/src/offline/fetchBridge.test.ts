@@ -5,6 +5,7 @@ import { WMDBLocalStore } from '@device/localStore';
 import { syncOnce } from '@sync/client';
 import { createFetchBridge, type FetchHandler } from './fetchBridge';
 import { makeMemorySettingsStore } from './settingsStore';
+import { derivedItemsForServiceType } from '@app/services/presets';
 
 // Node-env tests: Response/Request/URL/crypto.randomUUID are all global in Node 18+.
 // The bridge is exercised directly (no window) with a deterministic clock.
@@ -303,5 +304,94 @@ describe('offline fetch bridge: needs-connection state for auth/AI', () => {
     expect(used).toEqual(['https://srv.test/api/ai/doctor']);
     expect(env.success).toBe(true);
     expect(env.data.advice).toContain('dealer');
+  });
+});
+
+// A4 on the offline side: the two UI paths that write a schedule must move
+// DIFFERENT clocks — the item editor the config clock, the log→item link the
+// baseline clock. Attribution here is what lets the server merge the row per
+// group instead of letting one writer erase the other.
+describe('offline fetch bridge: schedule group stamps follow the writer', () => {
+  let clockMs = Date.parse('2024-06-01T12:00:00.000Z');
+  let bdb: Database;
+  let bbridge: FetchHandler;
+
+  beforeEach(() => {
+    clockMs = Date.parse('2024-06-01T12:00:00.000Z');
+    bdb = makeDatabase();
+    bbridge = createFetchBridge({ db: bdb, settings: makeMemorySettingsStore(), now: () => new Date(clockMs) });
+  });
+
+  const post = (path: string, body: any) =>
+    bbridge(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  // The factory item an `oil_change` log evidences, so the two writers below are
+  // proven to fight over the same row.
+  const OIL_ITEM = derivedItemsForServiceType('oil_change')[0];
+
+  async function scheduleRaw(vehicleId: string, itemCode: string): Promise<any> {
+    const rows = await bdb.collections.get('maintenance_schedules').query();
+    const hit = (rows as any[]).find(r => r._raw.vehicle_id === vehicleId && r._raw.item_code === itemCode);
+    expect(hit, `seeded item ${itemCode}`).toBeTruthy();
+    return hit._raw;
+  }
+
+  it('an interval edit and a linked service each stamp only their own group', async () => {
+    const vehicle = (await envelope(await post('/api/vehicles', vehiclePayload))).data;
+    await envelope(await bbridge(`/api/schedules?vehicleId=${vehicle.id}`));
+
+    const seeded = await scheduleRaw(vehicle.id, OIL_ITEM);
+    expect(seeded.updated_at_sync_config).toBe(clockMs);
+    expect(seeded.updated_at_sync_baseline).toBe(clockMs);
+    const seededAt = clockMs;
+
+    // Owner retunes the interval in the items editor.
+    clockMs += 1000;
+    const patch = await envelope(await bbridge('/api/schedules', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: seeded.id, intervalKm: 9000 }),
+    }));
+    expect(patch.success).toBe(true);
+    let raw = await scheduleRaw(vehicle.id, OIL_ITEM);
+    expect(raw.interval_km).toBe(9000);
+    expect(raw.updated_at_sync_config).toBe(seededAt + 1000);
+    expect(raw.updated_at_sync_baseline).toBe(seededAt);
+
+    // A recorded oil change links onto the same row afterwards.
+    clockMs += 2000;
+    const logged = await envelope(await post('/api/maintenance', {
+      vehicleId: vehicle.id, serviceDate: '2024-06-01', odometer: 20000,
+      serviceType: 'oil_change', title: 'Oil change', partsCost: 50, laborCost: 50, totalCost: 100,
+    }));
+    expect(logged.success).toBe(true);
+    expect(logged.data.linkedSchedules).toBeGreaterThan(0);
+
+    raw = await scheduleRaw(vehicle.id, OIL_ITEM);
+    expect(raw.last_done_odometer).toBe(20000);
+    expect(raw.updated_at_sync_baseline).toBe(seededAt + 3000);
+    expect(raw.updated_at_sync_config).toBe(seededAt + 1000); // the link did not claim the config
+
+    // And the outbox says so on the wire, which is what the server merges from.
+    const pushed = await new WMDBLocalStore(bdb).collectDirty();
+    const row = pushed.maintenance_schedules?.upsert?.find((r: any) => r.id === seeded.id);
+    expect(row).toMatchObject({
+      interval_km: 9000, last_done_odometer: 20000,
+      updatedAt: seededAt + 1000, baselineUpdatedAt: seededAt + 3000,
+    });
+  });
+
+  it('leaves the vehicle odometer write on a single row-level clock', async () => {
+    const vehicle = (await envelope(await post('/api/vehicles', vehiclePayload))).data;
+    await envelope(await bbridge(`/api/schedules?vehicleId=${vehicle.id}`));
+
+    await post('/api/maintenance', {
+      vehicleId: vehicle.id, serviceDate: '2024-06-01', odometer: 20000,
+      serviceType: 'oil_change', title: 'Oil change', partsCost: 0, laborCost: 50, totalCost: 50,
+    });
+
+    const vehRaw = (await bdb.collections.get('vehicles').find(vehicle.id) as any)._raw;
+    expect(vehRaw.current_odometer).toBe(20000);
+    expect(vehRaw.updated_at_sync_config).toBeUndefined();
+    expect(vehRaw.updated_at_sync_baseline).toBeUndefined();
   });
 });

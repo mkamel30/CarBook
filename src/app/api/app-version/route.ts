@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import pkg from '../../../../package.json';
 import { semverToVersionCode } from '@/services/version';
+import { mobilePreflight, withMobileCors } from '@/services/mobileCors';
 
 // Latest release is read from GitHub Releases so the self-hosted server never
 // needs a manual APK upload: the release workflow publishes the APK and this
@@ -48,7 +49,7 @@ async function fetchLatestRelease(): Promise<AppVersionInfo | null> {
   }
 }
 
-export async function GET() {
+async function GETHandler(_req: NextRequest) {
   const now = Date.now();
   if (cache && now - cache.at < CACHE_TTL_MS) {
     return NextResponse.json({ success: true, data: cache.payload });
@@ -72,3 +73,9 @@ export async function GET() {
   };
   return NextResponse.json({ success: true, data: fallback });
 }
+
+// The bundled APK reads this from Capacitor's `https://localhost`, so an
+// untagged response is blocked by the WebView and Settings reports "could not
+// check for an update" even though the server answered 200.
+export const GET = withMobileCors(GETHandler);
+export const OPTIONS = mobilePreflight;

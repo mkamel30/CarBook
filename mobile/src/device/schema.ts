@@ -1,4 +1,5 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
+import { groupsOf } from '@sync/fieldGroups';
 
 // One source of truth for the device columns of each synced table.
 //   col  = device (WatermelonDB) column name.
@@ -103,7 +104,12 @@ function wmColumns(tableName: string) {
   const cols = DEVICE_COLS[tableName].map(c => ({ name: c.col, type: c.type }));
   return [
     ...cols,
-    { name: 'updated_at_sync', type: 'number' as ColType }, // LWW timestamp (updatedAt)
+    { name: 'updated_at_sync', type: 'number' as ColType }, // row revision (outbox bookkeeping + `updatedAt`)
+    // One LWW stamp per field group (see @sync/fieldGroups): a baseline advance
+    // must not also claim the item's config is newer, or it overwrites a peer's
+    // fresher interval edit. Rows written before these columns existed read as
+    // undefined and fall back to `updated_at_sync` — the old row-level rule.
+    ...(groupsOf(tableName) ?? []).map(g => ({ name: g.deviceTsColumn, type: 'number' as ColType })),
     { name: '_dirty', type: 'string' as ColType },
     { name: '_deleted_at', type: 'number' as ColType },
     // Set when the server refuses a pushed row per-row (sync remarkRejected);
@@ -112,10 +118,13 @@ function wmColumns(tableName: string) {
   ];
 }
 
-// NOTE: version stays 1 — no shipped build has ever persisted this device schema
-// (the prototype was never bundled into the APK), so there are no v1 databases to
-// migrate. WP5 packaging wires the real SQLite adapter; only then do schema
-// changes require version bumps + migrations.
+// NOTE: version stays 1 deliberately. New columns here are DEVICE-ONLY
+// bookkeeping, and the LokiJS adapter stores each row as a document: a row from
+// an older snapshot simply has no value for them, and the stamping code falls
+// back to `updated_at_sync`. Bumping the version without supplying a migration
+// function makes WatermelonDB throw at boot for every installed app — strictly
+// worse than the additive column. A BUSINESS column change, or the first real
+// SQLite adapter, is where version bumps + migration steps become mandatory.
 export const deviceSchema = appSchema({
   version: 1,
   tables: [

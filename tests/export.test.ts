@@ -92,7 +92,7 @@ describe('Excel Export Service', () => {
   });
 
   it('builds complete vehicle dossier with 3 sheets and formatted parts in Arabic', () => {
-    const { wb, filename } = buildVehicleDossierWorkbook(mockVehicle, mockMaintenanceLogs, mockFuelLogs, 'ar');
+    const { wb, filename } = buildVehicleDossierWorkbook(XLSX, mockVehicle, mockMaintenanceLogs, mockFuelLogs, 'ar');
 
     expect(filename).toContain('CarBook_');
     expect(filename).toContain('Dossier');
@@ -135,7 +135,7 @@ describe('Excel Export Service', () => {
   });
 
   it('builds English dossier with proper sheet names and column headers', () => {
-    const { wb } = buildVehicleDossierWorkbook(mockVehicle, mockMaintenanceLogs, mockFuelLogs, 'en');
+    const { wb } = buildVehicleDossierWorkbook(XLSX, mockVehicle, mockMaintenanceLogs, mockFuelLogs, 'en');
 
     expect(wb.SheetNames).toEqual(['Maintenance', 'Fuel Consumption', 'Vehicle Specs']);
     const maintSheet = wb.Sheets['Maintenance'];
@@ -150,14 +150,14 @@ describe('Excel Export Service', () => {
   });
 
   it('builds dedicated maintenance workbook', () => {
-    const { wb, filename } = buildMaintenanceWorkbook(mockVehicle, mockMaintenanceLogs, 'ar');
+    const { wb, filename } = buildMaintenanceWorkbook(XLSX, mockVehicle, mockMaintenanceLogs, 'ar');
 
     expect(filename).toContain('Maintenance');
     expect(wb.SheetNames).toEqual(['سجل الصيانة']);
   });
 
   it('builds dedicated fuel workbook', () => {
-    const { wb, filename } = buildFuelWorkbook(mockVehicle, mockFuelLogs, 'ar');
+    const { wb, filename } = buildFuelWorkbook(XLSX, mockVehicle, mockFuelLogs, 'ar');
 
     expect(filename).toContain('Fuel');
     expect(wb.SheetNames).toEqual(['سجل الوقود']);
@@ -217,7 +217,7 @@ describe('Excel export cell typing', () => {
   }
 
   it('emits no formula cell for any sheet', () => {
-    const { wb } = buildVehicleDossierWorkbook(vehicle, maintenance, fuel, 'en');
+    const { wb } = buildVehicleDossierWorkbook(XLSX, vehicle, maintenance, fuel, 'en');
     const cells = allCells(wb);
     expect(cells.length).toBeGreaterThan(20);
     for (const { sheet, addr, cell } of cells) {
@@ -227,7 +227,7 @@ describe('Excel export cell typing', () => {
   });
 
   it('keeps leading-operator text exactly as the user wrote it', () => {
-    const { wb } = buildVehicleDossierWorkbook(vehicle, maintenance, fuel, 'en');
+    const { wb } = buildVehicleDossierWorkbook(XLSX, vehicle, maintenance, fuel, 'en');
     const values = allCells(wb).map((c) => c.cell.v);
 
     expect(values).toContain('- checked the belts first');

@@ -41,6 +41,10 @@ export class MaintenanceScheduleModel extends Model {
   @text('last_done_date') lastDoneDate?: string;
 
   @field('updated_at_sync') syncTs!: number;
+  // Per-field-group last-write-wins stamps (see @sync/fieldGroups): `syncTs` is
+  // the row revision the outbox compares, these say when each group last changed.
+  @field('updated_at_sync_config') syncTsConfig!: number;
+  @field('updated_at_sync_baseline') syncTsBaseline!: number;
   @text('_dirty') dirty?: string;
   @field('_deleted_at') deletedAt!: number;
   @text('rejected_reason') rejectedReason?: string;

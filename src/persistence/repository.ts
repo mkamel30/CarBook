@@ -3,6 +3,7 @@ import { reserveSeq } from './sync';
 import * as schema from './schema';
 import { eq, desc, and } from 'drizzle-orm';
 import { baselineMovesForward, bestLogForItem } from '../services/presets';
+import { touchedGroups } from '../sync/fieldGroups';
 import {
   vehicleSchema,
   maintenanceScheduleSchema,
@@ -356,11 +357,12 @@ export class StorageRepository {
     const id = crypto.randomUUID();
     const validated = maintenanceScheduleSchema.parse({ ...data, id });
     const seq = await reserveSeq(client, 1);
+    const ts = Date.now();
 
     await client.execute({
       sql: `INSERT INTO maintenance_schedules (id, vehicle_id, item_code, title_ar, title_en, interval_km,
-              interval_months, last_done_odometer, last_done_date, rev, seq, deleted, sync_ts)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)`,
+              interval_months, last_done_odometer, last_done_date, rev, seq, deleted, sync_ts, baseline_ts)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?)`,
       args: [
         validated.id!,
         validated.vehicleId,
@@ -372,7 +374,8 @@ export class StorageRepository {
         validated.lastDoneOdometer ?? null,
         validated.lastDoneDate ?? null,
         seq,
-        Date.now(),
+        ts,
+        ts,
       ],
     });
 
@@ -406,30 +409,29 @@ export class StorageRepository {
     const { client } = await this.getHandles();
     const sets: string[] = [];
     const args: any[] = [];
-    if (data.lastDoneOdometer !== undefined) {
-      sets.push('last_done_odometer = ?');
-      args.push(data.lastDoneOdometer);
-    }
-    if (data.lastDoneDate !== undefined) {
-      sets.push('last_done_date = ?');
-      args.push(data.lastDoneDate);
-    }
-    if (data.intervalKm !== undefined) {
-      sets.push('interval_km = ?');
-      args.push(data.intervalKm);
-    }
-    if (data.intervalMonths !== undefined) {
-      sets.push('interval_months = ?');
-      args.push(data.intervalMonths);
-    }
+    const updatedColumns: string[] = [];
+    const set = (column: string, value: any) => {
+      sets.push(`${column} = ?`);
+      args.push(value);
+      updatedColumns.push(column);
+    };
+    if (data.lastDoneOdometer !== undefined) set('last_done_odometer', data.lastDoneOdometer);
+    if (data.lastDoneDate !== undefined) set('last_done_date', data.lastDoneDate);
+    if (data.intervalKm !== undefined) set('interval_km', data.intervalKm);
+    if (data.intervalMonths !== undefined) set('interval_months', data.intervalMonths);
     if (sets.length === 0) return;
-    // Stamp the row so the edit is observable by sync pull cursors.
+    // Stamp ONLY the field groups this write touched, mirroring the merge in
+    // sync.ts: advancing a baseline must not claim a newer config, or a peer's
+    // fresher interval edit gets dropped as stale on its next push.
     const seq = await reserveSeq(client, 1);
+    const ts = Date.now();
     sets.push('rev = rev + 1');
     sets.push('seq = ?');
     args.push(seq);
-    sets.push('sync_ts = ?');
-    args.push(Date.now());
+    for (const group of touchedGroups('maintenance_schedules', updatedColumns)) {
+      sets.push(`${group.tsColumn} = ?`);
+      args.push(ts);
+    }
     args.push(id);
     await client.execute({
       sql: `UPDATE maintenance_schedules SET ${sets.join(', ')} WHERE id = ?`,

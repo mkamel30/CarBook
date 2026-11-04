@@ -249,3 +249,107 @@ describe('device ⇄ server offline sync (end-to-end)', () => {
     expect(Number(v?.updatedAt)).toBeLessThanOrEqual(Date.now());
   });
 });
+
+// A4 end to end: the real device writer + outbox against the real server engine.
+// The two writers of a schedule row never agree on the whole row, so a single
+// per-row clock made them destroy each other's work — this is the sequence that
+// used to lose an owner's interval edit (and, mirrored, a recorded service).
+describe('schedule field groups across two devices', () => {
+  const vehicleRow = {
+    name: 'Corolla', make: 'Toyota', model: 'Corolla', year: 2019,
+    initial_odometer: 0, current_odometer: 45000, created_at: iso(), updated_at: iso(),
+  };
+  const scheduleRow = {
+    vehicle_id: 'veh-1', item_code: 'oil_change', title_ar: 'تغيير زيت', title_en: 'Oil change',
+    interval_km: 5000, interval_months: 6, last_done_odometer: null, last_done_date: null,
+  };
+  const sync = (db: any, deviceId: string) =>
+    syncOnce(new WMDBLocalStore(db), { baseUrl: 'http://s', deviceId, fetchImpl: fetchToServer('u1') });
+
+  async function serverSchedule() {
+    const probe = await runSync('u1', { deviceId: 'probe', since: 0 }, { dbPath });
+    return probe.pulled.maintenance_schedules?.upsert.find(s => s.id === 'sch-1');
+  }
+
+  it('an interval edit and a service-baseline edit both survive on the server', async () => {
+    await seedUser('u1');
+
+    const dbA = makeDatabase();
+    await localCreate(dbA, 'vehicles', 'veh-1', vehicleRow, 1000);
+    await localCreate(dbA, 'maintenance_schedules', 'sch-1', scheduleRow, 1000);
+    expect((await sync(dbA, 'devA')).rejected).toEqual([]);
+
+    // Device B starts from the same state.
+    const dbB = makeDatabase();
+    await sync(dbB, 'devB');
+    expect((await dbB.collections.get('maintenance_schedules').find('sch-1') as any).intervalKm).toBe(5000);
+
+    // B records the oil change it just did: baseline only, clock 2100.
+    await localUpdate(dbB, 'maintenance_schedules', 'sch-1',
+      { last_done_odometer: 45000, last_done_date: '2026-10-28' }, 2100);
+    await sync(dbB, 'devB');
+
+    // Meanwhile A, which never saw that service, retunes the interval: config only, clock 2500.
+    await localUpdate(dbA, 'maintenance_schedules', 'sch-1', { interval_km: 8000 }, 2500);
+    const outA = await sync(dbA, 'devA');
+    expect(outA.rejected).toEqual([]);
+
+    const onServer = await serverSchedule();
+    expect(onServer?.interval_km).toBe(8000);          // A's edit kept
+    expect(onServer?.last_done_odometer).toBe(45000);  // B's service kept — was cleared before A4
+    expect(onServer?.last_done_date).toBe('2026-10-28');
+
+    // Both devices converge on the merged row instead of arguing about it.
+    await sync(dbA, 'devA');
+    const mergedA = (await dbA.collections.get('maintenance_schedules').find('sch-1') as any)._raw;
+    expect([mergedA.interval_km, mergedA.last_done_odometer]).toEqual([8000, 45000]);
+    expect(mergedA._dirty).toBe('');
+
+    await sync(dbB, 'devB');
+    const mergedB = (await dbB.collections.get('maintenance_schedules').find('sch-1') as any)._raw;
+    expect([mergedB.interval_km, mergedB.last_done_odometer]).toEqual([8000, 45000]);
+  });
+
+  it('a stale whole-row copy from a peer changes neither group', async () => {
+    await seedUser('u1');
+    const dbA = makeDatabase();
+    await localCreate(dbA, 'vehicles', 'veh-1', vehicleRow, 1000);
+    await localCreate(dbA, 'maintenance_schedules', 'sch-1', scheduleRow, 1000);
+    await sync(dbA, 'devA');
+
+    // B went offline before the owner retuned the item, then syncs its old copy.
+    const dbB = makeDatabase();
+    await localCreate(dbB, 'vehicles', 'veh-1', vehicleRow, 1000);
+    await localCreate(dbB, 'maintenance_schedules', 'sch-1', scheduleRow, 900);
+    await localUpdate(dbB, 'maintenance_schedules', 'sch-1',
+      { interval_km: 3000, last_done_odometer: 1200, last_done_date: '2026-01-01' }, 950);
+    const outB = await sync(dbB, 'devB');
+
+    expect(outB.rejected).toEqual([]); // dropped as stale, not refused
+    const onServer = await serverSchedule();
+    expect(onServer?.interval_km).toBe(5000);        // not B's 3000
+    // B never had a baseline; WatermelonDB stores an unset numeric column as 0, so
+    // 0 is the row's created state — the point is that B's 1200 did not land.
+    expect(Number(onServer?.last_done_odometer)).toBe(0);
+    expect(String(onServer?.last_done_date ?? '')).not.toBe('2026-01-01');
+  });
+
+  it('keeps the group stamps a pulled row carries, so the next local edit argues fairly', async () => {
+    await seedUser('u1');
+    const dbA = makeDatabase();
+    await localCreate(dbA, 'vehicles', 'veh-1', vehicleRow, 1000);
+    await localCreate(dbA, 'maintenance_schedules', 'sch-1', scheduleRow, 1000);
+    await sync(dbA, 'devA');
+
+    const dbB = makeDatabase();
+    await sync(dbB, 'devB');
+    const pulled = (await dbB.collections.get('maintenance_schedules').find('sch-1') as any)._raw;
+    expect(pulled.updated_at_sync_config).toBe(1000);
+    expect(pulled.updated_at_sync_baseline).toBe(1000);
+
+    await localUpdate(dbB, 'maintenance_schedules', 'sch-1', { interval_km: 9000 }, 2000);
+    const pushed = await new WMDBLocalStore(dbB).collectDirty();
+    expect(pushed.maintenance_schedules?.upsert?.[0])
+      .toMatchObject({ updatedAt: 2000, baselineUpdatedAt: 1000, interval_km: 9000 });
+  });
+});

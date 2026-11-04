@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef } from 'react';
+import { useOverlayRegistration } from './useOverlayRegistration';
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -17,6 +18,11 @@ export function useDialogBehaviour(
   opts: { autoFocusFirst?: boolean } = {},
 ) {
   const { autoFocusFirst = true } = opts;
+
+  // §4: every dialog/sheet/menu that uses this behaviour also lands on the Back
+  // stack, so the Android hardware Back closes the topmost overlay instead of
+  // exiting the app. Inert on web (nothing pops the stack there).
+  useOverlayRegistration(open, onClose);
 
   // Callers pass inline arrows (`onClose={() => setOpen(false)}`), so the prop
   // identity changes on every parent render — including each keystroke in a
